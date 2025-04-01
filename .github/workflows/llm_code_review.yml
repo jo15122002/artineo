@@ -1,0 +1,43 @@
+name: "Automated Code Review"
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Setup Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.8'
+
+      - name: Install Dependencies
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Tests
+        shell: bash
+        run: |
+          pytest
+          
+  code_review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run LLM Code Review
+        uses: jo15122002/flair@main
+        with:
+          llm-endpoint: ${{ secrets.LLM_ENDPOINT }}
+          diff-chunk-size: 10000
+          exclude-patterns: "test,tests,spec"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
