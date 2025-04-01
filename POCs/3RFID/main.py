@@ -11,9 +11,9 @@ import sys
 # Define GPIO pins for RST (Reset) and CS (Chip Select/SDA) for each reader
 # Format: (RST_PIN, CS_PIN, READER_NAME)
 READER_PINS = [
-    (17, 8,  "Reader 1 (CE0)"), # Using CE0 (GPIO 8) for CS
-    (27, 7,  "Reader 2 (CE1)"), # Using CE1 (GPIO 7) for CS
-    (22, 25, "Reader 3 (GPIO25)") # Using GPIO 25 for CS
+    (17, 27,  "Reader 1 (CE0)"), # Using CE0 (GPIO 8) for CS
+    # (27, 7,  "Reader 2 (CE1)"), # Using CE1 (GPIO 7) for CS
+    # (22, 25, "Reader 3 (GPIO25)") # Using GPIO 25 for CS
 ]
 
 # --- Global Variables ---
