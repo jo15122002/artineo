@@ -5,8 +5,8 @@ import time
 # Configuration des pins GPIO pour les 3 lecteurs RFID
 READERS = [
     {"name": "Lecteur 1", "cs": 8},   # GPIO8 (CE0)
-    {"name": "Lecteur 2", "cs": 7},   # GPIO7 (CE1)
-    {"name": "Lecteur 3", "cs": 25},  # GPIO25 (GPIO libre)
+    # {"name": "Lecteur 2", "cs": 7},   # GPIO7 (CE1)
+    # {"name": "Lecteur 3", "cs": 25},  # GPIO25 (GPIO libre)
 ]
 
 # Initialisation des lecteurs
