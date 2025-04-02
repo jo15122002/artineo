@@ -43,7 +43,7 @@ def main():
     # Reader 3 : utilisation d'une broche CE personnalisée via le paramètre pin_ce
     # Par exemple, on peut connecter SDA sur une broche libre et définir pin_ce manuellement.
     # Ici, on choisit pin_ce=26 (qui correspond à GPIO7 en BOARD, mais adaptez selon votre câblage)
-    reader3 = RFID(pin_ce=24, pin_rst=22, pin_irq=None, pin_mode=GPIO.BCM)
+    reader3 = RFID(pin_ce=24, pin_rst=22, pin_irq=27, pin_mode=GPIO.BCM)
     
     # Regrouper les lecteurs avec un identifiant pour faciliter le test
     readers = [("Reader 1", reader3)]
