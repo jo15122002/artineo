@@ -36,9 +36,9 @@ if [ ! -d "venv" ]; then
     pip install --upgrade pip
     pip install -r requirements.txt
 else
-    pip install -r requirements.txt
     echo "Activation de l'environnement virtuel..."
     source venv/bin/activate
+    pip install -r requirements.txt
 fi
 
 echo "Lancement du programme RFID..."
