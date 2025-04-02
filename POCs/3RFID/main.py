@@ -1,129 +1,69 @@
-#!/usr/bin/env python3
-
 import RPi.GPIO as GPIO
-from mfrc522 import MFRC522
 import time
-import threading
-import signal
-import sys
+import requests
+from mfrc522 import SimpleMFRC522
 
-# --- Configuration ---
-# Define GPIO pins for RST (Reset) and CS (Chip Select/SDA) for each reader
-# Format: (RST_PIN, CS_PIN, READER_NAME)
-READER_PINS = [
-    (17, 27,  "Reader 1 (CE0)"), # Using CE0 (GPIO 8) for CS
-    # (27, 7,  "Reader 2 (CE1)"), # Using CE1 (GPIO 7) for CS
-    # (22, 25, "Reader 3 (GPIO25)") # Using GPIO 25 for CS
-]
+# Configuration des pins (mode BCM)
+BUTTON_PIN = 18  # Bouton de confirmation (avec résistance pull-up)
+LED_PIN = 23     # LED de feedback
 
-# --- Global Variables ---
-readers = []
-running = True # Flag to control the threads
+# Configuration du serveur
+SERVER_URL = "http://votre-serveur.com/api/rfid"  # Remplacez par l'URL de votre serveur
 
-# --- RFID Reading Function ---
-def read_rfid(reader_instance, reader_name):
-    """
-    Function executed by each thread to continuously read RFID tags.
-    """
-    print(f"Thread started for {reader_name}")
-    last_tag_time = 0
-    last_tag_id = None
-    debounce_time = 1.0 # Seconds to wait before reporting the same tag again
+# Initialisation des GPIO
+GPIO.setmode(GPIO.BCM)
+GPIO.setup(BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+GPIO.setup(LED_PIN, GPIO.OUT)
+GPIO.output(LED_PIN, GPIO.LOW)
 
-    while running:
+# Initialisation du lecteur RFID RC522
+reader = SimpleMFRC522()
+
+def send_rfid_data(tag):
+    """Envoie l'ID RFID au serveur via une requête HTTP POST."""
+    data = {"rfid": tag}
+    try:
+        response = requests.post(SERVER_URL, json=data)
+        print("Réponse du serveur :", response.status_code, response.text)
+    except Exception as e:
+        print("Erreur lors de l'envoi :", e)
+
+try:
+    while True:
+        print("Veuillez scanner votre tag RFID...")
         try:
-            # Scan for tags
-            status, TagType = reader_instance.MFRC522_Request(reader_instance.PICC_REQIDL)
-
-            # If a tag is found
-            if status == reader_instance.MI_OK:
-                # Get the UID of the tag
-                status, uid = reader_instance.MFRC522_Anticoll()
-
-                if status == reader_instance.MI_OK:
-                    tag_id = "-".join([str(x) for x in uid])
-                    current_time = time.time()
-
-                    # Debounce: Only print if it's a new tag or enough time has passed
-                    if tag_id != last_tag_id or (current_time - last_tag_time) > debounce_time:
-                        print(f"{reader_name} detected Tag ID: {tag_id}")
-                        last_tag_id = tag_id
-                        last_tag_time = current_time
-                    # else:
-                        # Optional: print("Debounced duplicate tag:", tag_id)
-                        # pass
-
+            id, text = reader.read()  # Attend la détection d'un tag RFID
         except Exception as e:
-            # Handle potential communication errors (less frequent with MFRC522)
-            print(f"Error reading from {reader_name}: {e}")
-            time.sleep(0.5) # Wait a bit before retrying after an error
+            print("Erreur de lecture RFID :", e)
+            time.sleep(1)
+            continue
 
-        # Small delay to prevent high CPU usage
-        time.sleep(0.1)
+        # Conversion de l'ID en chaîne hexadécimale en majuscules
+        tag_hex = hex(id)[2:].upper()
+        print("Tag RFID détecté :", tag_hex)
 
-    print(f"Thread stopped for {reader_name}")
+        # Attente de la confirmation via le bouton
+        print("Appuyez sur le bouton pour confirmer...")
+        while GPIO.input(BUTTON_PIN) == GPIO.HIGH:
+            time.sleep(0.1)
+        print("Bouton appuyé, envoi des données...")
 
-# --- Signal Handler for Graceful Exit ---
-def signal_handler(sig, frame):
-    global running
-    print("\nCtrl+C detected. Stopping readers...")
-    running = False # Signal threads to stop
-    # Wait a moment for threads to potentially finish their current loop cycle
-    time.sleep(0.5)
-    GPIO.cleanup()
-    print("GPIO cleaned up. Exiting.")
-    sys.exit(0)
+        # Envoi des données RFID au serveur
+        send_rfid_data(tag_hex)
 
-# --- Main Program ---
-if __name__ == "__main__":
-    # Setup signal handler for Ctrl+C
-    signal.signal(signal.SIGINT, signal_handler)
+        # Feedback visuel via clignotement de la LED
+        for _ in range(2):
+            GPIO.output(LED_PIN, GPIO.HIGH)
+            time.sleep(0.2)
+            GPIO.output(LED_PIN, GPIO.LOW)
+            time.sleep(0.2)
 
-    print("Starting RFID reader system...")
-    print("Press Ctrl+C to exit.")
-
-    # Set GPIO mode
-    # Using BCM mode is generally recommended over BOARD mode
-    GPIO.setmode(GPIO.BCM)
-    GPIO.setwarnings(False) # Disable GPIO warnings
-
-    # Initialize reader objects
-    print("Initializing readers...")
-    for rst_pin, cs_pin, name in READER_PINS:
-        try:
-            # The MFRC522 library constructor might vary slightly.
-            # Common parameters are (bus=0, device= (relevant for CE0/CE1), spidev_speed, pin_rst, pin_ce)
-            # Check the specific library's documentation if this doesn't work.
-            # We explicitly provide pin_ce (chip enable/select) and pin_rst (reset).
-            # bus=0 and device=0 are often defaults but we rely on pin_ce here.
-            reader = MFRC522(pin_rst=rst_pin, pin_ce=cs_pin)
-            readers.append((reader, name))
-            print(f" - {name} initialized (RST: GPIO{rst_pin}, CS: GPIO{cs_pin})")
-        except Exception as e:
-            print(f"Failed to initialize {name} on RST: {rst_pin}, CS: {cs_pin}. Error: {e}")
-            # Optional: exit if a reader fails to initialize
-            # GPIO.cleanup()
-            # sys.exit(1)
-
-    if not readers:
-        print("No readers were initialized successfully. Exiting.")
-        GPIO.cleanup()
-        sys.exit(1)
-
-    # Create and start threads for each reader
-    threads = []
-    print("Starting reader threads...")
-    for reader_instance, reader_name in readers:
-        thread = threading.Thread(target=read_rfid, args=(reader_instance, reader_name), daemon=True)
-        thread.start()
-        threads.append(thread)
-
-    # Keep the main thread alive while other threads run
-    # The signal handler will eventually set running to False
-    while running:
+        # Petite pause pour éviter une relecture immédiate
         time.sleep(1)
 
-    # This part is usually reached only if running is set to False externally,
-    # but the signal handler is the primary exit mechanism.
-    print("Main loop finished (should normally be interrupted by Ctrl+C).")
-    # GPIO cleanup is handled by the signal handler
+except KeyboardInterrupt:
+    print("Arrêt du programme par l'utilisateur.")
+
+finally:
+    print("Nettoyage des GPIO.")
+    GPIO.cleanup()
