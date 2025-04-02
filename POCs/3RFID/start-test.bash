@@ -20,4 +20,4 @@ pip install -r requirements.txt
 
 # Lancement du script de test
 echo "Démarrage de test_multiple_readers.py..."
-python3 test.py
+sudo python3 test.py
