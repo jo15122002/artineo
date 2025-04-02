@@ -17,11 +17,11 @@ def send_rfid_data(reader_id, uid):
 # Instanciation des lecteurs avec des broches CS et RST différentes
 # Les numéros de broches sont en mode BCM.
 rdr1 = RFID(cs=8, rst=25)   # Premier lecteur : CS sur GPIO8, RST sur GPIO25
-rdr2 = RFID(cs=7, rst=24)   # Deuxième lecteur : CS sur GPIO7, RST sur GPIO24
-rdr3 = RFID(cs=12, rst=23)  # Troisième lecteur : CS sur GPIO12, RST sur GPIO23
+# rdr2 = RFID(cs=7, rst=24)   # Deuxième lecteur : CS sur GPIO7, RST sur GPIO24
+# rdr3 = RFID(cs=12, rst=23)  # Troisième lecteur : CS sur GPIO12, RST sur GPIO23
 
 # Regrouper les lecteurs avec un identifiant pour faciliter le suivi
-readers = [(1, rdr1), (2, rdr2), (3, rdr3)]
+readers = [(1, rdr1)]
 
 try:
     while True:
