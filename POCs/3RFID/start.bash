@@ -41,4 +41,4 @@ else
 fi
 
 echo "Lancement du programme RFID..."
-python3 rfid_reader.py
+python3 main.py
