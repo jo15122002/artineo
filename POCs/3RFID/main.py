@@ -1,32 +1,46 @@
-import RPi.GPIO as GPIO
-from dependencies.mfrc522_multi.rfid_reader import MFRC522
+#!/usr/bin/env python3
+import sys
+import os
 import time
 
-# Configuration des lecteurs RFID
-READERS = [
-    {"name": "Lecteur 1", "cs": 8},   # GPIO8 (CE0)
-    # {"name": "Lecteur 2", "cs": 7},   # GPIO7 (CE1)
-    # {"name": "Lecteur 3", "cs": 25},  # GPIO25 (GPIO libre)
-]
+# Ajouter le dossier dependencies au path pour importer la lib custom_rc522.py
+current_dir = os.path.dirname(os.path.realpath(__file__))
+dependencies_dir = os.path.join(current_dir, "dependencies")
+if dependencies_dir not in sys.path:
+    sys.path.append(dependencies_dir)
 
-# Initialisation des lecteurs
-readers = []
-for reader in READERS:
-    mfrc = MFRC522(cs_pin=reader["cs"])
-    readers.append({"device": mfrc, "name": reader["name"]})
+from custom_rc522 import RC522Reader
 
-print("🟢 Lecture RFID multi-lecteurs démarrée (Ctrl+C pour arrêter)")
+def main():
+    # Instanciation de plusieurs lecteurs avec des broches CS et RST différentes
+    # Adaptez ces numéros de broches selon votre câblage :
+    try:
+        reader1 = RC522Reader(cs=24, rst=22)
+        # reader2 = RC522Reader(cs=23, rst=27)
+        # reader3 = RC522Reader(cs=18, rst=25)
 
-try:
-    while True:
-        for reader in readers:
-            uid = reader["device"].read_uid()
-            if uid:
-                uid_str = "-".join(map(str, uid))
-                print(f"[{reader['name']}] ✅ Carte détectée : {uid_str}")
-        time.sleep(0.2)
+        # Regrouper les lecteurs dans une liste avec un identifiant pour chaque lecteur
+        readers = [(1, reader1)]  # Ajoutez d'autres lecteurs si nécessaire
+        print("Démarrage de la détection sur les lecteurs RFID...")
+        
+        while True:
+            for reader_id, reader in readers:
+                print(f"Lecteur {reader_id} : Attente de tag...")
+                detected, _ = reader.request()
+                if detected:
+                    error, uid = reader.anticoll()
+                    if error == 0:
+                        print(f"Lecteur {reader_id} - Tag détecté : UID = {uid}")
+                    else:
+                        print(f"Lecteur {reader_id} - Erreur dans la procédure anticollision.")
+            time.sleep(0.5)
+    except KeyboardInterrupt:
+        print("\nArrêt du programme par l'utilisateur.")
+    finally:
+        # Nettoyage de chaque lecteur
+        print("Nettoyage des ressources...")
+        for _, reader in readers:
+            reader.cleanup()
 
-except KeyboardInterrupt:
-    print("\n🛑 Arrêt du programme.")
-finally:
-    GPIO.cleanup()
+if __name__ == "__main__":
+    main()
