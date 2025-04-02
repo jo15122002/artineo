@@ -1,46 +1,33 @@
 import RPi.GPIO as GPIO
-from mfrc522 import SimpleMFRC522
-import threading
+from dependencies.mfrc522_multi.rfid_reader import MFRC522
 import time
 
-# Configuration des Chip Select et RST pour les 3 lecteurs
-READERS_CONFIG = [
-    {"cs": 8, "rst": 25, "name": "Lecteur 1"},
-    {"cs": 7, "rst": 24, "name": "Lecteur 2"},
-    {"cs": 12, "rst": 23, "name": "Lecteur 3"},
+# Configuration des pins GPIO pour les 3 lecteurs RFID
+READERS = [
+    {"name": "Lecteur 1", "cs": 8},   # GPIO8 (CE0)
+    {"name": "Lecteur 2", "cs": 7},   # GPIO7 (CE1)
+    {"name": "Lecteur 3", "cs": 25},  # GPIO25 (GPIO libre)
 ]
 
-# Désactivation des warnings GPIO
-GPIO.setwarnings(False)
-GPIO.setmode(GPIO.BCM)
+# Initialisation des lecteurs
+readers = []
 
-# Fonction pour lire un lecteur RFID
-def read_rfid(reader_config):
-    reader = SimpleMFRC522(spi_bus=0, spi_device=0, gpio_cs=reader_config["cs"], gpio_rst=reader_config["rst"])
-    print(f"[{reader_config['name']}] Prêt à scanner...")
+for reader in READERS:
+    mfrc = MFRC522(cs_pin=reader["cs"])
+    readers.append({"device": mfrc, "name": reader["name"]})
 
-    try:
-        while True:
-            id, text = reader.read_no_block()
-            if id:
-                print(f"[{reader_config['name']}] Tag détecté : {id} | Message : {text.strip()}")
-            time.sleep(0.5)
-    except KeyboardInterrupt:
-        GPIO.cleanup()
-        print(f"\n[{reader_config['name']}] Arrêté.")
+print("Lecture RFID multi-lecteurs démarrée (Ctrl+C pour arrêter)")
 
-# Démarrage des threads pour chaque lecteur
-threads = []
-for config in READERS_CONFIG:
-    t = threading.Thread(target=read_rfid, args=(config,), daemon=True)
-    threads.append(t)
-    t.start()
-
-# Boucle principale
 try:
     while True:
-        time.sleep(1)
+        for reader in readers:
+            id = reader["device"].read_uid()
+            if id:
+                uid_str = "-".join(map(str, id))
+                print(f"[{reader['name']}] UID détecté : {uid_str}")
+        time.sleep(0.2)
+
 except KeyboardInterrupt:
-    print("\nArrêt du programme...")
+    print("Arrêt du programme.")
+finally:
     GPIO.cleanup()
- 
