@@ -3,7 +3,7 @@ import spidev
 import time
 
 class MFRC522:
-    def __init__(self, cs_pin=8, rst_pin=25, spi_bus=0, spi_dev=0):
+    def __init__(self, cs_pin=8, rst_pin=22, spi_bus=0, spi_dev=0):
         self.cs_pin = cs_pin
         self.rst_pin = rst_pin
         GPIO.setmode(GPIO.BCM)
