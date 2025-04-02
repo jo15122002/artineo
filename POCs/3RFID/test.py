@@ -1,66 +1,69 @@
 #!/usr/bin/env python3
 """
-test_multiple_readers.py
+test_multiple_readers_mfrc522.py
 
-Ce script teste plusieurs lecteurs RFID RC522 un par un à l'aide de la bibliothèque pi-rc522.
-Chaque lecteur est configuré avec des paramètres spécifiques (bus, device, pin_rst, etc.) pour
-permettre l'utilisation de plusieurs modules sur un même Raspberry Pi.
+Ce script teste successivement plusieurs lecteurs RFID RC522 en utilisant la bibliothèque MFRC522-python.
+Pour chaque test, le script attend la détection d'une carte RFID et affiche l'UID lu.
+Pour tester un autre lecteur, débranchez celui testé et reconfigurez le branchement (par exemple, en passant
+le module sur CE1 pour le lecteur 2) puis appuyez sur Entrée pour continuer.
 
 Prérequis :
-    pip install pi-rc522 spidev RPi.GPIO
-
-Utilisation :
-    sudo python3 test_multiple_readers.py
+    - Installation de la bibliothèque MFRC522-python (par exemple via : sudo python3 Read.py pour tester l'exemple)
+    - Les librairies RPi.GPIO et spidev doivent être installées
+    - Exécution avec sudo (les accès GPIO nécessitent souvent des droits administrateur)
 """
 
-import time
+import MFRC522
 import RPi.GPIO as GPIO
-from pirc522 import RFID
+import time
 
-def test_reader(reader, name="Reader"):
-    print(f"{name} : En attente d'une carte RFID...")
-    # Attente active jusqu'à ce qu'une carte soit détectée
-    reader.wait_for_tag()
-    error, tag_type = reader.request()
-    if error:
-        print(f"{name} : Erreur lors de la requête (aucun tag détecté).")
-        return
-    error, uid = reader.anticoll()
-    if error:
-        print(f"{name} : Erreur lors de l'anticollision.")
-    else:
-        print(f"{name} : Tag détecté, UID = {uid}")
-    time.sleep(1)
+def test_reader(reader, reader_name="Lecteur"):
+    print(f"{reader_name} : Placez une carte RFID près du lecteur.")
+    while True:
+        # Demande la présence d'une carte (commande PICC_REQIDL)
+        (status, TagType) = reader.MFRC522_Request(reader.PICC_REQIDL)
+        if status == reader.MI_OK:
+            print(f"{reader_name} : Carte détectée!")
+            # Récupère l'UID via la procédure d'anticollision
+            (status, uid) = reader.MFRC522_Anticoll()
+            if status == reader.MI_OK:
+                print(f"{reader_name} : UID = {uid}")
+                break
+            else:
+                print(f"{reader_name} : Erreur lors de l'anticollision.")
+        time.sleep(0.1)
 
 def main():
-    # Reader 1 : configuration par défaut (SDA sur CE0, pin_rst par défaut)
-    # reader1 = RFID(pin_mode=GPIO.BCM)  # utilise bus=0, device=0, pin_rst=15, pin_irq=18, pin_mode=GPIO.BOARD par défaut
-    
-    # Reader 2 : utilisation de CE1 (SDA branché sur CE1, par ex. GPIO7, pin physique 26)
-    # Ici, on spécifie bus=0, device=1 et on désactive IRQ en passant pin_irq=None
-    # reader2 = RFID(bus=0, device=1, pin_rst=15, pin_irq=None, pin_mode=GPIO.BOARD)
-    
-    # Reader 3 : utilisation d'une broche CE personnalisée via le paramètre pin_ce
-    # Par exemple, on peut connecter SDA sur une broche libre et définir pin_ce manuellement.
-    # Ici, on choisit pin_ce=26 (qui correspond à GPIO7 en BOARD, mais adaptez selon votre câblage)
-    # reader3 = RFID(pin_ce=24, pin_rst=22, pin_irq=27, pin_mode=GPIO.BCM)
-    # convert to GPIO.BOARD
-    reader3 = RFID(pin_ce=18, pin_rst=15, pin_irq=13, pin_mode=GPIO.BOARD)
-    
-    # Regrouper les lecteurs avec un identifiant pour faciliter le test
-    readers = [("Reader 1", reader3)]
-    
     try:
-        for name, rdr in readers:
-            print(f"--- Test de {name} ---")
-            test_reader(rdr, name)
-            time.sleep(2)
+        # Test Lecteur 1 : configuration par défaut (par exemple SDA branché sur CE0)
+        print("=== Test du Lecteur 1 ===")
+        reader1 = MFRC522.MFRC522()
+        test_reader(reader1, "Lecteur 1")
+        reader1.cleanup()
+        
+        input("Appuyez sur Entrée pour tester le Lecteur 2 (rebranchez le module sur une configuration différente, par exemple SDA sur CE1)...")
+        
+        # Test Lecteur 2 :
+        # Pour tester un deuxième lecteur, vous devrez brancher le module sur une autre configuration SPI
+        # (par exemple, SDA sur CE1) et adapter, si nécessaire, la configuration dans le code de la bibliothèque.
+        # Ici, on réinstancie l'objet MFRC522 pour tester ce deuxième lecteur.
+        print("=== Test du Lecteur 2 ===")
+        reader2 = MFRC522.MFRC522()
+        test_reader(reader2, "Lecteur 2")
+        reader2.cleanup()
+        
+        input("Appuyez sur Entrée pour tester le Lecteur 3 (rebranchez le module sur une troisième configuration)...")
+        
+        # Test Lecteur 3 :
+        print("=== Test du Lecteur 3 ===")
+        reader3 = MFRC522.MFRC522()
+        test_reader(reader3, "Lecteur 3")
+        reader3.cleanup()
+        
     except KeyboardInterrupt:
-        print("\nArrêt du test par l'utilisateur.")
+        print("\nArrêt du programme par l'utilisateur.")
     finally:
-        for name, rdr in readers:
-            rdr.cleanup()
-            print(f"{name} : Ressources nettoyées.")
+        GPIO.cleanup()
 
 if __name__ == "__main__":
     main()
