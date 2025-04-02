@@ -34,7 +34,7 @@ def test_reader(reader, name="Reader"):
 
 def main():
     # Reader 1 : configuration par défaut (SDA sur CE0, pin_rst par défaut)
-    reader1 = RFID(pin_mode=GPIO.BCM)  # utilise bus=0, device=0, pin_rst=15, pin_irq=18, pin_mode=GPIO.BOARD par défaut
+    # reader1 = RFID(pin_mode=GPIO.BCM)  # utilise bus=0, device=0, pin_rst=15, pin_irq=18, pin_mode=GPIO.BOARD par défaut
     
     # Reader 2 : utilisation de CE1 (SDA branché sur CE1, par ex. GPIO7, pin physique 26)
     # Ici, on spécifie bus=0, device=1 et on désactive IRQ en passant pin_irq=None
@@ -43,10 +43,10 @@ def main():
     # Reader 3 : utilisation d'une broche CE personnalisée via le paramètre pin_ce
     # Par exemple, on peut connecter SDA sur une broche libre et définir pin_ce manuellement.
     # Ici, on choisit pin_ce=26 (qui correspond à GPIO7 en BOARD, mais adaptez selon votre câblage)
-    # reader3 = RFID(pin_ce=26, pin_rst=22, pin_irq=None, pin_mode=GPIO.BOARD)
+    reader3 = RFID(pin_ce=24, pin_rst=22, pin_irq=None, pin_mode=GPIO.BCM)
     
     # Regrouper les lecteurs avec un identifiant pour faciliter le test
-    readers = [("Reader 1", reader1)]
+    readers = [("Reader 1", reader3)]
     
     try:
         for name, rdr in readers:
