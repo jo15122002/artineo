@@ -1,69 +1,46 @@
 import RPi.GPIO as GPIO
 import time
 import requests
-from mfrc522 import SimpleMFRC522
+from pirc522 import RFID
 
-# Configuration des pins (mode BCM)
-BUTTON_PIN = 18  # Bouton de confirmation (avec résistance pull-up)
-LED_PIN = 23     # LED de feedback
+SERVER_URL = "http://votre-serveur.com/api/rfid"  # Remplacez par votre URL de serveur
 
-# Configuration du serveur
-SERVER_URL = "http://votre-serveur.com/api/rfid"  # Remplacez par l'URL de votre serveur
-
-# Initialisation des GPIO
-GPIO.setmode(GPIO.BCM)
-GPIO.setup(BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-GPIO.setup(LED_PIN, GPIO.OUT)
-GPIO.output(LED_PIN, GPIO.LOW)
-
-# Initialisation du lecteur RFID RC522
-reader = SimpleMFRC522()
-
-def send_rfid_data(tag):
-    """Envoie l'ID RFID au serveur via une requête HTTP POST."""
-    data = {"rfid": tag}
+def send_rfid_data(reader_id, uid):
+    """Envoie l'UID du tag et l'identifiant du lecteur au serveur."""
+    data = {"reader": reader_id, "rfid": uid}
     try:
         response = requests.post(SERVER_URL, json=data)
-        print("Réponse du serveur :", response.status_code, response.text)
+        print(f"Réponse du serveur pour le lecteur {reader_id} :", response.status_code, response.text)
     except Exception as e:
         print("Erreur lors de l'envoi :", e)
 
+# Instanciation des lecteurs avec des broches CS et RST différentes
+# Les numéros de broches sont en mode BCM.
+rdr1 = RFID(cs=8, rst=25)   # Premier lecteur : CS sur GPIO8, RST sur GPIO25
+rdr2 = RFID(cs=7, rst=24)   # Deuxième lecteur : CS sur GPIO7, RST sur GPIO24
+rdr3 = RFID(cs=12, rst=23)  # Troisième lecteur : CS sur GPIO12, RST sur GPIO23
+
+# Regrouper les lecteurs avec un identifiant pour faciliter le suivi
+readers = [(1, rdr1), (2, rdr2), (3, rdr3)]
+
 try:
     while True:
-        print("Veuillez scanner votre tag RFID...")
-        try:
-            id, text = reader.read()  # Attend la détection d'un tag RFID
-        except Exception as e:
-            print("Erreur de lecture RFID :", e)
-            time.sleep(1)
-            continue
-
-        # Conversion de l'ID en chaîne hexadécimale en majuscules
-        tag_hex = hex(id)[2:].upper()
-        print("Tag RFID détecté :", tag_hex)
-
-        # Attente de la confirmation via le bouton
-        print("Appuyez sur le bouton pour confirmer...")
-        while GPIO.input(BUTTON_PIN) == GPIO.HIGH:
-            time.sleep(0.1)
-        print("Bouton appuyé, envoi des données...")
-
-        # Envoi des données RFID au serveur
-        send_rfid_data(tag_hex)
-
-        # Feedback visuel via clignotement de la LED
-        for _ in range(2):
-            GPIO.output(LED_PIN, GPIO.HIGH)
-            time.sleep(0.2)
-            GPIO.output(LED_PIN, GPIO.LOW)
-            time.sleep(0.2)
-
-        # Petite pause pour éviter une relecture immédiate
-        time.sleep(1)
-
+        # Parcours de chaque lecteur pour vérifier la présence d'un tag
+        for reader_id, rdr in readers:
+            print(f"Lecteur {reader_id} : en attente de tag...")
+            rdr.wait_for_tag()  # Attend qu'un tag soit présenté
+            (error, tag_type) = rdr.request()
+            if not error:
+                (error, uid) = rdr.anticoll()  # Récupère l'UID du tag
+                if not error:
+                    # Formatage de l'UID en chaîne de chiffres séparés par des tirets
+                    uid_str = "-".join([str(i) for i in uid])
+                    print(f"Lecteur {reader_id} - Tag détecté, UID : {uid_str}")
+                    send_rfid_data(reader_id, uid_str)
+                    # Petite pause pour éviter la lecture multiple du même tag
+                    time.sleep(2)
+            # Optionnel : nettoyer l'état du lecteur avant la prochaine boucle
+            rdr.cleanup()
 except KeyboardInterrupt:
-    print("Arrêt du programme par l'utilisateur.")
-
-finally:
-    print("Nettoyage des GPIO.")
     GPIO.cleanup()
+    print("Arrêt du programme.")
