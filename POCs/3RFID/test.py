@@ -45,7 +45,7 @@ def main():
     # Ici, on choisit pin_ce=26 (qui correspond à GPIO7 en BOARD, mais adaptez selon votre câblage)
     # reader3 = RFID(pin_ce=24, pin_rst=22, pin_irq=27, pin_mode=GPIO.BCM)
     # convert to GPIO.BOARD
-    reader3 = RFID(pin_ce=24, pin_rst=22, pin_irq=27, pin_mode=GPIO.BOARD)
+    reader3 = RFID(pin_ce=18, pin_rst=15, pin_irq=13, pin_mode=GPIO.BOARD)
     
     # Regrouper les lecteurs avec un identifiant pour faciliter le test
     readers = [("Reader 1", reader3)]
