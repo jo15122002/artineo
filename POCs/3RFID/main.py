@@ -1,46 +1,35 @@
-#!/usr/bin/env python3
-import sys
-import os
+import machine
+import mfrc522
 import time
 
-# Ajouter le dossier dependencies au path pour importer la lib custom_rc522.py
-current_dir = os.path.dirname(os.path.realpath(__file__))
-dependencies_dir = os.path.join(current_dir, "dependencies")
-if dependencies_dir not in sys.path:
-    sys.path.append(dependencies_dir)
+# Configuration SPI (adaptez les numéros de broches selon votre câblage)
+# Exemple avec ESP32 Wroom-32 :
+#   SCK  -> GPIO18
+#   MOSI -> GPIO23
+#   MISO -> GPIO19
+spi = machine.SPI(1, baudrate=1000000, polarity=0, phase=0,
+                  sck=machine.Pin(18), mosi=machine.Pin(23), miso=machine.Pin(19))
 
-from custom_rc522 import RC522Reader
+# Configuration des broches pour le module RFID :
+#   CS (SDA) -> par exemple GPIO5
+#   RST      -> par exemple GPIO22
+cs = machine.Pin(5, machine.Pin.OUT)
+rst = machine.Pin(22, machine.Pin.OUT)
 
-def main():
-    # Instanciation de plusieurs lecteurs avec des broches CS et RST différentes
-    # Adaptez ces numéros de broches selon votre câblage :
-    try:
-        reader1 = RC522Reader(cs=24, rst=22)
-        # reader2 = RC522Reader(cs=23, rst=27)
-        # reader3 = RC522Reader(cs=18, rst=25)
+# Initialisation du lecteur RFID
+rdr = mfrc522.MFRC522(spi=spi, cs=cs, rst=rst)
 
-        # Regrouper les lecteurs dans une liste avec un identifiant pour chaque lecteur
-        readers = [(1, reader1)]  # Ajoutez d'autres lecteurs si nécessaire
-        print("Démarrage de la détection sur les lecteurs RFID...")
-        
-        while True:
-            for reader_id, reader in readers:
-                print(f"Lecteur {reader_id} : Attente de tag...")
-                detected, _ = reader.request()
-                if detected:
-                    error, uid = reader.anticoll()
-                    if error == 0:
-                        print(f"Lecteur {reader_id} - Tag détecté : UID = {uid}")
-                    else:
-                        print(f"Lecteur {reader_id} - Erreur dans la procédure anticollision.")
-            time.sleep(0.5)
-    except KeyboardInterrupt:
-        print("\nArrêt du programme par l'utilisateur.")
-    finally:
-        # Nettoyage de chaque lecteur
-        print("Nettoyage des ressources...")
-        for _, reader in readers:
-            reader.cleanup()
+print("Placez une carte RFID près du lecteur...")
 
-if __name__ == "__main__":
-    main()
+while True:
+    # La commande request() permet de détecter une carte
+    (status, tag_type) = rdr.request()
+    if status == rdr.OK:
+        print("Carte détectée")
+        # Procédure d'anticollision pour récupérer l'UID
+        (status, raw_uid) = rdr.anticoll()
+        if status == rdr.OK:
+            print("UID de la carte :", raw_uid)
+            # Petite pause pour éviter une lecture multiple immédiate
+            time.sleep(2)
+    time.sleep(0.1)
