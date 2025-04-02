@@ -1,46 +1,46 @@
 import RPi.GPIO as GPIO
+from mfrc522 import SimpleMFRC522
+import threading
 import time
-import requests
-from pirc522 import RFID
 
-SERVER_URL = "http://votre-serveur.com/api/rfid"  # Remplacez par votre URL de serveur
+# Configuration des Chip Select et RST pour les 3 lecteurs
+READERS_CONFIG = [
+    {"cs": 8, "rst": 25, "name": "Lecteur 1"},
+    {"cs": 7, "rst": 24, "name": "Lecteur 2"},
+    {"cs": 12, "rst": 23, "name": "Lecteur 3"},
+]
 
-def send_rfid_data(reader_id, uid):
-    """Envoie l'UID du tag et l'identifiant du lecteur au serveur."""
-    data = {"reader": reader_id, "rfid": uid}
+# Désactivation des warnings GPIO
+GPIO.setwarnings(False)
+GPIO.setmode(GPIO.BCM)
+
+# Fonction pour lire un lecteur RFID
+def read_rfid(reader_config):
+    reader = SimpleMFRC522(spi_bus=0, spi_device=0, gpio_cs=reader_config["cs"], gpio_rst=reader_config["rst"])
+    print(f"[{reader_config['name']}] Prêt à scanner...")
+
     try:
-        response = requests.post(SERVER_URL, json=data)
-        print(f"Réponse du serveur pour le lecteur {reader_id} :", response.status_code, response.text)
-    except Exception as e:
-        print("Erreur lors de l'envoi :", e)
+        while True:
+            id, text = reader.read_no_block()
+            if id:
+                print(f"[{reader_config['name']}] Tag détecté : {id} | Message : {text.strip()}")
+            time.sleep(0.5)
+    except KeyboardInterrupt:
+        GPIO.cleanup()
+        print(f"\n[{reader_config['name']}] Arrêté.")
 
-# Instanciation des lecteurs avec des broches CS et RST différentes
-# Les numéros de broches sont en mode BCM.
-rdr1 = RFID(cs=8, rst=25)   # Premier lecteur : CS sur GPIO8, RST sur GPIO25
-# rdr2 = RFID(cs=7, rst=24)   # Deuxième lecteur : CS sur GPIO7, RST sur GPIO24
-# rdr3 = RFID(cs=12, rst=23)  # Troisième lecteur : CS sur GPIO12, RST sur GPIO23
+# Démarrage des threads pour chaque lecteur
+threads = []
+for config in READERS_CONFIG:
+    t = threading.Thread(target=read_rfid, args=(config,), daemon=True)
+    threads.append(t)
+    t.start()
 
-# Regrouper les lecteurs avec un identifiant pour faciliter le suivi
-readers = [(1, rdr1)]
-
+# Boucle principale
 try:
     while True:
-        # Parcours de chaque lecteur pour vérifier la présence d'un tag
-        for reader_id, rdr in readers:
-            print(f"Lecteur {reader_id} : en attente de tag...")
-            rdr.wait_for_tag()  # Attend qu'un tag soit présenté
-            (error, tag_type) = rdr.request()
-            if not error:
-                (error, uid) = rdr.anticoll()  # Récupère l'UID du tag
-                if not error:
-                    # Formatage de l'UID en chaîne de chiffres séparés par des tirets
-                    uid_str = "-".join([str(i) for i in uid])
-                    print(f"Lecteur {reader_id} - Tag détecté, UID : {uid_str}")
-                    send_rfid_data(reader_id, uid_str)
-                    # Petite pause pour éviter la lecture multiple du même tag
-                    time.sleep(2)
-            # Optionnel : nettoyer l'état du lecteur avant la prochaine boucle
-            rdr.cleanup()
+        time.sleep(1)
 except KeyboardInterrupt:
+    print("\nArrêt du programme...")
     GPIO.cleanup()
-    print("Arrêt du programme.")
+ 
