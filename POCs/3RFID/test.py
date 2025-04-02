@@ -34,7 +34,7 @@ def test_reader(reader, name="Reader"):
 
 def main():
     # Reader 1 : configuration par défaut (SDA sur CE0, pin_rst par défaut)
-    reader1 = RFID()  # utilise bus=0, device=0, pin_rst=15, pin_irq=18, pin_mode=GPIO.BOARD par défaut
+    reader1 = RFID(pin_mode=GPIO.BCM)  # utilise bus=0, device=0, pin_rst=15, pin_irq=18, pin_mode=GPIO.BOARD par défaut
     
     # Reader 2 : utilisation de CE1 (SDA branché sur CE1, par ex. GPIO7, pin physique 26)
     # Ici, on spécifie bus=0, device=1 et on désactive IRQ en passant pin_irq=None
