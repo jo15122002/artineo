@@ -6,7 +6,7 @@ class MFRC522:
     def __init__(self, cs_pin=8, rst_pin=22, spi_bus=0, spi_dev=0):
         self.cs_pin = cs_pin
         self.rst_pin = rst_pin
-        GPIO.setmode(GPIO.BOARD)
+        GPIO.setmode(GPIO.BCM)
         GPIO.setup(self.cs_pin, GPIO.OUT)
         GPIO.output(self.cs_pin, GPIO.HIGH)
         GPIO.setup(self.rst_pin, GPIO.OUT)
