@@ -1,35 +1,39 @@
-import machine
+from machine import SPI, Pin
+from utime import sleep
+
 import mfrc522
-import time
 
-# Configuration SPI (adaptez les numéros de broches selon votre câblage)
-# Exemple avec ESP32 Wroom-32 :
-#   SCK  -> GPIO18
-#   MOSI -> GPIO23
-#   MISO -> GPIO19
-spi = machine.SPI(1, baudrate=1000000, polarity=0, phase=0,
-                  sck=machine.Pin(18), mosi=machine.Pin(23), miso=machine.Pin(19))
 
-# Configuration des broches pour le module RFID :
-#   CS (SDA) -> par exemple GPIO5
-#   RST      -> par exemple GPIO22
-cs = machine.Pin(5, machine.Pin.OUT)
-rst = machine.Pin(22, machine.Pin.OUT)
+def main():
+    # Configuration SPI pour ESP32 :
+    # Vous pouvez adapter les pins en fonction de votre câblage.
+    # Ici on utilise SPI(1) avec une vitesse de 2.5MHz.
+    spi = SPI(2, baudrate=2500000, polarity=0, phase=0, sck=Pin(12), mosi=Pin(23), miso=Pin(13))
+    spi.init()
+    
+    # Initialisation du lecteur RFID.
+    # Dans cet exemple, gpioRst est connecté à GPIO0 et gpioCs à GPIO2.
+    rdr = mfrc522.MFRC522(spi=spi, gpioRst=4, gpioCs=5)
+    
+    print("Placez une carte RFID près du lecteur...")
+    
+    while True:
+        # Envoyer une requête pour détecter une carte (REQIDL)
+        stat, tag_type = rdr.request(rdr.REQIDL)
+        if stat == rdr.OK:
+            # Exécute la procédure d'anticollision pour récupérer l'UID
+            stat, raw_uid = rdr.anticoll()
+            if stat == rdr.OK:
+                print("Carte détectée!")
+                print("Type: 0x%02x" % tag_type)
+                print("UID: 0x%02x%02x%02x%02x" % (raw_uid[0], raw_uid[1], raw_uid[2], raw_uid[3]))
+                print("")
+                # Attendre 2 secondes pour éviter des lectures multiples consécutives
+                sleep(2)
+        sleep(0.1)
 
-# Initialisation du lecteur RFID
-rdr = mfrc522.MFRC522(spi=spi, cs=cs, rst=rst)
-
-print("Placez une carte RFID près du lecteur...")
-
-while True:
-    # La commande request() permet de détecter une carte
-    (status, tag_type) = rdr.request()
-    if status == rdr.OK:
-        print("Carte détectée")
-        # Procédure d'anticollision pour récupérer l'UID
-        (status, raw_uid) = rdr.anticoll()
-        if status == rdr.OK:
-            print("UID de la carte :", raw_uid)
-            # Petite pause pour éviter une lecture multiple immédiate
-            time.sleep(2)
-    time.sleep(0.1)
+if __name__ == '__main__':
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("Arrêt du programme")
