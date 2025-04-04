@@ -139,11 +139,11 @@ def process_brush_strokes():
     cv2.imshow("Inverted Composite Debug", inverted)
     
     _, binary = cv2.threshold(inverted, 245, 255, cv2.THRESH_BINARY)
-    cv2.imshow("Binary Mask Debug", binary)
+    cv2.imshow("Binary Mask Debug", binary) # Seems good
     
     dist_map = cv2.distanceTransform(binary, cv2.DIST_L2, 5)
     dist_map = cv2.normalize(dist_map, None, 5, 30, cv2.NORM_MINMAX)
-    cv2.imshow("Distance Map Debug", dist_map.astype(np.uint8))
+    cv2.imshow("Distance Map Debug", dist_map.astype(np.uint8)) # TODO à partir de là à regarder pour fix
     
     brushed = np.full(composite_img.shape, 255, dtype=np.uint8)
     
