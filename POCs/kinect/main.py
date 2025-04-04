@@ -25,7 +25,7 @@ tool_base_frames = {}   # Baselines sauvegardées pour chaque outil
 frames = []             # Accumulation de frames pour calculer la baseline
 base_frame = None       # Baseline actuelle (en uint16)
 last_depth_frame = None # Dernière frame de profondeur capturée
-cropped_frames = []       # Liste pour stocker les frames recadrées
+cropped_frames = []     # Liste pour stocker les frames recadrées
 
 active_channel_buffer = []  # Buffer pour le lissage temporel du canal actif
 
@@ -40,8 +40,8 @@ final_drawings = {
 current_tool = '1'
 
 # --- Paramètres de mapping ---
-delta = 45              # Plage en mm autour de la baseline
-scale = 512.0 / delta   # Facteur de mapping pour amplifier la sensibilité
+delta = 30              # Plage en mm autour de la baseline
+scale = 738.0 / delta   # Facteur de mapping pour amplifier la sensibilité
 alpha = 0.3             # Coefficient de lissage pour une mise à jour plus réactive
 
 # --- Chargement du brush personnalisé ---
@@ -60,7 +60,7 @@ def resize_brush(base_brush, size):
 # --- Création des fenêtres d'affichage ---
 window_names = ["Mapped Depth", "Depth frame", "Colored Drawing", 
                 "Final Drawing 1", "Final Drawing 2", "Final Drawing 3", 
-                "Binary Mask Debug", "Brushed Result Debug"]
+                "Binary Mask Debug", "Brushed Result Debug", "Composite Drawing", "Gray Composite Debug", "Inverted Composite Debug", "Distance Map Debug"]
 for name in window_names:
     cv2.namedWindow(name)
 cv2.setMouseCallback("Mapped Depth", mouse_callback)
@@ -99,29 +99,20 @@ def process_depth_frame(current_frame):
 def render_final_drawings():
     """Affiche les dessins finaux avec un fond blanc pour chaque outil."""
     for tool in ['1', '2', '3']:
-        # Conversion de l'accumulation en image uint8
         fd = cv2.convertScaleAbs(final_drawings[tool])
-        # Création d'un fond blanc
         white_bg = np.full(fd.shape, 255, dtype=np.uint8)
-        # Récupération du canal dessiné pour l'outil
         channel = tool_color_channel[tool]
-        mask = fd[:, :, channel]  # masque en niveaux de gris
-        mask_norm = mask.astype(np.float32) / 255.0  # normalisation entre 0 et 1
-        
-        # Définition de la couleur de trait selon l'outil
+        mask = fd[:, :, channel]
+        mask_norm = mask.astype(np.float32) / 255.0
         if tool == '1':
-            stroke_color = np.array([255, 0, 0], dtype=np.float32)  # Bleu
+            stroke_color = np.array([255, 0, 0], dtype=np.float32)
         elif tool == '2':
-            stroke_color = np.array([0, 0, 255], dtype=np.float32)  # Rouge
+            stroke_color = np.array([0, 0, 255], dtype=np.float32)
         else:
-            stroke_color = np.array([0, 255, 0], dtype=np.float32)  # Vert
-        
-        # Superposition des traits sur le fond blanc
+            stroke_color = np.array([0, 255, 0], dtype=np.float32)
         mask_3 = np.repeat(mask_norm[:, :, np.newaxis], 3, axis=2)
         result = (1 - mask_3) * white_bg.astype(np.float32) + mask_3 * stroke_color
         result = np.clip(result, 0, 255).astype(np.uint8)
-        
-        # Recadrage et agrandissement pour affichage
         fd_cropped = result[125:315, 160:410]
         fd_resized = cv2.resize(fd_cropped, (fd_cropped.shape[1]*2, fd_cropped.shape[0]*2), interpolation=cv2.INTER_LINEAR)
         # cv2.imshow(f"Final Drawing {tool}", fd_resized)
@@ -138,72 +129,54 @@ def composite_colored_drawing():
 
 def process_brush_strokes():
     """Applique l'effet brush sur le dessin composite final."""
-    # Créer l'image composite à partir des trois outils
     composite_img = composite_colored_drawing()
     cv2.imshow("Composite Drawing", composite_img)
     
-    # Convertir en niveaux de gris pour extraire le masque (les traits seront plus sombres que le fond blanc)
     gray = cv2.cvtColor(composite_img, cv2.COLOR_BGR2GRAY)
     cv2.imshow("Gray Composite Debug", gray)
-    # Inverser la couleur pour que les traits soient blancs sur fond noir
+    
     inverted = 255 - gray
     cv2.imshow("Inverted Composite Debug", inverted)
-    # Seuillage pour obtenir un masque binaire des zones dessinées
+    
     _, binary = cv2.threshold(inverted, 245, 255, cv2.THRESH_BINARY)
     cv2.imshow("Binary Mask Debug", binary)
     
-    # Calculer la carte de distance sur le masque binaire
     dist_map = cv2.distanceTransform(binary, cv2.DIST_L2, 5)
     dist_map = cv2.normalize(dist_map, None, 5, 30, cv2.NORM_MINMAX)
     cv2.imshow("Distance Map Debug", dist_map.astype(np.uint8))
     
-    # Créer le rendu de base avec un fond blanc
     brushed = np.full(composite_img.shape, 255, dtype=np.uint8)
     
-    # Détecter les contours dans le masque binaire
     contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     
-    # Pour chaque contour, on échantillonne quelques points (pour éviter de redessiner sur chaque pixel)
     for cnt in contours:
-        for pt in cnt[::2]:  # on prend un point sur 5
+        for pt in cnt[::2]:
             x, y = pt[0]
-            # Déterminer la taille du brush à partir de la carte de distance
             brush_size = dist_map[y, x]
             custom_brush = resize_brush(brush, brush_size)
             bh, bw = custom_brush.shape
-            
-            # Calculer la position d'insertion du brush
             top = y - bh // 2
             left = x - bw // 2
             t0 = max(0, top)
             l0 = max(0, left)
             t1 = min(brushed.shape[0], top + bh)
             l1 = min(brushed.shape[1], left + bw)
-            
-            # Calculer les décalages dans l'image du brush si la zone déborde
             brush_y0 = 0 if top >= 0 else -top
             brush_x0 = 0 if left >= 0 else -left
-            
-            # Extraire la partie du brush qui rentre dans l'image
             region_brush = custom_brush[brush_y0:brush_y0 + (t1-t0), brush_x0:brush_x0 + (l1-l0)]
-            
-            # Choisir la couleur de trait en fonction de l'outil actif
             if current_tool == '1':
-                stroke_color = np.array([255, 0, 0], dtype=np.float32)  # Bleu
+                stroke_color = np.array([255, 0, 0], dtype=np.float32)
             elif current_tool == '2':
-                stroke_color = np.array([0, 0, 255], dtype=np.float32)  # Rouge
+                stroke_color = np.array([0, 0, 255], dtype=np.float32)
             else:
-                stroke_color = np.array([0, 255, 0], dtype=np.float32)  # Vert
-            
-            # Appliquer le brush en effectuant un blending sur la région du rendu
+                stroke_color = np.array([0, 255, 0], dtype=np.float32)
             region = brushed[t0:t1, l0:l1].astype(np.float32)
-            alpha_mask = region_brush[..., None]  # étendre le masque sur les 3 canaux
+            alpha_mask = region_brush[..., None]
             blended = region * (1 - alpha_mask) + stroke_color * alpha_mask
             brushed[t0:t1, l0:l1] = np.clip(blended, 0, 255).astype(np.uint8)
     
-    # cv2.imshow("Brushed Result Debug", brushed)
+    cv2.imshow("Brushed Result Debug", brushed)
     
-    # Recadrer et agrandir l'image finale pour l'affichage de "Colored Drawing"
     zoom_factor = 3
     cropped = brushed[125:315, 160:410]
     resized = cv2.resize(cropped, (cropped.shape[1]*zoom_factor, cropped.shape[0]*zoom_factor), interpolation=cv2.INTER_LINEAR)
@@ -214,10 +187,13 @@ while True:
     if kinect.has_new_depth_frame():
         depth_frame = kinect.get_last_depth_frame()
         current_frame = depth_frame.reshape((424, 512)).astype(np.uint16)
+        
+        # Application du filtre médian pour réduire le bruit
+        current_frame = cv2.medianBlur(current_frame, 5)
+        
         last_depth_frame = current_frame.copy()
         
         if base_frame is None:
-            # Accumuler quelques frames pour calculer la baseline
             frames.append(current_frame)
             if len(frames) >= 10:
                 base_frame = np.mean(frames, axis=0).astype(np.uint16)
@@ -226,9 +202,7 @@ while True:
             cropped_frames.append(current_frame)
             if len(cropped_frames) > 10:
                 cropped_frames.pop(0)
-            
             mean_cropped_frame = np.mean(cropped_frames, axis=0).astype(np.uint16)
-            
             process_depth_frame(mean_cropped_frame)
     
     render_final_drawings()
@@ -240,17 +214,15 @@ while True:
     elif key in [ord('1'), ord('2'), ord('3')]:
         new_tool = chr(key)
         if new_tool != current_tool:
-            # Sauvegarder la baseline du tool actuel
             if last_depth_frame is not None:
                 tool_base_frames[current_tool] = last_depth_frame.copy()
-            # Restaurer la baseline sauvegardée ou réinitialiser
             if new_tool in tool_base_frames:
                 base_frame = tool_base_frames[new_tool].copy()
                 print(f"Utilisation de la baseline sauvegardée pour l'outil {new_tool}.")
             else:
                 base_frame = None
                 frames = []
-                active_channel_buffer = []  # Réinitialiser le buffer de lissage
+                active_channel_buffer = []
             current_tool = new_tool
             print(f"Outil changé: {current_tool}")
     
