@@ -11,3 +11,5 @@
 from dependencies.pykinect2 import PyKinectV2
 from dependencies.pykinect2.PyKinectV2 import *
 ```
+
+[![tintin](https://www.numerama.com/content/uploads/2020/06/caca-culotte-capitaine.jpg)]
