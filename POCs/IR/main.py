@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 
+
 def map_distance_to_color(distance, max_distance):
     """
     Mappe la distance (de 0 à max_distance) à une couleur.
@@ -23,8 +24,9 @@ def main():
         "video/x-raw,width=640,height=480,framerate=30/1 ! "
         "videoconvert ! "
         "video/x-raw,format=BGR ! "
-        "appsink"
+        "appsink sync=false"
     )
+
     
     cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
     if not cap.isOpened():
