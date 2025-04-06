@@ -1,7 +1,15 @@
 #!/bin/bash
-# Désinstallation des dépendances précédemment installées (pip et apt-get) en une seule ligne
-echo "Suppression des dépendances existantes..."
-pip3 uninstall -y opencv-python numpy && sudo apt-get remove --purge -y python3-pip python3-opencv gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly && sudo apt-get autoremove -y
+# Tenter de désinstaller les packages Python via pip, en cas d'erreur (par exemple, "externally-managed-environment"), on affiche un message et on continue
+echo "Suppression des dépendances Python existantes..."
+if ! pip3 uninstall -y opencv-python numpy; then
+    echo "Impossible de désinstaller certains packages Python (environnement géré), on continue..."
+fi
+
+# Désinstallation des paquets système installés précédemment
+echo "Suppression des dépendances système existantes..."
+sudo apt-get remove --purge -y python3-pip python3-opencv gstreamer1.0-tools \
+    gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly
+sudo apt-get autoremove -y
 
 # Mise à jour du système et installation des dépendances nécessaires
 echo "Mise à jour du système..."
