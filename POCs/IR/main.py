@@ -18,13 +18,12 @@ def map_distance_to_color(distance, max_distance):
     return (blue, green, red)  # format BGR
 
 def main():
-    # Définition de la pipeline GStreamer avec libcamera
+    # Définir le pipeline GStreamer en utilisant v4l2src
     pipeline = (
-        "libcamerasrc ! "
-        "video/x-raw,width=640,height=480,framerate=30/1 ! "
+        "v4l2src device=/dev/video0 ! "
         "videoconvert ! "
         "video/x-raw,format=BGR ! "
-        "appsink sync=false"
+        "appsink"
     )
 
     
