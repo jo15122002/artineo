@@ -1,1 +1,1 @@
-gst-launch-1.0 v4l2src device=/dev/video0 io-mode=mmmap ! "video/x-raw,format=YUY2,width=320,height=240,framerate=30/1" ! videoconvert ! autovideosink
+gst-launch-1.0 v4l2src device=/dev/video2 ! "video/x-raw,format=I420,width=1296,height=972,framerate=30/1" ! videoscale ! "video/x-raw,width=320,height=240" ! videoconvert ! autovideosink
