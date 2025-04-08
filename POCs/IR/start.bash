@@ -10,6 +10,8 @@ sudo apt-get install -y python3 python3-pip python3-opencv gstreamer1.0-tools
 
 # Installation des packages Python
 pip3 install opencv-python numpy --user
+sudo apt-get install python3-picamera
+
 
 # Test rapide de la caméra via libcamera-vid (5 secondes sans prévisualisation)
 echo "Test de la caméra (libcamera-vid)..."

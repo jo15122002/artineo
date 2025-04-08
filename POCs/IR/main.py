@@ -1,31 +1,28 @@
-import cv2
+import time
 
-def main():
-    # Pipeline utilisant v4l2src et forçant le format YUY2
-    pipeline = (
-        "v4l2src device=/dev/video0 ! "
-        "video/x-raw,format=YUY2,width=640,height=480,framerate=30/1 ! "
-        "videoconvert ! "
-        "video/x-raw,format=BGR ! appsink"
-    )
+import picamera
 
-    cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
-    if not cap.isOpened():
-        print("Erreur lors de l'ouverture de la caméra via pipeline V4L2src.")
-        return
+# Create a camera object
+camera = picamera.PiCamera()
 
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            print("Erreur lors de la lecture du flux vidéo.")
-            break
-        
-        cv2.imshow("Flux Video", frame)
-        if cv2.waitKey(1) & 0xFF == ord("q"):
-            break
+# Set camera resolution (optional)
+camera.resolution = (2592, 1944)  # Maximum resolution for the OV5647
 
-    cap.release()
-    cv2.destroyAllWindows()
+# Set camera rotation (optional)
+camera.rotation = 180  # Rotate the image 180 degrees if needed
 
-if __name__ == '__main__':
-    main()
+# Preview the camera (optional)
+camera.start_preview()
+time.sleep(2)  # Give the camera a moment to warm up
+
+# Capture an image
+image_path = '/home/pi/image.jpg'
+camera.capture(image_path)
+
+# Stop the preview
+camera.stop_preview()
+
+# Close the camera
+camera.close()
+
+print(f"Image captured and saved to {image_path}")
