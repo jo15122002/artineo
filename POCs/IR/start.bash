@@ -1,9 +1,16 @@
 #!/bin/bash
-# --- 1. Mise à jour du système ---
+#
+# Ce script met à jour le système, installe les paquets nécessaires,
+# teste la caméra avec libcamera-hello, configure un périphérique virtuel (/dev/video2)
+# via v4l2loopback et lance libcamera-vid en mode H264 à 640x480.
+# Ensuite, il teste le flux via GStreamer.
+#
+# Lancez ce script avec sudo (ex.: sudo ./start.bash).
+
+# --- 1. Mise à jour du système et installation des paquets ---
 echo "Mise à jour du système..."
 sudo apt update && sudo apt upgrade -y
 
-# --- 2. Installation des paquets nécessaires ---
 echo "Installation des paquets essentiels..."
 sudo apt-get install -y \
     python3 python3-pip python3-opencv \
@@ -13,42 +20,39 @@ sudo apt-get install -y \
     gstreamer1.0-plugins-good \
     v4l2loopback-dkms
 
-# --- 3. Test de la caméra avec libcamera-hello ---
-echo "Test de la caméra avec libcamera-hello (5 secondes)..."
+# --- 2. Test de la caméra avec libcamera-hello ---
+echo "Test de la caméra avec libcamera-hello (5 secondes sans prévisualisation)..."
 libcamera-hello -t 5000 --nopreview
 if [ $? -ne 0 ]; then
-    echo "Erreur : la caméra ne fonctionne pas avec libcamera-hello."
+    echo "Erreur : libcamera-hello a échoué. Vérifiez votre installation de libcamera."
     exit 1
 fi
 
-# --- 4. Affichage des périphériques vidéo disponibles ---
-echo "Liste des périphériques vidéo :"
+# --- 3. Affichage des périphériques vidéo ---
+echo "Liste des périphériques vidéo actuels :"
 v4l2-ctl --list-devices
 
-# --- 5. Configuration du périphérique virtuel (v4l2loopback) ---
+# --- 4. Configuration du périphérique virtuel via v4l2loopback ---
 echo "Configuration de v4l2loopback pour créer /dev/video2..."
 sudo modprobe -r v4l2loopback
-# Charger v4l2loopback avec un nombre de buffers augmenté (ici 16)
 sudo modprobe v4l2loopback video_nr=2 card_label="CameraLoop" exclusive_caps=1 max_buffers=16
 
-# Vérifier que le périphérique virtuel a été créé
 if [ ! -e /dev/video2 ]; then
     echo "Erreur : /dev/video2 n'a pas été créé."
     exit 1
 fi
 
-# --- 6. Lancement de libcamera-vid ---
-# On force la résolution 1296x972 (résolution native constatée par libcamera-hello)
-# Le mode par défaut de libcamera-vid est H264 et devrait être décodable
-echo "Lancement de libcamera-vid en mode H264 avec résolution 1296x972..."
-libcamera-vid -t 0 --nopreview --inline --width 1296 --height 972 --output /dev/video2 &
-# Attendre quelques secondes pour que le flux soit établi
+# --- 5. Lancement de libcamera-vid en mode H264 ---
+# Nous utilisons ici 640x480 car ce mode semble être privilégié (score le plus élevé) 
+# et présente moins de contraintes mémoire que 1296x972.
+echo "Lancement de libcamera-vid en mode H264 (640x480) vers /dev/video2..."
+# Remarque : on retire l'option --inline pour éviter certains problèmes d'écriture.
+libcamera-vid -t 0 --nopreview --codec h264 --width 640 --height 480 --output /dev/video2 &
+# Attendre quelques secondes pour permettre au flux de démarrer
 sleep 5
 
-# --- 7. Test du flux via GStreamer ---
-# On va lire le flux H264 depuis /dev/video2, le parser et le décoder
-echo "Test du flux via /dev/video2 avec GStreamer..."
+# --- 6. Test du flux depuis le périphérique virtuel ---
+echo "Test du flux depuis /dev/video2 avec GStreamer..."
 gst-launch-1.0 v4l2src device=/dev/video2 ! h264parse ! avdec_h264 ! videoconvert ! autovideosink
 
-# Fin du script
 echo "Script terminé."
