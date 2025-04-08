@@ -7,6 +7,9 @@ sudo apt-get update && sudo apt-get upgrade -y
 
 # Installation des paquets essentiels
 sudo apt-get install -y python3 python3-pip python3-opencv gstreamer1.0-tools
+sudo apt-get install libraspberrypi-bin
+ls /opt/vc/lib | grep libbcm_host.so
+
 
 # Installation des packages Python
 pip3 install opencv-python numpy picamera --break-system-packages
