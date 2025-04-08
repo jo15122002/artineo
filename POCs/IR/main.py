@@ -19,12 +19,7 @@ def map_distance_to_color(distance, max_distance):
 
 def main():
     # Définir le pipeline GStreamer en utilisant v4l2src
-    pipeline = (
-        "v4l2src device=/dev/video0 ! "
-        "videoconvert ! "
-        "video/x-raw,format=BGR ! "
-        "appsink"
-    )
+    pipeline = ("v4l2src device=/dev/video0 ! videoconvert ! video/x-raw,format=BGR ! appsink")
 
     
     cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
