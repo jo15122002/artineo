@@ -9,7 +9,7 @@ sudo apt-get update && sudo apt-get upgrade -y
 sudo apt-get install -y python3 python3-pip python3-opencv gstreamer1.0-tools
 
 # Installation des packages Python
-pip3 install opencv-python numpy --break-system-packages
+pip3 install opencv-python numpy --user
 
 # Test rapide de la caméra via libcamera-vid (5 secondes sans prévisualisation)
 echo "Test de la caméra (libcamera-vid)..."
