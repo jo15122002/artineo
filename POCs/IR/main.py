@@ -1,28 +1,27 @@
-import time
+import cv2
+from picamera2 import Picamera2
 
-import picamera
 
-# Create a camera object
-camera = picamera.PiCamera()
+def main():
+    # Crée une instance Picamera2
+    picam2 = Picamera2()
+    # Crée une configuration de prévisualisation en 640x480
+    config = picam2.create_preview_configuration(main={"format": "XRGB8888", "size": (640, 480)})
+    # Configure la caméra avec cette configuration
+    picam2.configure(config)
+    # Démarre la capture
+    picam2.start()
 
-# Set camera resolution (optional)
-camera.resolution = (2592, 1944)  # Maximum resolution for the OV5647
+    while True:
+        # Capture une image sous forme de tableau NumPy (compatible avec OpenCV)
+        frame = picam2.capture_array()
+        cv2.imshow("Flux Video", frame)
+        # Quitte la boucle quand on appuie sur 'q'
+        if cv2.waitKey(1) & 0xFF == ord("q"):
+            break
 
-# Set camera rotation (optional)
-camera.rotation = 180  # Rotate the image 180 degrees if needed
+    picam2.stop()
+    cv2.destroyAllWindows()
 
-# Preview the camera (optional)
-camera.start_preview()
-time.sleep(2)  # Give the camera a moment to warm up
-
-# Capture an image
-image_path = '/home/pi/image.jpg'
-camera.capture(image_path)
-
-# Stop the preview
-camera.stop_preview()
-
-# Close the camera
-camera.close()
-
-print(f"Image captured and saved to {image_path}")
+if __name__ == '__main__':
+    main()
