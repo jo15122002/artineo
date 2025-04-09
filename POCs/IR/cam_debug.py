@@ -16,7 +16,7 @@ def main():
             break  # Fin du flux
         frame = np.frombuffer(raw_data, dtype=np.uint8)
         frame = frame.reshape((height, width, 3))
-        # cv2.imshow("Flux de la caméra", frame)
+        cv2.imshow("Flux de la caméra", frame)
         # Quitte si l'utilisateur appuie sur 'q'
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
