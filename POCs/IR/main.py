@@ -15,7 +15,7 @@ def main():
     while True:
         # Capture une image sous forme de tableau NumPy (compatible avec OpenCV)
         frame = picam2.capture_array()
-        cv2.imshow("Flux Video", frame)
+        # cv2.imshow("Flux Video", frame)
         # Quitte la boucle quand on appuie sur 'q'
         if cv2.waitKey(1) & 0xFF == ord("q"):
             break
