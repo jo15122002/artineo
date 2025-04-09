@@ -1,1 +1,5 @@
-gst-launch-1.0 v4l2src device=/dev/video2 ! "video/x-raw,format=I420,width=1296,height=972,framerate=30/1" ! videoscale ! "video/x-raw,width=320,height=240" ! videoconvert ! autovideosink
+libcamera-vid -t 0 --width 640 --height 480 --inline --codec yuv420 --output - | \
+ffmpeg -loglevel error \
+-f rawvideo -pix_fmt yuv420p -s 640x480 -i - \
+-f rawvideo -pix_fmt bgr24 - | \
+python3 cam_debug.py
