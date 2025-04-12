@@ -9,6 +9,12 @@ def mouse_callback(event, x, y, flags, param):
     if event == cv2.EVENT_MOUSEMOVE:
         mouse_x, mouse_y = x, y
 
+dm_mouse_x, dm_mouse_y = 0, 0
+def dm_mouse_callback(event, x, y, flags, param):
+    global dm_mouse_x, dm_mouse_y
+    if event == cv2.EVENT_MOUSEMOVE:
+        dm_mouse_x, dm_mouse_y = x, y
+
 # --- Mapping outil → canal couleur (BGR) ---
 tool_color_channel = {'1': 0, '2': 2, '3': 1}
 
@@ -52,19 +58,30 @@ if brush is None:
 brush = brush.astype(np.float32) / 255.0  # Normalisation
 
 def resize_brush(base_brush, size):
-    """Redimensionne le brush selon la taille calculée."""
-    size = max(3, int(size))
-    resized = cv2.resize(base_brush, (size, size), interpolation=cv2.INTER_LINEAR)
-    return resized.astype(np.float32) / 255.0
+    """Gestion des tailles extrêmes"""
+    size = max(3, min(1000, int(size)))  # Plage [3, 1000]
+    return cv2.resize(base_brush, (size, size))
 
 # --- Création des fenêtres d'affichage ---
-window_names = ["Mapped Depth", "Depth frame", "Colored Drawing", 
-                "Final Drawing 1", "Final Drawing 2", "Final Drawing 3", 
-                "Binary Mask Debug", "Brushed Result Debug", "Composite Drawing", "Gray Composite Debug", "Inverted Composite Debug", "Distance Map Debug"]
+window_names = [
+    "Mapped Depth", 
+    "Depth frame", 
+    "Colored Drawing", 
+    # "Final Drawing 1", "Final Drawing 2", "Final Drawing 3", 
+    "Binary Mask Debug", 
+    "Brushed Result Debug", 
+    # "Composite Drawing", 
+    # "Gray Composite Debug", 
+    # "Inverted Composite Debug", 
+    "Distance Map Debug"
+]
+
 for name in window_names:
     cv2.namedWindow(name)
 cv2.setMouseCallback("Mapped Depth", mouse_callback)
 cv2.setMouseCallback("Depth frame", mouse_callback)
+cv2.setMouseCallback("Distance Map Debug", dm_mouse_callback)
+
 
 def process_depth_frame(current_frame):
     """Calcule la différence par rapport à la baseline et met à jour le dessin final."""
@@ -128,62 +145,101 @@ def composite_colored_drawing():
     return cv2.convertScaleAbs(composite)
 
 def process_brush_strokes():
-    """Applique l'effet brush sur le dessin composite final."""
+    """Applique l'effet brush avec gestion robuste du bruit et de la distance map."""
     composite_img = composite_colored_drawing()
-    cv2.imshow("Composite Drawing", composite_img)
     
+    # Étape 1: Conversion en gris avec pré-traitement
     gray = cv2.cvtColor(composite_img, cv2.COLOR_BGR2GRAY)
+    gray = cv2.GaussianBlur(gray, (5,5), 0)
     cv2.imshow("Gray Composite Debug", gray)
     
-    inverted = 255 - gray
-    cv2.imshow("Inverted Composite Debug", inverted)
+    # Étape 2: Seuillage adaptatif (ajuster ces valeurs)
+    _, binary = cv2.threshold(gray, 
+                            4,   # Seuil bas (début de détection)
+                            255, 
+                            cv2.THRESH_BINARY)  # Inversion ici
     
-    _, binary = cv2.threshold(inverted, 245, 255, cv2.THRESH_BINARY)
-    cv2.imshow("Binary Mask Debug", binary) # Seems good
+    # Étape 3: Nettoyage morphologique
+    kernel = np.ones((3,3), np.uint8)
+    binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel, iterations=2)
     
-    dist_map = cv2.distanceTransform(binary, cv2.DIST_L2, 5)
-    dist_map = cv2.normalize(dist_map, None, 5, 30, cv2.NORM_MINMAX)
-    cv2.imshow("Distance Map Debug", dist_map.astype(np.uint8)) # TODO à partir de là à regarder pour fix
+    # Debug du masque
+    cv2.imshow("Binary Mask Debug", binary)
     
-    brushed = np.full(composite_img.shape, 255, dtype=np.uint8)
+    # Étape 4: Distance Transform
+    dist_map = cv2.distanceTransform(binary, cv2.DIST_L2, 5)  # Plus besoin d'inversion
+    dist_map = np.nan_to_num(dist_map, posinf=0, neginf=0)
+    
+    # Filtrage des petites distances
+    dist_map[dist_map < 2.0] = 0
+    
+    # Normalisation pour visualisation
+    dist_display = cv2.normalize(dist_map, None, 0, 255, cv2.NORM_MINMAX)
+    if 0 <= dm_mouse_x < dist_display.shape[1] and 0 <= dm_mouse_y < dist_display.shape[0]:
+        val = dist_map[dm_mouse_y, dm_mouse_x]
+        text = f"{val:.1f}px"
+        cv2.putText(dist_display, text, 
+                    (10, 20),  # Décalage pour lisibilité
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, 
+                    (255, 255, 255), 1, cv2.LINE_AA)
+    
+    cv2.imshow("Distance Map Debug", dist_display.astype(np.uint8))
+    
+    # Étape 5: Application du brush
+    brushed = np.full_like(composite_img, 255)
     
     contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     
     for cnt in contours:
-        for pt in cnt[::2]:
+        for pt in cnt[::5]:
             x, y = pt[0]
-            brush_size = dist_map[y, x]
-            custom_brush = resize_brush(brush, brush_size)
-            bh, bw = custom_brush.shape
-            top = y - bh // 2
-            left = x - bw // 2
-            t0 = max(0, top)
-            l0 = max(0, left)
-            t1 = min(brushed.shape[0], top + bh)
-            l1 = min(brushed.shape[1], left + bw)
-            brush_y0 = 0 if top >= 0 else -top
-            brush_x0 = 0 if left >= 0 else -left
-            region_brush = custom_brush[brush_y0:brush_y0 + (t1-t0), brush_x0:brush_x0 + (l1-l0)]
-            if current_tool == '1':
-                stroke_color = np.array([255, 0, 0], dtype=np.float32)
-            elif current_tool == '2':
-                stroke_color = np.array([0, 0, 255], dtype=np.float32)
-            else:
-                stroke_color = np.array([0, 255, 0], dtype=np.float32)
-            region = brushed[t0:t1, l0:l1].astype(np.float32)
-            alpha_mask = region_brush[..., None]
-            blended = region * (1 - alpha_mask) + stroke_color * alpha_mask
-            brushed[t0:t1, l0:l1] = np.clip(blended, 0, 255).astype(np.uint8)
+            
+            # Calcul de la taille avec vérification des valeurs
+            y_roi = slice(max(0,y-2), min(y+3, dist_map.shape[0]))
+            x_roi = slice(max(0,x-2), min(x+3, dist_map.shape[1]))
+            
+            roi = dist_map[y_roi, x_roi]
+            roi_clean = roi[np.isfinite(roi)]  # Filtre les valeurs non-finies
+            
+            if len(roi_clean) == 0:
+                continue  # Aucune donnée valide
+                
+            brush_size = np.mean(roi_clean) * 1.5
+            
+            # Vérification finale avant conversion
+            if brush_size > 2 and brush_size < 1000:  # Plage de sécurité
+                custom_brush = resize_brush(brush, int(brush_size))
+                bh, bw = custom_brush.shape
+                
+                # Positionnement sécurisé
+                y_start = max(0, y - bh//2)
+                x_start = max(0, x - bw//2)
+                y_end = min(brushed.shape[0], y_start + bh)
+                x_end = min(brushed.shape[1], x_start + bw)
+                
+                # Extraction de la région valide
+                valid_brush = custom_brush[:y_end-y_start, :x_end-x_start]
+                alpha = valid_brush[..., None]
+                
+                # Couleur selon l'outil
+                color = {
+                    '1': (0, 0, 255),  # Rouge
+                    '2': (255, 0, 0),  # Bleu
+                    '3': (0, 255, 0)   # Vert
+                }[current_tool]
+                
+                # Application
+                region = brushed[y_start:y_end, x_start:x_end]
+                brushed[y_start:y_end, x_start:x_end] = (region * (1 - alpha) + color * alpha).astype(np.uint8)
     
+    # Post-traitement final
+    brushed = cv2.medianBlur(brushed, 3)
     cv2.imshow("Brushed Result Debug", brushed)
-    
-    zoom_factor = 3
-    cropped = brushed[125:315, 160:410]
-    resized = cv2.resize(cropped, (cropped.shape[1]*zoom_factor, cropped.shape[0]*zoom_factor), interpolation=cv2.INTER_LINEAR)
-    # cv2.imshow("Colored Drawing", resized)
+
 
 # --- Boucle principale ---
 while True:
+    
     if kinect.has_new_depth_frame():
         depth_frame = kinect.get_last_depth_frame()
         current_frame = depth_frame.reshape((424, 512)).astype(np.uint16)
