@@ -11,6 +11,7 @@ def main():
 
     # Crée explicitement une fenêtre pour l'affichage
     cv2.namedWindow("Flux de la caméra", cv2.WINDOW_NORMAL)
+    cv2.namedWindow("niveaux de gris", cv2.WINDOW_NORMAL)
 
     while True:
         # Lecture de la taille d'un frame
@@ -47,6 +48,8 @@ def main():
 
         # Affichage de l'image avec détection de sphère (cercles)
         cv2.imshow("Flux de la caméra", frame)
+        # Affichage de l'image en niveaux de gris
+        cv2.imshow("niveaux de gris", blurred)
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
 
