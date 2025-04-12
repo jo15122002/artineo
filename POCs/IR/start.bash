@@ -7,26 +7,21 @@ sudo apt update && sudo apt upgrade -y
 echo "Installation des paquets essentiels..."
 sudo apt-get install -y \
     python3 python3-pip python3-opencv \
-    libcamera-apps \
-    python3-picamera2 \
-    gstreamer1.0-tools \
-    gstreamer1.0-plugins-base \
-    gstreamer1.0-plugins-good
+    libcamera-apps ffmpeg
 
-# Test de la caméra avec libcamera-hello pour s'assurer qu'elle est fonctionnelle
-echo "Test de la caméra avec libcamera-hello (5 secondes sans prévisualisation)..."
+# Test de la caméra avec libcamera-hello (5 secondes sans preview)
+echo "Test de la caméra avec libcamera-hello..."
 libcamera-hello -t 5000 --nopreview
 if [ $? -ne 0 ]; then
-    echo "Erreur : libcamera-hello a échoué. Vérifiez l'installation de la caméra."
+    echo "Erreur : libcamera-hello a échoué. Vérifiez votre installation."
     exit 1
 fi
 
-# Affichage des périphériques vidéo disponibles (optionnel)
-echo "Liste des périphériques vidéo actuels :"
-v4l2-ctl --list-devices
-
-# Lancement de l'application Python utilisant Picamera2
-echo "Lancement de main.py (utilisant Picamera2)..."
+# Lancement de libcamera-vid et conversion du flux pour main.py
+echo "Lancement de libcamera-vid et envoi du flux à main.py..."
+libcamera-vid -t 0 --nopreview --width 640 --height 480 --inline --codec yuv420 --output - | \
+ffmpeg -loglevel error -f rawvideo -pix_fmt yuv420p -s 640x480 -i - -f rawvideo -pix_fmt bgr24 - | \
 python3 main.py
 
 echo "Script terminé."
+# End of script

@@ -1,26 +1,26 @@
+import sys
 import cv2
-from picamera2 import Picamera2
-
+import numpy as np
 
 def main():
-    # Crée une instance Picamera2
-    picam2 = Picamera2()
-    # Crée une configuration de prévisualisation en 640x480
-    config = picam2.create_preview_configuration(main={"format": "XRGB8888", "size": (640, 480)})
-    # Configure la caméra avec cette configuration
-    picam2.configure(config)
-    # Démarre la capture
-    picam2.start()
+    width = 640
+    height = 480
+    frame_size = width * height * 3  # bgr24 = 3 octets par pixel
+
+    # Créer explicitement une fenêtre unique
+    cv2.namedWindow("Flux de la caméra", cv2.WINDOW_NORMAL)
 
     while True:
-        # Capture une image sous forme de tableau NumPy (compatible avec OpenCV)
-        frame = picam2.capture_array()
-        # cv2.imshow("Flux Video", frame)
-        # Quitte la boucle quand on appuie sur 'q'
-        if cv2.waitKey(1) & 0xFF == ord("q"):
+        # Lire exactement la taille d'une image
+        raw_data = sys.stdin.buffer.read(frame_size)
+        if len(raw_data) < frame_size:
+            break  # Fin du flux
+        frame = np.frombuffer(raw_data, dtype=np.uint8).reshape((height, width, 3))
+        cv2.imshow("Flux de la caméra", frame)
+        # Quitter si l'utilisateur appuie sur 'q'
+        if cv2.waitKey(1) & 0xFF == ord('q'):
             break
 
-    picam2.stop()
     cv2.destroyAllWindows()
 
 if __name__ == '__main__':
