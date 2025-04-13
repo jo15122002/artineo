@@ -9,12 +9,6 @@ def mouse_callback(event, x, y, flags, param):
     if event == cv2.EVENT_MOUSEMOVE:
         mouse_x, mouse_y = x, y
 
-dm_mouse_x, dm_mouse_y = 0, 0
-def dm_mouse_callback(event, x, y, flags, param):
-    global dm_mouse_x, dm_mouse_y
-    if event == cv2.EVENT_MOUSEMOVE:
-        dm_mouse_x, dm_mouse_y = x, y
-
 # --- Mapping outil → canal couleur (BGR) ---
 tool_color_channel = {'1': 0, '2': 2, '3': 1}
 
@@ -80,7 +74,7 @@ for name in window_names:
     cv2.namedWindow(name)
 cv2.setMouseCallback("Mapped Depth", mouse_callback)
 cv2.setMouseCallback("Depth frame", mouse_callback)
-cv2.setMouseCallback("Distance Map Debug", dm_mouse_callback)
+cv2.setMouseCallback("Distance Map Debug", mouse_callback)
 
 
 def process_depth_frame(current_frame):
@@ -204,7 +198,7 @@ def process_brush_strokes():
         # - ont une valeur >= (region_max - 2)
         local_max_mask = ((dist_map == dilated) &
                           (mask_contour == 255) &
-                          (dist_map >= (region_max - 5)))
+                          (dist_map >= (region_max - 7)))
                           
         # Récupérer les coordonnées des maxima locaux
         ys, xs = np.where(local_max_mask)
@@ -245,6 +239,12 @@ def process_brush_strokes():
     
     # Application d'un léger flou pour adoucir le rendu final
     brushed = cv2.medianBlur(brushed, 5)
+
+    # Affichage de la valeur de la distance sous le curseur
+    if 0 <= mouse_y < 424 and 0 <= mouse_x < 512:
+        dist_val = dist_map[mouse_y, mouse_x]
+        text = f"Distance: {dist_val:.2f}mm | Pos: ({mouse_x},{mouse_y})"
+        cv2.putText(dist_display, text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,0), 2)
     
     # Affichage des fenêtres de debug
     cv2.imshow("Brushed Result Debug", brushed)
