@@ -51,7 +51,7 @@ scale = 738.0 / delta   # Facteur de mapping pour amplifier la sensibilité
 alpha = 0.3             # Coefficient de lissage pour une mise à jour plus réactive
 
 # --- Chargement du brush personnalisé ---
-brush = cv2.imread("brush2.png", cv2.IMREAD_GRAYSCALE)
+brush = cv2.imread("brush3.png", cv2.IMREAD_GRAYSCALE)
 if brush is None:
     print("Erreur : Fichier brush introuvable à l'emplacement 'brush2.png'")
     exit(1)
@@ -145,96 +145,112 @@ def composite_colored_drawing():
     return cv2.convertScaleAbs(composite)
 
 def process_brush_strokes():
-    """Applique l'effet brush avec gestion robuste du bruit et de la distance map."""
+    # Récupération de l'image composite
     composite_img = composite_colored_drawing()
-    
-    # Étape 1: Conversion en gris avec pré-traitement
+    if composite_img is None:
+        return
+
+    # Prétraitement : conversion en niveaux de gris et flou
     gray = cv2.cvtColor(composite_img, cv2.COLOR_BGR2GRAY)
-    gray = cv2.GaussianBlur(gray, (5,5), 0)
-    cv2.imshow("Gray Composite Debug", gray)
+    gray = cv2.GaussianBlur(gray, (3, 3), 0)
+
+    # Seuillage et nettoyage morphologique
+    _, binary = cv2.threshold(gray, 4, 255, cv2.THRESH_BINARY)
+    kernel = np.ones((5, 5), np.uint8)
+    binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel, iterations=2)
     
-    # Étape 2: Seuillage adaptatif (ajuster ces valeurs)
-    _, binary = cv2.threshold(gray, 
-                            4,   # Seuil bas (début de détection)
-                            255, 
-                            cv2.THRESH_BINARY)  # Inversion ici
+    # Calcul de la distance transform et normalisation pour le debug
+    dist_map = cv2.distanceTransform(binary, cv2.DIST_L2, 5)
+    dist_display = cv2.normalize(dist_map, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
     
-    # Étape 3: Nettoyage morphologique
-    kernel = np.ones((3,3), np.uint8)
-    binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel, iterations=2)
-    
-    # Debug du masque
-    cv2.imshow("Binary Mask Debug", binary)
-    
-    # Étape 4: Distance Transform
-    dist_map = cv2.distanceTransform(binary, cv2.DIST_L2, 5)  # Plus besoin d'inversion
-    dist_map = np.nan_to_num(dist_map, posinf=0, neginf=0)
-    
-    # Filtrage des petites distances
-    dist_map[dist_map < 2.0] = 0
-    
-    # Normalisation pour visualisation
-    dist_display = cv2.normalize(dist_map, None, 0, 255, cv2.NORM_MINMAX)
-    if 0 <= dm_mouse_x < dist_display.shape[1] and 0 <= dm_mouse_y < dist_display.shape[0]:
-        val = dist_map[dm_mouse_y, dm_mouse_x]
-        text = f"{val:.1f}px"
-        cv2.putText(dist_display, text, 
-                    (10, 20),  # Décalage pour lisibilité
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, 
-                    (255, 255, 255), 1, cv2.LINE_AA)
-    
-    cv2.imshow("Distance Map Debug", dist_display.astype(np.uint8))
-    
-    # Étape 5: Application du brush
-    brushed = np.full_like(composite_img, 255)
-    
+    # Détection des contours du dessin
     contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     
+    # Initialisation d'un canvas blanc pour les brushes
+    brushed = np.full((424, 512, 3), 255, dtype=np.uint8)
+    
+    # Réglages sur la taille minimale et maximale pour l'application du brush
+    min_brush_size = 1
+    max_brush_size = 150
+    
+    # Paramétrage de la dilatation pour repérer les maxima locaux
+    dilate_kernel = np.ones((3, 3), np.uint8)
+    
     for cnt in contours:
-        for pt in cnt[::5]:
-            x, y = pt[0]
-            
-            # Calcul de la taille avec vérification des valeurs
-            y_roi = slice(max(0,y-2), min(y+3, dist_map.shape[0]))
-            x_roi = slice(max(0,x-2), min(x+3, dist_map.shape[1]))
-            
-            roi = dist_map[y_roi, x_roi]
-            roi_clean = roi[np.isfinite(roi)]  # Filtre les valeurs non-finies
-            
-            if len(roi_clean) == 0:
-                continue  # Aucune donnée valide
-                
-            brush_size = np.mean(roi_clean) * 1.5
-            
-            # Vérification finale avant conversion
-            if brush_size > 2 and brush_size < 1000:  # Plage de sécurité
-                custom_brush = resize_brush(brush, int(brush_size))
-                bh, bw = custom_brush.shape
-                
-                # Positionnement sécurisé
-                y_start = max(0, y - bh//2)
-                x_start = max(0, x - bw//2)
-                y_end = min(brushed.shape[0], y_start + bh)
-                x_end = min(brushed.shape[1], x_start + bw)
-                
-                # Extraction de la région valide
-                valid_brush = custom_brush[:y_end-y_start, :x_end-x_start]
-                alpha = valid_brush[..., None]
-                
-                # Couleur selon l'outil
+        # On filtre les petits contours si nécessaire
+        if cv2.contourArea(cnt) < 100:
+            continue
+
+        # 1. Créer un masque rempli (mask_contour) pour ce contour
+        mask_contour = np.zeros(binary.shape, dtype=np.uint8)
+        cv2.drawContours(mask_contour, [cnt], -1, 255, thickness=cv2.FILLED)
+        
+        # Restriction du dist_map à la zone du contour
+        contour_region = dist_map.copy()
+        contour_region[mask_contour == 0] = 0
+        
+        # Calcul du maximum de la distance dans le contour
+        region_max = contour_region.max()
+        if region_max < min_brush_size:
+            # On ne considère pas la forme si la distance maximale est trop faible
+            continue
+        
+        # 2. Identifier les maxima locaux dans ce contour
+        # La dilatation fait en sorte que chaque pixel vaut le maximum de son voisinage
+        dilated = cv2.dilate(dist_map, dilate_kernel)
+        # On considère comme maximum local les points qui:
+        # - sont dans le contour (mask_contour==255)
+        # - valent exactement la valeur dilatée (donc sont des pics locaux)
+        # - ont une valeur >= (region_max - 2)
+        local_max_mask = ((dist_map == dilated) &
+                          (mask_contour == 255) &
+                          (dist_map >= (region_max - 5)))
+                          
+        # Récupérer les coordonnées des maxima locaux
+        ys, xs = np.where(local_max_mask)
+        
+        # Pour chaque maximum local identifié, appliquer le brush
+        for (py, px) in zip(ys, xs):
+            local_value = dist_map[py, px]
+            # On s'assure que la taille calculée est dans les bornes définies
+            if local_value < min_brush_size or local_value > max_brush_size:
+                continue
+
+            try:
+                # Redimensionnement du brush en fonction de la valeur du maximum local
+                custom_brush = resize_brush(brush, int(local_value))
+                # Sélection de la couleur en fonction de l'outil actif
                 color = {
-                    '1': (0, 0, 255),  # Rouge
-                    '2': (255, 0, 0),  # Bleu
-                    '3': (0, 255, 0)   # Vert
+                    '1': (0, 0, 255),   # Rouge
+                    '2': (255, 0, 0),   # Bleu
+                    '3': (0, 255, 0)    # Vert
                 }[current_tool]
                 
-                # Application
-                region = brushed[y_start:y_end, x_start:x_end]
-                brushed[y_start:y_end, x_start:x_end] = (region * (1 - alpha) + color * alpha).astype(np.uint8)
+                # Positionnement du brush centré sur le point
+                bh, bw = custom_brush.shape
+                y_start = max(0, py - bh // 2)
+                x_start = max(0, px - bw // 2)
+                y_end = min(424, y_start + bh)
+                x_end = min(512, x_start + bw)
+                
+                brush_roi = custom_brush[:y_end - y_start, :x_end - x_start]
+                # Alpha sous forme de canal (converti de [0,1])
+                alpha_channel = brush_roi[..., None]
+                
+                region = brushed[y_start:y_end, x_start:x_end].astype(float)
+                blended = region * (1 - alpha_channel) + np.array(color, dtype=float) * alpha_channel
+                brushed[y_start:y_end, x_start:x_end] = blended.astype(np.uint8)
+            except Exception as e:
+                print(f"Erreur brush : {str(e)}")
     
-    # Post-traitement final
-    brushed = cv2.medianBlur(brushed, 3)
+    # Application d'un léger flou pour adoucir le rendu final
+    brushed = cv2.medianBlur(brushed, 5)
+    
+    # Affichage des fenêtres de debug
     cv2.imshow("Brushed Result Debug", brushed)
+    cv2.imshow("Binary Mask Debug", binary)
+    cv2.imshow("Distance Map Debug", dist_display)
+    cv2.imshow("Composite Drawing", composite_img)
 
 
 # --- Boucle principale ---
