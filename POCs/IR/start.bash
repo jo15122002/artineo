@@ -1,6 +1,7 @@
 #!/bin/bash
 # Mise à jour du système
 echo "Mise à jour du système..."
+git pull
 sudo apt update && sudo apt upgrade -y
 
 # Installation des paquets essentiels
