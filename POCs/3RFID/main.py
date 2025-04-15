@@ -1,6 +1,7 @@
 import neopixel
+import ujson
 from machine import SPI, Pin
-from utime import sleep
+from utime import sleep, ticks_diff, ticks_ms
 
 import mfrc522
 
@@ -18,7 +19,7 @@ def setup():
     global expected_uid1, expected_uid2, expected_uid3
 
     print("Setup...")
-    # Configuration SPI pour ESP32 : ajustez les pins selon votre câblage
+    # Configuration SPI pour l'ESP32 : ajustez les pins selon votre câblage
     spi = SPI(2, baudrate=2500000, polarity=0, phase=0,
               sck=Pin(12), mosi=Pin(23), miso=Pin(13))
     spi.init()
@@ -27,6 +28,10 @@ def setup():
     rdr1 = mfrc522.MFRC522(spi=spi, gpioRst=4, gpioCs=5)
     rdr2 = mfrc522.MFRC522(spi=spi, gpioRst=16, gpioCs=17)
     rdr3 = mfrc522.MFRC522(spi=spi, gpioRst=25, gpioCs=26)
+    
+    rdr1.set_gain(0x02)
+    rdr2.set_gain(0x02)
+    rdr3.set_gain(0x02)
     
     # Initialisation des LED WS2812b pour chaque lecteur RFID
     led1 = neopixel.NeoPixel(Pin(15), 1)
@@ -53,51 +58,51 @@ def setup():
     
     print("Placez une carte RFID et appuyez sur le bouton pour lancer la lecture.")
 
+def read_uid(reader, timeout=300):
+    """
+    Tente de lire un UID depuis 'reader' avec un timeout (en ms) ajusté.
+    Effectue jusqu'à deux tentatives de lecture avant de renvoyer None.
+    Après chaque tentative, le tag est désactivé pour libérer le lecteur.
+    """
+    uid = None
+    attempts = 2  # Nombre de tentatives de lecture
+    while attempts:
+        start = ticks_ms()
+        while ticks_diff(ticks_ms(), start) < timeout:
+            stat, tag_type = reader.request(reader.REQIDL)
+            if stat == reader.OK:
+                stat, raw_uid = reader.anticoll()
+                if stat == reader.OK:
+                    uid = "".join("{:02x}".format(x) for x in raw_uid)
+                    break
+            sleep(0.01)
+        # Libère le lecteur
+        reader.halt_a()
+        reader.stop_crypto1()
+        if uid is not None:
+            break
+        # Si l'UID n'a pas été lu, tenter une seconde fois
+        attempts -= 1
+        # Réinitialiser le timer pour la nouvelle tentative
+        start = ticks_ms()
+    return uid
+
+
 def main():
     global last_uid1, last_uid2, last_uid3, button_pressed
     global expected_uid1, expected_uid2, expected_uid3
     setup()
-    
     while True:
-        # Attendre que le bouton soit appuyé
-        print("En attente d'appui sur le bouton...")
         if button_pressed:
-            # Réinitialiser le flag
             button_pressed = False
+            # Démarrer la mesure du temps au moment de l'appui du bouton
+            start_time = ticks_ms()
             
-            # Lire le Lecteur 1
-            stat1, tag_type1 = rdr1.request(rdr1.REQIDL)
-            if stat1 == rdr1.OK:
-                stat1, raw_uid1 = rdr1.anticoll()
-                if stat1 == rdr1.OK:
-                    last_uid1 = "".join("{:02x}".format(x) for x in raw_uid1)
-                else:
-                    last_uid1 = None
-            else:
-                last_uid1 = None
+            # Lire rapidement chaque lecteur avec un timeout court
+            last_uid1 = read_uid(rdr1, timeout=100)
+            last_uid2 = read_uid(rdr2, timeout=100)
+            last_uid3 = read_uid(rdr3, timeout=100)
             
-            # Lire le Lecteur 2
-            stat2, tag_type2 = rdr2.request(rdr2.REQIDL)
-            if stat2 == rdr2.OK:
-                stat2, raw_uid2 = rdr2.anticoll()
-                if stat2 == rdr2.OK:
-                    last_uid2 = "".join("{:02x}".format(x) for x in raw_uid2)
-                else:
-                    last_uid2 = None
-            else:
-                last_uid2 = None
-
-            # Lire le Lecteur 3
-            stat3, tag_type3 = rdr3.request(rdr3.REQIDL)
-            if stat3 == rdr3.OK:
-                stat3, raw_uid3 = rdr3.anticoll()
-                if stat3 == rdr3.OK:
-                    last_uid3 = "".join("{:02x}".format(x) for x in raw_uid3)
-                else:
-                    last_uid3 = None
-            else:
-                last_uid3 = None
-
             print("Bouton appuyé, vérification des UID...")
             # Vérifier Lecteur 1 et allumer la LED correspondante
             if last_uid1 is None:
@@ -113,29 +118,29 @@ def main():
             
             # Vérifier Lecteur 2
             if last_uid2 is None:
-                led2[0] = (255, 165, 0)  # Orange
+                led2[0] = (255, 165, 0)
                 print("Lecteur 2 : Aucune carte détectée")
             elif last_uid2 == expected_uid2:
-                led2[0] = (0, 255, 0)    # Vert
+                led2[0] = (0, 255, 0)
                 print("Lecteur 2 : UID correct")
             else:
-                led2[0] = (255, 0, 0)    # Rouge
+                led2[0] = (255, 0, 0)
                 print("Lecteur 2 : UID incorrect")
             led2.write()
             
             # Vérifier Lecteur 3
             if last_uid3 is None:
-                led3[0] = (255, 165, 0)  # Orange
+                led3[0] = (255, 165, 0)
                 print("Lecteur 3 : Aucune carte détectée")
             elif last_uid3 == expected_uid3:
-                led3[0] = (0, 255, 0)    # Vert
+                led3[0] = (0, 255, 0)
                 print("Lecteur 3 : UID correct")
             else:
-                led3[0] = (255, 0, 0)    # Rouge
+                led3[0] = (255, 0, 0)
                 print("Lecteur 3 : UID incorrect")
             led3.write()
             
-            # Attendre que le bouton soit relâché pour éviter plusieurs déclenchements
+            # Attendre le relâchement complet du bouton
             while button.value() == 0:
                 sleep(0.01)
             
@@ -144,7 +149,11 @@ def main():
             for led in (led1, led2, led3):
                 led[0] = (0, 0, 0)
                 led.write()
-                
+            
+            # Afficher le temps écoulé
+            elapsed = ticks_diff(ticks_ms(), start_time)
+            print("Temps écoulé depuis l'appui du bouton : {} ms".format(elapsed))
+        
         sleep(0.05)
 
 if __name__ == "__main__":
