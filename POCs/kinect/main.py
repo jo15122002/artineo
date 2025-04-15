@@ -121,9 +121,9 @@ def process_depth_frame(current_frame):
     final_drawings[current_tool][:, :, channel] = updated_channel
 
     # Nettoyage immédiat du dessin pour limiter l'accumulation de bruit
-    epsilon = 0.1  # Valeur seuil à ajuster selon le niveau de bruit observé
+    epsilon = 0.7  # Valeur seuil à ajuster selon le niveau de bruit observé
     final_drawings[current_tool][:, :, channel][final_drawings[current_tool][:, :, channel] < epsilon] = 0
-    final_drawings[current_tool][:, :, channel] *= 0.99
+    final_drawings[current_tool][:, :, channel] *= 0.98
 
 
 # --- Rendu des dessins finaux ---
