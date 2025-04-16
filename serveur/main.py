@@ -1,12 +1,3 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse
-
-app = FastAPI()
-
-# --------------------------
-# Endpoints REST
-# --------------------------
-
 import json
 import os
 
@@ -14,6 +5,10 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 
 app = FastAPI()
+
+# --------------------------
+# Endpoints REST
+# --------------------------
 
 # Dossier contenant les fichiers de configuration
 CONFIG_DIR = "configs"
