@@ -45,7 +45,7 @@ def setup():
     rdr3.init()
     print("Lecteurs RFID initialisés.")
     
-    # Facultatif : ajuster le gain (par exemple ici à 0x02)
+    # Facultatif : ajuster le gain (ici à 0x07, soit le maximum)
     rdr1.set_gain(0x07)
     rdr2.set_gain(0x07)
     rdr3.set_gain(0x07)
@@ -69,7 +69,7 @@ def setup():
     last_uid2 = None
     last_uid3 = None
     
-    # UID attendus (en minuscules, sans séparateurs)
+    # UID attendus (exemple, en minuscules, sans séparateurs)
     expected_uid1 = "8804eaa5c3"
     expected_uid2 = "8804d091cd"
     expected_uid3 = "8804fa8cfa"
@@ -80,10 +80,11 @@ def read_uid(reader, timeout=20000):
     """
     Tente de lire un UID depuis 'reader' avec un timeout (en ms).
     Après la lecture, le tag est désactivé (halt et stop_crypto1) pour libérer le lecteur.
+    Effectue jusqu'à 2 tentatives de lecture.
     """
     start = ticks_ms()
     uid = None
-    attempts = 2  # Nombre de tentatives de lecture
+    attempts = 2  # Nombre de tentatives
     while attempts:
         start = ticks_ms()
         while ticks_diff(ticks_ms(), start) < timeout:
@@ -102,23 +103,40 @@ def read_uid(reader, timeout=20000):
             break
     return uid
 
-def check_answers(uid_lieu, uid_couleur, uid_emotion):
+def get_answers(number):
     """
-    Vérifie si les UID fournis correspondent aux réponses correctes stockées dans un JSON en dur.
-    Met à jour les LED (led1, led2, led3) en appliquant l'intensité définie.
+    Renvoie le dictionnaire des réponses correctes correspondant au numéro donné.
+    Permet ainsi de sélectionner différents jeux de réponses pour la vérification.
+    
+    :param number: Numéro du set de réponses
+    :return: Un dictionnaire avec les clés "lieu", "couleur" et "emotion"
+    """
+    answers = {
+        1: {"lieu": "8804eaa5c3", "couleur": "8804d091cd", "emotion": "8804fa8cfa"},
+        2: {"lieu": "uidset2_lieu", "couleur": "uidset2_couleur", "emotion": "uidset2_emotion"},
+        3: {"lieu": "uidset2_lieu", "couleur": "uidset2_couleur", "emotion": "uidset2_emotion"}
+    }
+    return answers.get(number, answers[1])
+
+def check_answers(uid_lieu, uid_couleur, uid_emotion, answer_set=1):
+    """
+    Vérifie si les UID fournis correspondent aux réponses correctes.
+    Utilise get_answers(answer_set) pour récupérer le dictionnaire des bonnes réponses.
+    Met à jour les LED (led1, led2, led3) en appliquant l'intensité.
+    
     - Aucun UID → LED orange
     - UID correct → LED verte
     - Sinon → LED rouge
+    
+    Affiche les messages correspondants et renvoie True si toutes les réponses sont correctes.
+    
+    :param uid_lieu: UID lu par le lecteur associé au "lieu"
+    :param uid_couleur: UID lu par le lecteur associé à la "couleur"
+    :param uid_emotion: UID lu par le lecteur associé à l'"emotion"
+    :param answer_set: Numéro du set de réponses à utiliser (par défaut 1)
+    :return: True si toutes les réponses sont correctes, sinon False
     """
-    # JSON en dur contenant les UID corrects pour chaque catégorie
-    correct_json = '''
-    {
-        "lieu": "8804eaa5c3",
-        "couleur": "8804d091cd",
-        "emotion": "8804fa8cfa"
-    }
-    '''
-    correct = ujson.loads(correct_json)
+    correct = get_answers(answer_set)
     all_correct = True
 
     # Vérification du lieu via le lecteur 1 et mise à jour de led1
@@ -244,7 +262,8 @@ def main():
             
             print("Bouton appuyé, vérification des UID...")
             # Vérification globale avec mise à jour des LED intégrée dans check_answers()
-            check_answers(last_uid1, last_uid2, last_uid3)
+            # Ici, nous utilisons get_answers() avec un numéro donné (par exemple, 1)
+            check_answers(last_uid1, last_uid2, last_uid3, answer_set=1)
             
             # Attendre le relâchement complet du bouton
             while button.value() == 0:
@@ -259,7 +278,7 @@ def main():
             # Afficher le temps écoulé depuis l'appui
             elapsed = ticks_diff(ticks_ms(), start_time)
             print("Temps écoulé depuis l'appui du bouton : {} ms".format(elapsed))
-            setup()  # Réinitialiser les lecteurs pour la prochaine lecture
+            setup()  # Réinitialiser pour la prochaine lecture
         
         sleep(0.05)
 
