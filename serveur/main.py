@@ -7,18 +7,45 @@ app = FastAPI()
 # Endpoints REST
 # --------------------------
 
+import json
+import os
+
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import JSONResponse
+
+app = FastAPI()
+
+# Dossier contenant les fichiers de configuration
+CONFIG_DIR = "configs"
+
 @app.get("/config")
-async def get_config():
-    """
-    Endpoint pour récupérer la configuration du système.
-    Par exemple, retour d’un dictionnaire avec des paramètres.
-    """
-    config = {
-        "module_kinect": {"activation": True, "seuil": 0.5},
-        "module_rfid": {"activation": True},
-        "joysticks": {"sensibilite": 1.0}
-    }
-    return config
+async def get_config(module: int = None):
+    if module is not None:
+        file_path = os.path.join(CONFIG_DIR, f"module{module}.json")
+        if os.path.exists(file_path):
+            try:
+                with open(file_path, "r") as f:
+                    config_data = json.load(f)
+                return JSONResponse(content={"config": config_data})
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Erreur lors de la lecture du fichier: {e}")
+        else:
+            raise HTTPException(status_code=404, detail="Fichier de configuration du module introuvable")
+    else:
+        # Si aucun module n'est spécifié, parcourir tous les fichiers JSON du dossier
+        all_configs = {}
+        try:
+            for file_name in os.listdir(CONFIG_DIR):
+                if file_name.endswith(".json"):
+                    full_path = os.path.join(CONFIG_DIR, file_name)
+                    with open(full_path, "r") as f:
+                        config_data = json.load(f)
+                    # Par convention, le nom de fichier est utilisé comme clé (par ex. "module1.json")
+                    all_configs[file_name] = config_data
+            return JSONResponse(content={"configurations": all_configs})
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Erreur lors de la lecture des configurations: {e}")
+
 
 @app.get("/history")
 async def get_history():
