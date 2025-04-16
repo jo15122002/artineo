@@ -5,6 +5,17 @@ from utime import sleep, ticks_diff, ticks_ms
 
 import mfrc522
 
+# Variable globale d'intensité (0 = LED éteintes, 1 = intensité maximale)
+intensity = 0.1
+
+def scale_color(color):
+    """
+    Applique l'intensité à une couleur.
+    color est une tuple (r, g, b) avec des valeurs comprises entre 0 et 255.
+    Retourne une nouvelle tuple avec chaque composante multipliée par intensity.
+    """
+    return (int(color[0] * intensity), int(color[1] * intensity), int(color[2] * intensity))
+
 # Flag global pour l'appui du bouton
 button_pressed = False
 
@@ -29,10 +40,17 @@ def setup():
     rdr2 = mfrc522.MFRC522(spi=spi, gpioRst=16, gpioCs=17)
     rdr3 = mfrc522.MFRC522(spi=spi, gpioRst=25, gpioCs=26)
     
+    rdr1.init()
+    rdr2.init()
+    rdr3.init()
+    print("Lecteurs RFID initialisés.")
+    
     # Facultatif : ajuster le gain (par exemple ici à 0x02)
-    rdr1.set_gain(0x02)
-    rdr2.set_gain(0x02)
-    rdr3.set_gain(0x02)
+    rdr1.set_gain(0x07)
+    rdr2.set_gain(0x07)
+    rdr3.set_gain(0x07)
+    
+    print("Gain ajusté.")
     
     # Initialisation des LED WS2812b pour chaque lecteur RFID
     led1 = neopixel.NeoPixel(Pin(15), 1)
@@ -58,33 +76,39 @@ def setup():
     
     print("Placez une carte RFID et appuyez sur le bouton pour lancer la lecture ou l'assignation.")
 
-def read_uid(reader, timeout=200):
+def read_uid(reader, timeout=20000):
     """
-    Tente de lire un UID depuis 'reader' avec un timeout (en ms) pour éviter une attente excessive.
+    Tente de lire un UID depuis 'reader' avec un timeout (en ms).
     Après la lecture, le tag est désactivé (halt et stop_crypto1) pour libérer le lecteur.
     """
     start = ticks_ms()
     uid = None
-    while ticks_diff(ticks_ms(), start) < timeout:
-        stat, tag_type = reader.request(reader.REQIDL)
-        if stat == reader.OK:
-            stat, raw_uid = reader.anticoll()
+    attempts = 2  # Nombre de tentatives de lecture
+    while attempts:
+        start = ticks_ms()
+        while ticks_diff(ticks_ms(), start) < timeout:
+            stat, tag_type = reader.request(reader.REQIDL)
             if stat == reader.OK:
-                uid = "".join("{:02x}".format(x) for x in raw_uid)
-                break
-        sleep(0.01)
-    reader.halt_a()
-    reader.stop_crypto1()
+                stat, raw_uid = reader.anticoll()
+                if stat == reader.OK:
+                    uid = "".join("{:02x}".format(x) for x in raw_uid)
+                    break
+            sleep(0.01)
+        reader.reset()
+        reader.halt_a()
+        reader.stop_crypto1()
+        attempts -= 1
+        if uid:
+            break
     return uid
 
 def check_answers(uid_lieu, uid_couleur, uid_emotion):
     """
     Vérifie si les UID fournis correspondent aux réponses correctes stockées dans un JSON en dur.
-    Met à jour les LED (led1, led2, led3) :
-      - Si aucun UID n'est détecté → LED orange
-      - Si l'UID est correct         → LED verte
-      - Sinon                       → LED rouge
-    Affiche également les messages correspondants.
+    Met à jour les LED (led1, led2, led3) en appliquant l'intensité définie.
+    - Aucun UID → LED orange
+    - UID correct → LED verte
+    - Sinon → LED rouge
     """
     # JSON en dur contenant les UID corrects pour chaque catégorie
     correct_json = '''
@@ -97,44 +121,44 @@ def check_answers(uid_lieu, uid_couleur, uid_emotion):
     correct = ujson.loads(correct_json)
     all_correct = True
 
-    # Vérification du lieu via le lecteur 1 et gestion de led1
+    # Vérification du lieu via le lecteur 1 et mise à jour de led1
     if uid_lieu is None:
-        led1[0] = (255, 165, 0)  # Orange
+        led1[0] = scale_color((255, 165, 0))  # Orange
         print("Lecteur 1 : Aucune carte détectée")
         all_correct = False
     elif uid_lieu.lower().strip() == correct["lieu"].lower().strip():
-        led1[0] = (0, 255, 0)    # Vert
+        led1[0] = scale_color((0, 255, 0))    # Vert
         print("Lecteur 1 : UID correct")
     else:
-        led1[0] = (255, 0, 0)    # Rouge
+        led1[0] = scale_color((255, 0, 0))    # Rouge
         print("Lecteur 1 : UID incorrect (attendu: {}, reçu: {})".format(correct["lieu"], uid_lieu))
         all_correct = False
     led1.write()
     
-    # Vérification de la couleur via le lecteur 2 et gestion de led2
+    # Vérification de la couleur via le lecteur 2 et mise à jour de led2
     if uid_couleur is None:
-        led2[0] = (255, 165, 0)
+        led2[0] = scale_color((255, 165, 0))
         print("Lecteur 2 : Aucune carte détectée")
         all_correct = False
     elif uid_couleur.lower().strip() == correct["couleur"].lower().strip():
-        led2[0] = (0, 255, 0)
+        led2[0] = scale_color((0, 255, 0))
         print("Lecteur 2 : UID correct")
     else:
-        led2[0] = (255, 0, 0)
+        led2[0] = scale_color((255, 0, 0))
         print("Lecteur 2 : UID incorrect (attendu: {}, reçu: {})".format(correct["couleur"], uid_couleur))
         all_correct = False
     led2.write()
     
-    # Vérification de l'émotion via le lecteur 3 et gestion de led3
+    # Vérification de l'émotion via le lecteur 3 et mise à jour de led3
     if uid_emotion is None:
-        led3[0] = (255, 165, 0)
+        led3[0] = scale_color((255, 165, 0))
         print("Lecteur 3 : Aucune carte détectée")
         all_correct = False
     elif uid_emotion.lower().strip() == correct["emotion"].lower().strip():
-        led3[0] = (0, 255, 0)
+        led3[0] = scale_color((0, 255, 0))
         print("Lecteur 3 : UID correct")
     else:
-        led3[0] = (255, 0, 0)
+        led3[0] = scale_color((255, 0, 0))
         print("Lecteur 3 : UID incorrect (attendu: {}, reçu: {})".format(correct["emotion"], uid_emotion))
         all_correct = False
     led3.write()
@@ -199,12 +223,14 @@ def main():
     setup()
     
     # Option : Demander à l'utilisateur s'il souhaite effectuer une assignation
-    mode = input("Tapez 'a' pour assigner les cartes aux mots-clés ou 'r' pour simplement lire les tags et vérifier les réponses : ")
+    mode = "r"  # Par défaut, mode lecture
+    # mode = input("Tapez 'a' pour assigner les cartes aux mots-clés ou 'r' pour simplement lire les tags et vérifier les réponses : ").strip().lower()
     if mode.lower() == 'a':
         print("Mode assignation activé. Utilisation de rdr1 pour l'assignation...")
         assign_cards(rdr1)
         print("Assignation terminée. Redémarrage du programme...")
     
+    print("Mode lecture activé. Appuyez sur le bouton pour lire les cartes.")
     while True:
         if button_pressed:
             button_pressed = False
@@ -217,7 +243,7 @@ def main():
             last_uid3 = read_uid(rdr3, timeout=200)
             
             print("Bouton appuyé, vérification des UID...")
-            # Vérification globale avec mise à jour des LED intégrée
+            # Vérification globale avec mise à jour des LED intégrée dans check_answers()
             check_answers(last_uid1, last_uid2, last_uid3)
             
             # Attendre le relâchement complet du bouton
@@ -233,6 +259,7 @@ def main():
             # Afficher le temps écoulé depuis l'appui
             elapsed = ticks_diff(ticks_ms(), start_time)
             print("Temps écoulé depuis l'appui du bouton : {} ms".format(elapsed))
+            setup()  # Réinitialiser les lecteurs pour la prochaine lecture
         
         sleep(0.05)
 
