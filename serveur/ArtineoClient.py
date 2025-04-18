@@ -1,16 +1,31 @@
 # artineo_client.py
 
-import asyncio
-import json
-import os
+import sys
+
+# Détection de MicroPython
+MICROPY = sys.implementation.name == "micropython"
+
+if MICROPY:
+    # MicroPython / ESP32
+    import uasyncio as asyncio
+    import ujson as json
+    import urequests as requests
+    import uwebsockets.client as ws_client
+else:
+    # CPython / Raspberry Pi
+    import asyncio
+    import json
+    import os
+
+    import requests
+    import websockets
+    from dotenv import load_dotenv
+
+    load_dotenv()
+
+
 from enum import Enum
 
-import requests
-import websockets
-from dotenv import load_dotenv
-
-# Charge les variables du .env
-load_dotenv()
 
 class ArtineoAction(Enum):
     SET = "set"
@@ -18,110 +33,166 @@ class ArtineoAction(Enum):
     def __str__(self):
         return self.value
 
-class ArtineoClient:
-    def __init__(self, module_id: int = None):
-        host = os.getenv("ARTINEO_HOST", "127.0.0.1")
-        port = os.getenv("ARTINEO_PORT", "8000")
-        self.base_url     = f"http://{host}:{port}"
-        self.ws_url       = f"ws://{host}:{port}/ws"
-        self.module_id    = module_id
-        self.ws           = None
-        self._handler     = None
-        self._listen_task = None
-        
-        self.start_listening()
 
-    def fetch_config(self) -> dict:
-        params = {}
-        if self.module_id is not None:
-            params["module"] = self.module_id
-        resp = requests.get(f"{self.base_url}/config", params=params)
-        resp.raise_for_status()
-        payload = resp.json()
-        return payload.get("config") or payload.get("configurations")
+# -------------------------------------------------------------------
+# Implémentation pour MicroPython (ESP32)
+# -------------------------------------------------------------------
+if MICROPY:
+    class ArtineoClient:
+        def __init__(self, module_id: int = None, host: str = None, port: int = None):
+            """
+            Sur ESP32, on passe souvent host/port en dur,
+            ou on peut les fournir ici au démarrage.
+            """
+            self.host = host or "192.168.0.180"
+            self.port = port or 8000
+            self.base_url = f"http://{self.host}:{self.port}"
+            self.ws_url   = f"ws://{self.host}:{self.port}/ws"
+            self.module_id = module_id
 
-    async def connect_ws(self):
-        if self.ws is None or self.ws.closed:
-            self.ws = await websockets.connect(self.ws_url)
-        return self.ws
+            self.ws = None
+            self._handler = None
+            # démarre le listener
+            try:
+                asyncio.create_task(self._listen_loop())
+            except:
+                pass
 
-    async def send_ws_json(self, message: dict) -> dict:
-        ws = await self.connect_ws()
-        await ws.send(json.dumps(message))
-        raw = await ws.recv()
-        try:
-            return json.loads(raw)
-        except json.JSONDecodeError:
-            return {"raw": raw}
+        def fetch_config(self) -> dict:
+            url = self.base_url + "/config"
+            if self.module_id is not None:
+                url += f"?module={self.module_id}"
+            r = requests.get(url)
+            data = r.json()
+            return data.get("config") or data.get("configurations")
 
-    async def send_ws(self, action:ArtineoAction, data:str) -> dict:
-        msg = {
-            "module": self.module_id,
-            "action": action.value,
-            "data": data
-        }
-        return await self.send_ws_json(msg)
+        async def connect_ws(self):
+            if self.ws is None:
+                self.ws = await ws_client.connect(self.ws_url)
+            return self.ws
 
-    def on_message(self, handler):
-        """
-        Enregistre une fonction handler(message) -> None
-        appelée pour chaque message non-ping reçu.
-        """
-        self._handler = handler
+        async def send_ws_json(self, message: dict) -> dict:
+            ws = await self.connect_ws()
+            await ws.send(json.dumps(message))
+            raw = await ws.recv()
+            try:
+                return json.loads(raw)
+            except:
+                return {"raw": raw}
 
-    async def _listen_loop(self):
-        ws = await self.connect_ws()
-        try:
-            async for raw in ws:
-                # Si on reçoit un "ping" brut ou encodé, répondre "pong"
-                if raw.strip('"') == "ping":
+        async def send_ws(self, action: ArtineoAction, data: str) -> dict:
+            msg = {
+                "module": self.module_id,
+                "action": action.value,
+                "data": data
+            }
+            return await self.send_ws_json(msg)
+
+        def on_message(self, handler):
+            """
+            Enregistre un callback handler(msg) → None
+            """
+            self._handler = handler
+
+        async def _listen_loop(self):
+            ws = await self.connect_ws()
+            while True:
+                raw = await ws.recv()
+                # si on reçoit un ping
+                if raw == "ping":
                     await ws.send("pong")
                     continue
-
-                # Sinon on tente de parser le JSON et on appelle le handler
+                # sinon on parse et on appelle le handler
                 try:
                     msg = json.loads(raw)
-                except json.JSONDecodeError:
+                except:
                     msg = raw
-
                 if self._handler:
                     self._handler(msg)
 
-        except websockets.ConnectionClosed:
-            pass
+        async def close_ws(self):
+            if self.ws:
+                await self.ws.close()
+                self.ws = None
 
-    def start_listening(self):
-        """
-        Lance la boucle d'écoute en tâche de fond.
-        """
-        if not self._listen_task:
-            self._listen_task = asyncio.create_task(self._listen_loop())
 
-    async def close_ws(self):
-        if self.ws and not self.ws.closed:
-            await self.ws.close()
-        if self._listen_task:
-            self._listen_task.cancel()
+# -------------------------------------------------------------------
+# Implémentation pour CPython (Raspberry Pi)
+# -------------------------------------------------------------------
+else:
+    import os
+
+    class ArtineoClient:
+        def __init__(self, module_id: int = None, host: str = None, port: int = None):
+            host = host or os.getenv("ARTINEO_HOST", "127.0.0.1")
+            port = port or os.getenv("ARTINEO_PORT", "8000")
+            self.base_url  = f"http://{host}:{port}"
+            self.ws_url    = f"ws://{host}:{port}/ws"
+            self.module_id = module_id
+
+            self.ws = None
+            self._handler = None
             self._listen_task = None
 
+        def fetch_config(self) -> dict:
+            params = {}
+            if self.module_id is not None:
+                params["module"] = self.module_id
+            resp = requests.get(f"{self.base_url}/config", params=params)
+            resp.raise_for_status()
+            payload = resp.json()
+            return payload.get("config") or payload.get("configurations")
 
-# Exemple d'utilisation
-# if __name__ == "__main__":
-#     import asyncio
+        async def connect_ws(self):
+            if self.ws is None or self.ws.closed:
+                self.ws = await websockets.connect(self.ws_url)
+            return self.ws
 
-#     def handle(msg):
-#         print("Handler a reçu :", msg)
+        async def send_ws_json(self, message: dict) -> dict:
+            ws = await self.connect_ws()
+            await ws.send(json.dumps(message))
+            raw = await ws.recv()
+            try:
+                return json.loads(raw)
+            except json.JSONDecodeError:
+                return {"raw": raw}
 
-#     async def main():
-#         client = ArtineoClient(module_id=1)
-#         print("Config :", client.fetch_config())
-#         client.on_message(handle)
-#         client.start_listening()
+        async def send_ws(self, action: ArtineoAction, data: str) -> dict:
+            msg = {"module": self.module_id, "action": action.value, "data": data}
+            return await self.send_ws_json(msg)
 
-#         # Envoie un ping pour tester
-#         await client.send_ws("ping", ArtineoAction.GET)
-#         # Attend quelques instants pour voir le "pong"
-#         await asyncio.sleep(2)
-#         await client.close_ws()
+        def on_message(self, handler):
+            """
+            Enregistre un callback handler(msg) → None
+            """
+            self._handler = handler
 
-#     asyncio.run(main())
+        async def _listen_loop(self):
+            ws = await self.connect_ws()
+            try:
+                async for raw in ws:
+                    if raw.strip('"') == "ping":
+                        await ws.send("pong")
+                        continue
+                    try:
+                        msg = json.loads(raw)
+                    except json.JSONDecodeError:
+                        msg = raw
+                    if self._handler:
+                        self._handler(msg)
+            except websockets.ConnectionClosed:
+                pass
+
+        def start_listening(self):
+            """
+            Démarre en tâche de fond la boucle d'écoute
+            """
+            if not self._listen_task:
+                self._listen_task = asyncio.create_task(self._listen_loop())
+
+        async def close_ws(self):
+            if self.ws and not self.ws.closed:
+                await self.ws.close()
+            if self._listen_task:
+                self._listen_task.cancel()
+                self._listen_task = None
