@@ -3,11 +3,17 @@ import sys
 import cv2
 import numpy as np
 
+from serveur import ArtineoClient
+
 
 def main():
     width = 640
     height = 480
     frame_size = width * height * 3  # bgr24 = 3 octets par pixel
+    
+    client = ArtineoClient.ArtineoClient(module_id=1)
+    client.fetch_config()
+    print("Config reçue :", client.fetch_config())
 
     # Crée explicitement une fenêtre pour l'affichage
     cv2.namedWindow("Flux de la caméra", cv2.WINDOW_NORMAL)
