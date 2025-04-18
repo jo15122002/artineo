@@ -15,8 +15,6 @@ load_dotenv()
 class ArtineoAction(Enum):
     SET = "set"
     GET = "get"
-    def __str__(self):
-        return self.value
 
 class ArtineoClient:
     def __init__(self, module_id: int = None):
@@ -106,22 +104,22 @@ class ArtineoClient:
 
 
 # Exemple d'utilisation
-# if __name__ == "__main__":
-#     import asyncio
+if __name__ == "__main__":
+    import asyncio
 
-#     def handle(msg):
-#         print("Handler a reçu :", msg)
+    def handle(msg):
+        print("Handler a reçu :", msg)
 
-#     async def main():
-#         client = ArtineoClient(module_id=1)
-#         print("Config :", client.fetch_config())
-#         client.on_message(handle)
-#         client.start_listening()
+    async def main():
+        client = ArtineoClient(module_id=1)
+        print("Config :", client.fetch_config())
+        client.on_message(handle)
+        # client.start_listening()
 
-#         # Envoie un ping pour tester
-#         await client.send_ws("ping", ArtineoAction.GET)
-#         # Attend quelques instants pour voir le "pong"
-#         await asyncio.sleep(2)
-#         await client.close_ws()
+        # Envoie un ping pour tester
+        await client.send_ws(ArtineoAction.GET, "ping")
+        # Attend quelques instants pour voir le "pong"
+        await asyncio.sleep(2)
+        await client.close_ws()
 
-#     asyncio.run(main())
+    asyncio.run(main())
