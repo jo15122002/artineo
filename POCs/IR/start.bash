@@ -10,6 +10,8 @@ sudo apt-get install -y \
     python3 python3-pip python3-opencv \
     libcamera-apps ffmpeg
 
+sudo apt-get install -y requests websockets dotenv
+
 # Test de la caméra avec libcamera-hello (5 secondes sans preview)
 echo "Test de la caméra avec libcamera-hello..."
 libcamera-hello -t 5000 --nopreview
