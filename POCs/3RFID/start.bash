@@ -88,6 +88,13 @@ else
 fi
 echo
 
+sudo pip3 install --break-system-packages ../../../serveur/requirements_client.txt
+if [ $? -ne 0 ]; then
+    echo "[ERROR] Failed to install Python packages from requirements_client.txt."
+    echo "        Please try installing manually: sudo pip3 install --break-system-packages ../../../serveur/requirements_client.txt"
+    exit 1
+fi
+
 # --- 4. Check if Python script exists ---
 # (Keep the script check from the original script)
 echo "[INFO] Checking for Python script '$PYTHON_SCRIPT_NAME'..."
