@@ -18,6 +18,7 @@ class ArtineoClient:
         """
         host = os.getenv("ARTINEO_HOST", "127.0.0.1")
         port = os.getenv("ARTINEO_PORT", "8000")
+        print(f"ARTINEO_HOST: {host}, ARTINEO_PORT: {port}")
 
         self.base_url = f"http://{host}:{port}"
         self.ws_url   = f"ws://{host}:{port}/ws"
