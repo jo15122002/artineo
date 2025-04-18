@@ -65,6 +65,7 @@ current_tool = '1'
 delta = 30              # Plage en mm autour de la baseline
 scale = 738.0 / delta   # Facteur de mapping pour amplifier la sensibilité
 alpha = 0.3             # Coefficient de lissage pour la mise à jour des dessins
+brush_scale_factor = 1.2
 
 # --- Chargement du brush personnalisé ---
 brush = cv2.imread("brush3.png", cv2.IMREAD_GRAYSCALE)
@@ -123,7 +124,7 @@ def process_depth_frame(current_frame):
     # Nettoyage immédiat du dessin pour limiter l'accumulation de bruit
     epsilon = 0.7  # Valeur seuil à ajuster selon le niveau de bruit observé
     final_drawings[current_tool][:, :, channel][final_drawings[current_tool][:, :, channel] < epsilon] = 0
-    final_drawings[current_tool][:, :, channel] *= 0.98
+    final_drawings[current_tool][:, :, channel] *= 0.95
 
 
 # --- Rendu des dessins finaux ---
@@ -217,7 +218,7 @@ def process_brush_strokes():
             if local_value < min_brush_size or local_value > max_brush_size:
                 continue
             try:
-                custom_brush = resize_brush(brush, int(local_value))
+                custom_brush = resize_brush(brush, int(local_value * brush_scale_factor))
                 color = {
                     '1': (0, 0, 255),
                     '2': (255, 0, 0),
