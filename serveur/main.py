@@ -57,6 +57,14 @@ async def get_history():
     history_data = []
     return {"historique": history_data}
 
+@app.get("/hc")
+async def health_check():
+    """
+    Endpoint de vérification de l'état du serveur.
+    Renvoie un message simple pour indiquer que le serveur est en ligne.
+    """
+    return {"status": "OK"}
+
 # --------------------------
 # Gestion des connexions WebSocket
 # --------------------------
@@ -76,6 +84,11 @@ async def websocket_endpoint(websocket: WebSocket):
             data = await websocket.receive_text()
             # Traitement des données reçues
             print(f"Message reçu : {data}")
+            
+            if data == "ping":
+                await websocket.send_text("pong")
+            else:
+                await websocket.send_text(f"Message '{data}' reçu avec succès.")
 
             # Ici, vous pouvez appeler vos algorithmes de traitement (OpenCV, logique RFID, etc.)
             # Pour l’instant, on renvoie simplement une confirmation.
