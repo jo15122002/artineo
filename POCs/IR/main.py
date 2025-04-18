@@ -1,9 +1,23 @@
+import os
 import sys
+from pathlib import Path
 
 import cv2
 import numpy as np
 
-from dev.serveur.ArtineoClient import ArtineoClient
+# On ajoute ../../serveur au path pour pouvoir y importer ArtineoClient
+sys.path.insert(
+    0,
+    str(
+        Path(__file__)
+        .resolve()
+        .parent
+        .joinpath("..", "..", "serveur")
+        .resolve()
+    )
+)
+
+from ArtineoClient import ArtineoClient
 
 
 def main():
@@ -11,7 +25,7 @@ def main():
     height = 480
     frame_size = width * height * 3  # bgr24 = 3 octets par pixel
     
-    client = ArtineoClient.ArtineoClient(module_id=1)
+    client = ArtineoClient(module_id=1)
     client.fetch_config()
     print("Config reçue :", client.fetch_config())
 
