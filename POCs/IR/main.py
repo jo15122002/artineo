@@ -26,6 +26,8 @@ def main():
     frame_size = width * height * 3  # bgr24 = 3 octets par pixel
     
     client = ArtineoClient(module_id=1)
+    client.connect_ws()
+    print("Connecté au serveur WebSocket.")
     client.fetch_config()
     print("Config reçue :", client.fetch_config())
 
