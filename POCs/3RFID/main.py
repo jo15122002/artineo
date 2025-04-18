@@ -271,16 +271,37 @@ def main():
     
     print("Mode lecture activé. Vous avez {} essais par set de réponses.".format(MAX_ATTEMPTS))
     print("Appuyez sur le bouton pour lancer une tentative.")
+
+    uid1 = None
+    uid2 = None
+    uid3 = None
     
     while True:
+
+        uid1 = read_uid(rdr1, attempts=3)
+        uid2 = read_uid(rdr2, attempts=3)
+        uid3 = read_uid(rdr3, attempts=3)
+
+        if (uid1 != last_uid1 or
+            uid2 != last_uid2 or
+            uid3 != last_uid3):
+            last_uid1 = uid1
+            last_uid2 = uid2
+            last_uid3 = uid3
+
+            client.send_ws(ujson.dumps({
+                "moduleNum": 3,
+                "action": "set",
+                "data" : {
+                    "uid1": uid1,
+                    "uid2": uid2,
+                    "uid3": uid3
+                }
+            }))
+        
         if button_pressed:
             button_pressed = False
             start_time = ticks_ms()
-            
-            # Lecture des UID des trois lecteurs (sans timeout explicite, avec un nombre fixe d'essais)
-            last_uid1 = read_uid(rdr1, attempts=3)
-            last_uid2 = read_uid(rdr2, attempts=3)
-            last_uid3 = read_uid(rdr3, attempts=3)
             
             print("Bouton appuyé, tentative {} pour le set {}.".format(attempt_count+1, board_index))
             # Vérification des réponses avec le set correspondant
