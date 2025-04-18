@@ -1,21 +1,17 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse
-
-app = FastAPI()
-
-# --------------------------
-# Endpoints REST
-# --------------------------
-
+import asyncio
 import json
 import os
+from typing import Dict
 
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.responses import HTMLResponse, JSONResponse
 
 app = FastAPI()
 
-# Dossier contenant les fichiers de configuration
+# --------------------------------------------------
+# Configuration des endpoints REST existants
+# --------------------------------------------------
+
 CONFIG_DIR = "configs"
 
 @app.get("/config")
@@ -25,68 +21,138 @@ async def get_config(module: int = None):
         if os.path.exists(file_path):
             try:
                 with open(file_path, "r") as f:
-                    config_data = json.load(f)
-                return JSONResponse(content={"config": config_data})
+                    return {"config": json.load(f)}
             except Exception as e:
-                raise HTTPException(status_code=500, detail=f"Erreur lors de la lecture du fichier: {e}")
+                raise HTTPException(status_code=500,
+                                    detail=f"Erreur lecture fichier: {e}")
         else:
-            raise HTTPException(status_code=404, detail="Fichier de configuration du module introuvable")
-    else:
-        # Si aucun module n'est spécifié, parcourir tous les fichiers JSON du dossier
-        all_configs = {}
-        try:
-            for file_name in os.listdir(CONFIG_DIR):
-                if file_name.endswith(".json"):
-                    full_path = os.path.join(CONFIG_DIR, file_name)
-                    with open(full_path, "r") as f:
-                        config_data = json.load(f)
-                    # Par convention, le nom de fichier est utilisé comme clé (par ex. "module1.json")
-                    all_configs[file_name] = config_data
-            return JSONResponse(content={"configurations": all_configs})
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Erreur lors de la lecture des configurations: {e}")
-
+            raise HTTPException(status_code=404,
+                                detail="Fichier de config introuvable")
+    # pas de module spécifié : retourne toutes les config
+    all_configs = {}
+    try:
+        for name in os.listdir(CONFIG_DIR):
+            if name.endswith(".json"):
+                with open(os.path.join(CONFIG_DIR, name), "r") as f:
+                    all_configs[name] = json.load(f)
+        return {"configurations": all_configs}
+    except Exception as e:
+        raise HTTPException(status_code=500,
+                            detail=f"Erreur lecture configurations: {e}")
 
 @app.get("/history")
-async def get_history():
-    """
-    Endpoint pour récupérer l’historique des données.
-    Dans un premier temps, cela peut renvoyer une liste vide ou fictive.
-    """
-    # Ici, vous pourriez connecter à une base de données ou lire un fichier JSON
-    history_data = []
-    return {"historique": history_data}
+async def get_history(): #TODO later on fera de l'historisation
+    # stub pour l’historique
+    return {"historique": []}
 
-# --------------------------
+# --------------------------------------------------
 # Gestion des connexions WebSocket
-# --------------------------
+# --------------------------------------------------
+
+class ConnectionManager:
+    def __init__(self):
+        # map module_id -> websocket
+        self.active: Dict[int, WebSocket] = {}
+        # map module_id -> last pong reçu (bool)
+        self._last_pong: Dict[int, bool] = {}
+
+    async def connect(self, ws: WebSocket):
+        await ws.accept()
+
+    def register(self, module_id: int, ws: WebSocket):
+        # enregistre / met à jour le ws pour ce module
+        self.active[module_id] = ws
+
+    def disconnect(self, ws: WebSocket):
+        # supprime toute entrée pointant vers ce ws
+        to_remove = [mid for mid, socket in self.active.items()
+                     if socket is ws]
+        for mid in to_remove:
+            del self.active[mid]
+
+    def clear_pongs(self):
+        # initialise à False pour tous les modules connus
+        for mid in self.active.keys():
+            self._last_pong[mid] = False
+
+    def record_pong(self, module_id: int):
+        self._last_pong[module_id] = True
+
+    async def broadcast_ping(self):
+        # envoie "ping" à tous les ws
+        for ws in list(self.active.values()):
+            try:
+                await ws.send_text("ping")
+            except:
+                # ignore les erreurs d’envoi
+                pass
+
+manager = ConnectionManager()
 
 @app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
-    """
-    Route websocket pour gérer les connexions en temps réel.
-    Ce endpoint reçoit les données des modules (Kinect, RFID, joysticks, etc.)
-    et peut renvoyer des accusés de réception.
-    """
-    await websocket.accept()
-    print("Client connecté via WebSocket.")
-    
+async def websocket_endpoint(ws: WebSocket):
+    await manager.connect(ws)
     try:
         while True:
-            data = await websocket.receive_text()
-            # Traitement des données reçues
-            print(f"Message reçu : {data}")
+            raw = await ws.receive_text()
 
-            # Ici, vous pouvez appeler vos algorithmes de traitement (OpenCV, logique RFID, etc.)
-            # Pour l’instant, on renvoie simplement une confirmation.
-            response = f"Message '{data}' reçu avec succès."
-            await websocket.send_text(response)
+            # essaie de parser du JSON pour identifier le module
+            try:
+                msg = json.loads(raw)
+                module_id = msg.get("module")
+                if isinstance(module_id, int):
+                    manager.register(module_id, ws)
+                # acknowledgement JSON
+                await ws.send_text(f"ACK:{json.dumps(msg)}")
+                continue
+            except json.JSONDecodeError:
+                pass
+
+            # message brut
+            if raw == "ping":
+                # si client envoie un ping, on répond pong
+                await ws.send_text("pong")
+            elif raw == "pong":
+                # enregistre le pong pour ce module
+                # on identifie le module via le mapping actif
+                entry = [(mid, socket) for mid, socket in manager.active.items()
+                         if socket is ws]
+                if entry:
+                    mid, _ = entry[0]
+                    manager.record_pong(mid)
+            else:
+                # echo pour tout autre texte
+                await ws.send_text(f"ECHO:{raw}")
+
     except WebSocketDisconnect:
-        print("Client déconnecté.")
+        manager.disconnect(ws)
 
-# --------------------------
-# Optionnel: Page de test pour WebSocket
-# --------------------------
+# --------------------------------------------------
+# Health check étendu
+# --------------------------------------------------
+
+@app.get("/hc")
+async def health_check():
+    """
+    Envoie 'ping' à tous les modules connectés et
+    attend 1 seconde, puis renvoie pour chacun un statut alive/dead.
+    """
+    manager.clear_pongs()
+    # envoi des pings
+    await manager.broadcast_ping()
+    # temps pour laisser les clients répondre
+    await asyncio.sleep(1)
+
+    # construit le résultat
+    statuses = {
+        module_id: ("alive" if manager._last_pong.get(module_id) else "dead")
+        for module_id in manager.active.keys()
+    }
+    return JSONResponse(content={"modules": statuses})
+
+# --------------------------------------------------
+# Page de test WebSocket (ne pas modifier)
+# --------------------------------------------------
 
 html = """
 <!DOCTYPE html>
