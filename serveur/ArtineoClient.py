@@ -24,6 +24,7 @@ class ArtineoClient:
         self.ws_url   = f"ws://{host}:{port}/ws"
         self.module_id = module_id
         self.ws = None
+        self.send_ws("Websocket client connecté !")
 
     def fetch_config(self) -> dict:
         params = {}

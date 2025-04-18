@@ -101,7 +101,7 @@ html = """
         <ul id="messages">
         </ul>
         <script>
-            const ws = new WebSocket("ws://localhost:8000/ws");
+            const ws = new WebSocket("ws://192.168.0.180:8000/ws");
             ws.onmessage = function(event) {
                 const messages = document.getElementById('messages');
                 let message = document.createElement('li');
