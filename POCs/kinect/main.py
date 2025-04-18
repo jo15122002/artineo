@@ -1,6 +1,6 @@
 import cv2
 import numpy as np
-from pykinect2 import PyKinectRuntime, PyKinectV2
+from dependencies.pykinect2 import PyKinectRuntime, PyKinectV2
 
 # Variables globales pour la position de la souris
 mouse_x, mouse_y = 0, 0

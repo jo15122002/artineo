@@ -1,4 +1,4 @@
-pykinect2
 opencv-python
 numpy
 pygame
+comtypes
