@@ -3,7 +3,7 @@ import sys
 import cv2
 import numpy as np
 
-from serveur import ArtineoClient
+from dev.serveur.ArtineoClient import ArtineoClient
 
 
 def main():
