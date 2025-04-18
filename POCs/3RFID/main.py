@@ -1,8 +1,23 @@
+import sys
+from pathlib import Path
 import neopixel
 import ujson
 from machine import SPI, Pin
 from utime import sleep, ticks_diff, ticks_ms
 import mfrc522
+
+sys.path.insert(
+    0,
+    str(
+        Path(__file__)
+        .resolve()
+        .parent
+        .joinpath("..", "..", "serveur")
+        .resolve()
+    )
+)
+
+from ArtineoClient import ArtineoClient
 
 # Variable globale d'intensité (0 = LED éteintes, 1 = intensité maximale)
 intensity = 0.1
@@ -28,6 +43,7 @@ def setup():
     global rdr1, rdr2, rdr3, led1, led2, led3, button
     global last_uid1, last_uid2, last_uid3
     global expected_uid1, expected_uid2, expected_uid3
+    global client, config
 
     print("Setup...")
     # Configuration SPI pour l'ESP32 (adaptation selon votre câblage)
@@ -63,6 +79,12 @@ def setup():
     # Configuration du bouton sur le GPIO14 en mode pull-up.
     button = Pin(14, Pin.IN, Pin.PULL_UP)
     button.irq(trigger=Pin.IRQ_FALLING, handler=button_irq_handler)
+
+    client = ArtineoClient(module_id=3)
+    client.connect_ws()
+    print("Connecté au serveur WebSocket.")
+    config = client.fetch_config()
+    print("Configuration récupérée:", config)
     
     # Variables pour stocker les UID lus par chaque lecteur (en string)
     last_uid1 = None
@@ -231,6 +253,7 @@ def assign_cards(reader):
 def main():
     global last_uid1, last_uid2, last_uid3, button_pressed
     global expected_uid1, expected_uid2, expected_uid3
+    global client, config
     setup()
     
     # Gestion du mode : 'a' pour assignation, 'r' pour lecture et vérification
