@@ -8,12 +8,8 @@ sudo apt update && sudo apt upgrade -y
 echo "Installation des paquets essentiels..."
 sudo apt-get install -y \
     python3 python3-pip python3-opencv \
-    libcamera-apps ffmpeg
-
-# Installation des dépendances Python supplémentaires
-echo "Installation des bibliothèques Python requests, websockets et python-dotenv..."
-pip3 install --upgrade pip
-pip3 install --user requests websockets python-dotenv
+    libcamera-apps ffmpeg \
+    python3-requests python3-websockets python3-dotenv
 
 # Test de la caméra avec libcamera-hello (5 secondes sans preview)
 echo "Test de la caméra avec libcamera-hello..."
