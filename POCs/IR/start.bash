@@ -11,7 +11,7 @@ sudo apt-get install -y \
     libcamera-apps ffmpeg
 
 echo "Installation de la bibliothèque du client web"
-sudo apt-get install -y requests websockets dotenv
+sudo pip install requests websockets dotenv
 
 # Test de la caméra avec libcamera-hello (5 secondes sans preview)
 echo "Test de la caméra avec libcamera-hello..."
