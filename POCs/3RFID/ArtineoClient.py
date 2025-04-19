@@ -17,7 +17,7 @@ if MICROPY:
     import uasyncio as asyncio
     import ujson as json
     import urequests as requests
-    from utime import sleep
+    from utime import sleep, ticks_diff, ticks_ms
 
     # Fallback si uwebsockets manque
     try:
@@ -40,7 +40,7 @@ if MICROPY:
             except:
                 pass
 
-        def connect_wifi(ssid: str, password: str, timeout: int = 15):
+        def connect_wifi(self, ssid: str, password: str, timeout: int = 15):
             """
             Connecte l'ESP32 à un réseau Wi-Fi.
             Attente bloquante (timeout en secondes).

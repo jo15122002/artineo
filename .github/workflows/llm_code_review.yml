@@ -2,7 +2,7 @@ name: "Automated Code Review"
 
 on:
   pull_request:
-    types: [opened, synchronize]
+    types: [opened, synchronize, reopened]
 
 permissions:
   issues: write
@@ -20,5 +20,5 @@ jobs:
         with:
           llm-endpoint: ${{ secrets.LLM_ENDPOINT }}
           diff-chunk-size: 10000
-          exclude-patterns: "test,tests,spec,yml,md,txt,log,bash,sh,bat"
+          exclude-patterns: "test,tests,spec,yml,md,txt,log,bash,sh,bat,json"
           github-token: ${{ secrets.GITHUB_TOKEN }}
