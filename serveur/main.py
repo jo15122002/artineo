@@ -157,26 +157,30 @@ async def health_check():
 html = """
 <!DOCTYPE html>
 <html>
-  <head><title>Test WS</title></head>
-  <body>
-    <h1>WebSocket Test</h1>
-    <input id="inp" placeholder="message..."/>
-    <button onclick="send()">Envoyer</button>
-    <ul id="out"></ul>
-    <script>
-      const ws = new WebSocket("ws://localhost:8000/ws");
-      ws.onmessage = e => {
-        const li = document.createElement("li");
-        li.textContent = e.data;
-        document.getElementById("out").append(li);
-      };
-      function send() {
-        const v = document.getElementById("inp").value;
-        ws.send(v);
-        document.getElementById("inp").value = "";
-      }
-    </script>
-  </body>
+    <head>
+        <title>Test WebSocket</title>
+    </head>
+    <body>
+        <h1>Test de connexion WebSocket</h1>
+        <input id="messageInput" type="text" placeholder="Tapez un message..."/>
+        <button onclick="sendMessage()">Envoyer</button>
+        <ul id="messages">
+        </ul>
+        <script>
+            const ws = new WebSocket("ws://192.168.0.180:8000/ws");
+            ws.onmessage = function(event) {
+                const messages = document.getElementById('messages');
+                let message = document.createElement('li');
+                message.textContent = event.data;
+                messages.appendChild(message);
+            };
+            function sendMessage() {
+                const input = document.getElementById("messageInput");
+                ws.send(input.value);
+                input.value = "";
+            }
+        </script>
+    </body>
 </html>
 """
 
