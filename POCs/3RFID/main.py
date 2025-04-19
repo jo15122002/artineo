@@ -1,22 +1,9 @@
-import sys
-from pathlib import Path
 import neopixel
 import ujson
 from machine import SPI, Pin
 from utime import sleep, ticks_diff, ticks_ms
+
 import mfrc522
-
-sys.path.insert(
-    0,
-    str(
-        Path(__file__)
-        .resolve()
-        .parent
-        .joinpath("..", "..", "serveur")
-        .resolve()
-    )
-)
-
 from ArtineoClient import ArtineoClient
 
 # Variable globale d'intensité (0 = LED éteintes, 1 = intensité maximale)
