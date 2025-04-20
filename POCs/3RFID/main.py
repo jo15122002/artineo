@@ -89,7 +89,7 @@ def read_uid(reader, attempts=2):
     :param attempts: Nombre d'essais à effectuer.
     :return: L'UID lu sous forme de chaîne hexadécimale ou None si aucune lecture n'a réussi.
     """
-    reader.init()
+    
     uid = None
     for _ in range(attempts):
         stat, tag_type = reader.request(reader.REQIDL)
@@ -98,7 +98,6 @@ def read_uid(reader, attempts=2):
             if stat == reader.OK:
                 uid = "".join("{:02x}".format(x) for x in raw_uid)
                 break
-        sleep(0.01)
     reader.reset()
     reader.halt_a()
     reader.stop_crypto1()
@@ -173,6 +172,38 @@ def check_answers(uid1, uid2, uid3):
         print("Certaines réponses sont incorrectes.")
     return all_ok
 
+def assign_cards(reader):
+    global assignments
+
+    # Si la variable globale n'existe pas ou était vide, on l'initialise
+    try:
+        assignments
+    except NameError:
+        assignments = {"lieux": {}, "couleurs": {}, "émotions": {}}
+
+    # … listes lieux/couleurs/émotions comme avant …
+
+    def assign_keyword(category, word):
+        print(f"Assignez '{word}' (catégorie {category})")
+        uid = None
+        while uid is None:
+            uid = read_uid(reader, attempts=3)
+            sleep(0.1)
+        assignments[category][word] = uid
+        print(f" → {word} → {uid}")
+
+    # Boucle d’assignation
+    for mot in lieux:
+        assign_keyword("lieux", mot)
+    for mot in couleurs:
+        assign_keyword("couleurs", mot)
+    for mot in emotions:
+        assign_keyword("émotions", mot)
+
+    # Une fois terminé, on renvoie tout au serveur
+    result = client.set_config({"assignments": assignments})
+    print("Serveur a répondu:", result)
+
 async def async_main():
     global client, config, current_set, attempt_count, last_uid1, last_uid2, last_uid3
 
@@ -200,15 +231,31 @@ async def async_main():
         "uid3": None,
         "current_set": current_set
     })
+    
+    assignments = config.get("assignments", {"lieux": {}, "couleurs": {}, "émotions": {}})
+    print("Assignations chargées depuis le serveur :", assignments)
 
     print("Async setup done. Entering main loop.")
+
+    # Exemple dans main():
+    # mode = input("Tapez 'a' pour assigner, 'r' pour lire : ").strip().lower()
+    mode = 'r'
+    if mode == 'a':
+        assign_cards(rdr1)  # on n'utilise qu'un seul lecteur pour l'assignation
+        print("Assignations terminées. Redémarrage…")
+
 
     # Main loop: poll RFID constantly, handle button presses
     while True:
         # 4a) Always keep UI updated: read each tag once
-        uid1 = read_uid(rdr1, attempts=1)
-        uid2 = read_uid(rdr2, attempts=1)
-        uid3 = read_uid(rdr3, attempts=1)
+        rdr1.init()
+        rdr2.init()
+        rdr3.init()
+        
+        # read UIDs from each reader
+        uid1 = read_uid(rdr1, attempts=2)
+        uid2 = read_uid(rdr2, attempts=2)
+        uid3 = read_uid(rdr3, attempts=2)
         
         print(f"UIDs: {uid1}, {uid2}, {uid3}")
 

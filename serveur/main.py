@@ -3,7 +3,7 @@ import json
 import os
 from typing import Dict
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Body
 from fastapi.responses import HTMLResponse, JSONResponse
 
 app = FastAPI()
@@ -41,6 +41,20 @@ async def get_config(module: int = None):
     except Exception as e:
         raise HTTPException(status_code=500,
                             detail=f"Erreur lecture configurations: {e}")
+
+
+@app.post("/config")
+async def set_config(module: int, config: dict = Body(...)):
+    """
+    Reçoit un JSON 'config' et l'écrit dans le fichier module{module}.json.
+    """
+    file_path = os.path.join(CONFIG_DIR, f"module{module}.json")
+    try:
+        with open(file_path, "w") as f:
+            json.dump(config, f, ensure_ascii=False, indent=2)
+        return {"status": "ok"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur écriture fichier: {e}")
 
 @app.get("/history")
 async def get_history():  # TODO historisation future
