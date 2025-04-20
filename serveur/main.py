@@ -3,7 +3,8 @@ import json
 import os
 from typing import Dict
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Body
+from fastapi import (Body, FastAPI, HTTPException, Query, WebSocket,
+                     WebSocketDisconnect)
 from fastapi.responses import HTMLResponse, JSONResponse
 
 app = FastAPI()
@@ -44,17 +45,39 @@ async def get_config(module: int = None):
 
 
 @app.post("/config")
-async def set_config(module: int, config: dict = Body(...)):
+async def update_config(
+    module: int = Query(..., description="ID du module à configurer"),
+    payload: dict = Body(..., description="Clés à mettre à jour dans la config")
+):
     """
-    Reçoit un JSON 'config' et l'écrit dans le fichier module{module}.json.
+    Met à jour partiellement le fichier de config module{module}.json
+    en écrasant uniquement les clés présentes dans `payload`.
     """
     file_path = os.path.join(CONFIG_DIR, f"module{module}.json")
+    if not os.path.isdir(CONFIG_DIR):
+        os.makedirs(CONFIG_DIR)
+
+    # Charger la config existante (ou créer un dict vide)
+    if os.path.exists(file_path):
+        try:
+            with open(file_path, "r") as f:
+                config = json.load(f)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Erreur lecture config: {e}")
+    else:
+        config = {}
+
+    # Fusionner : n'écrase que les clés fournies
+    config.update(payload)
+
+    # Sauvegarder
     try:
         with open(file_path, "w") as f:
             json.dump(config, f, ensure_ascii=False, indent=2)
-        return {"status": "ok"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erreur écriture fichier: {e}")
+        raise HTTPException(status_code=500, detail=f"Erreur écriture config: {e}")
+
+    return JSONResponse(status_code=200, content={"config": config})
 
 @app.get("/history")
 async def get_history():  # TODO historisation future

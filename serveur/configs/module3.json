@@ -16,6 +16,44 @@
             "emotion": "uidset3_emotion"
         }
     ],
+    "wanted_assignments": {
+        "lieux": [
+            "Ville",
+            "Campagne",
+            "Jardin",
+            "Rivière",
+            "Restaurant",
+            "Marché",
+            "Océan",
+            "Montagne",
+            "Maison",
+            "Atelier"
+        ],
+        "couleurs": [
+            "Bleu",
+            "Vert",
+            "Gris",
+            "Jaune",
+            "Rouge",
+            "Rose",
+            "Orange",
+            "Marron",
+            "Violet",
+            "Beige"
+        ],
+        "émotions": [
+            "Curiosité",
+            "Calme",
+            "Monotonie",
+            "joie",
+            "tristesse",
+            "colère",
+            "amour",
+            "fatigue",
+            "Motivation",
+            "Dégoût"
+        ]
+    },
     "assignments": {
         "lieux": {
             "Restaurant": "88047a8f79",

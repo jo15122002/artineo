@@ -172,37 +172,56 @@ def check_answers(uid1, uid2, uid3):
         print("Certaines réponses sont incorrectes.")
     return all_ok
 
-def assign_cards(reader):
-    global assignments
+async def assign_cards(reader):
+    """
+    Fonction d'assignation des cartes aux mots-clés.
+    Lit dans `config["wanted_assignments"]` un dict de la forme :
+      {
+        "lieux":    ["Ville", "Campagne", …],
+        "couleurs": ["Bleu", "Vert", …],
+        "émotions": ["joie", "tristesse", …]
+      }
+    Pour chaque catégorie et pour chaque mot, attend la pose d’une carte,
+    récupère son UID via read_uid(), et enregistre dans assignments.json
+    ET met à jour le serveur via set_config().
+    """
+    # Récupérer la structure à assigner
+    wanted = config.get("wanted_assignments", {})
+    if not wanted:
+        print("⚠️ Pas de clé 'wanted_assignments' dans la config !")
+        return
 
-    # Si la variable globale n'existe pas ou était vide, on l'initialise
+    # Charger les assignations existantes
     try:
-        assignments
-    except NameError:
-        assignments = {"lieux": {}, "couleurs": {}, "émotions": {}}
+        with open("assignments.json", "r") as f:
+            assignments = ujson.load(f)
+    except OSError:
+        assignments = {cat: {} for cat in wanted}
+        print("Création d'un nouveau fichier assignments.json")
 
-    # … listes lieux/couleurs/émotions comme avant …
+    # Pour chaque catégorie et mot
+    for category, mots in wanted.items():
+        # s'assurer que la catégorie existe
+        assignments.setdefault(category, {})
+        for mot in mots:
+            print("----")
+            print(f"Assignez une carte pour '{mot}' ({category})")
+            uid = None
+            while uid is None:
+                uid = read_uid(reader, attempts=3)
+                sleep(0.1)
+            # on stocke
+            assignments[category][mot] = uid
+            # écriture locale
+            # with open("assignments.json", "w") as f:
+            #     ujson.dump(assignments, f)
+            print(f"✅ {category} – {mot} → {uid}")
+            # et on pousse aussitôt dans la config côté serveur
+            config["assignments"] = assignments
+            await client.set_config(config)
+            sleep(0.5)
 
-    def assign_keyword(category, word):
-        print(f"Assignez '{word}' (catégorie {category})")
-        uid = None
-        while uid is None:
-            uid = read_uid(reader, attempts=3)
-            sleep(0.1)
-        assignments[category][word] = uid
-        print(f" → {word} → {uid}")
-
-    # Boucle d’assignation
-    for mot in lieux:
-        assign_keyword("lieux", mot)
-    for mot in couleurs:
-        assign_keyword("couleurs", mot)
-    for mot in emotions:
-        assign_keyword("émotions", mot)
-
-    # Une fois terminé, on renvoie tout au serveur
-    result = client.set_config({"assignments": assignments})
-    print("Serveur a répondu:", result)
+    print("🎉 Toutes les assignations souhaitées ont été faites.")
 
 async def async_main():
     global client, config, current_set, attempt_count, last_uid1, last_uid2, last_uid3
@@ -241,7 +260,7 @@ async def async_main():
     # mode = input("Tapez 'a' pour assigner, 'r' pour lire : ").strip().lower()
     mode = 'r'
     if mode == 'a':
-        assign_cards(rdr1)  # on n'utilise qu'un seul lecteur pour l'assignation
+        await assign_cards(rdr1)  # on n'utilise qu'un seul lecteur pour l'assignation
         print("Assignations terminées. Redémarrage…")
 
 
