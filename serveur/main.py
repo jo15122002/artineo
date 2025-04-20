@@ -14,6 +14,9 @@ app = FastAPI()
 
 CONFIG_DIR = "configs"
 
+# buffer global (un dict par module_id)
+buffer: Dict[int, dict] = {1: {}, 2: {}, 3: {}, 4: {}}
+
 @app.get("/config")
 async def get_config(module: int = None):
     if module is not None:
@@ -28,7 +31,6 @@ async def get_config(module: int = None):
         else:
             raise HTTPException(status_code=404,
                                 detail="Fichier de config introuvable")
-    # pas de module spécifié : retourne toutes les config
     all_configs = {}
     try:
         for name in os.listdir(CONFIG_DIR):
@@ -41,9 +43,9 @@ async def get_config(module: int = None):
                             detail=f"Erreur lecture configurations: {e}")
 
 @app.get("/history")
-async def get_history(): #TODO later on fera de l'historisation
-    # stub pour l’historique
+async def get_history():  # TODO historisation future
     return {"historique": []}
+
 
 # --------------------------------------------------
 # Gestion des connexions WebSocket
@@ -51,27 +53,21 @@ async def get_history(): #TODO later on fera de l'historisation
 
 class ConnectionManager:
     def __init__(self):
-        # map module_id -> websocket
         self.active: Dict[int, WebSocket] = {}
-        # map module_id -> last pong reçu (bool)
         self._last_pong: Dict[int, bool] = {}
 
     async def connect(self, ws: WebSocket):
         await ws.accept()
 
     def register(self, module_id: int, ws: WebSocket):
-        # enregistre / met à jour le ws pour ce module
         self.active[module_id] = ws
 
     def disconnect(self, ws: WebSocket):
-        # supprime toute entrée pointant vers ce ws
-        to_remove = [mid for mid, socket in self.active.items()
-                     if socket is ws]
+        to_remove = [mid for mid, socket in self.active.items() if socket is ws]
         for mid in to_remove:
             del self.active[mid]
 
     def clear_pongs(self):
-        # initialise à False pour tous les modules connus
         for mid in self.active.keys():
             self._last_pong[mid] = False
 
@@ -79,12 +75,10 @@ class ConnectionManager:
         self._last_pong[module_id] = True
 
     async def broadcast_ping(self):
-        # envoie "ping" à tous les ws
         for ws in list(self.active.values()):
             try:
                 await ws.send_text("ping")
             except:
-                # ignore les erreurs d’envoi
                 pass
 
 manager = ConnectionManager()
@@ -96,25 +90,47 @@ async def websocket_endpoint(ws: WebSocket):
         while True:
             raw = await ws.receive_text()
 
-            # essaie de parser du JSON pour identifier le module
+            # Tentative de parsing JSON
             try:
                 msg = json.loads(raw)
                 module_id = msg.get("module")
+                action = msg.get("action")
+                # Enregistrement de la connexion si module_id valide
                 if isinstance(module_id, int):
                     manager.register(module_id, ws)
-                # acknowledgement JSON
+
+                # --- traitement du buffer ---
+                # set_buffer
+                if action == "set" and "buffer" in msg:
+                    buffer[module_id] = msg["buffer"]
+                    await ws.send_text(json.dumps({
+                        "status": "ok",
+                        "action": "set_buffer",
+                        "module": module_id
+                    }))
+                    continue
+
+                # get_buffer
+                if action == "get":
+                    buf = buffer.get(module_id, {})
+                    await ws.send_text(json.dumps({
+                        "action": "get_buffer",
+                        "module": module_id,
+                        "buffer": buf
+                    }))
+                    continue
+
+                # Ack pour tout autre JSON
                 await ws.send_text(f"ACK:{json.dumps(msg)}")
                 continue
+
             except json.JSONDecodeError:
                 pass
 
             # message brut
             if raw == "ping":
-                # si client envoie un ping, on répond pong
                 await ws.send_text("pong")
             elif raw == "pong":
-                # enregistre le pong pour ce module
-                # on identifie le module via le mapping actif
                 entry = [(mid, socket) for mid, socket in manager.active.items()
                          if socket is ws]
                 if entry:
@@ -133,22 +149,16 @@ async def websocket_endpoint(ws: WebSocket):
 
 @app.get("/hc")
 async def health_check():
-    """
-    Envoie 'ping' à tous les modules connectés et
-    attend 1 seconde, puis renvoie pour chacun un statut alive/dead.
-    """
     manager.clear_pongs()
-    # envoi des pings
     await manager.broadcast_ping()
-    # temps pour laisser les clients répondre
     await asyncio.sleep(1)
 
-    # construit le résultat
     statuses = {
         module_id: ("alive" if manager._last_pong.get(module_id) else "dead")
         for module_id in manager.active.keys()
     }
     return JSONResponse(content={"modules": statuses})
+
 
 # --------------------------------------------------
 # Page de test WebSocket (ne pas modifier)
@@ -157,27 +167,60 @@ async def health_check():
 html = """
 <!DOCTYPE html>
 <html>
-    <head>
-        <title>Test WebSocket</title>
-    </head>
+    <head><title>Test WebSocket</title></head>
     <body>
-        <h1>Test de connexion WebSocket</h1>
-        <input id="messageInput" type="text" placeholder="Tapez un message..."/>
-        <button onclick="sendMessage()">Envoyer</button>
-        <ul id="messages">
-        </ul>
+        <h1>WebSocket Test</h1>
+        <div>
+            <h2>Envoyer un message brut</h2>
+            <input id="inp" type="text" placeholder="message..."/>
+            <button onclick="send()">Envoyer</button>
+        </div>
+        <div>
+            <h2>Récupérer un buffer</h2>
+            <label for="moduleInput">Module ID : </label>
+            <input id="moduleInput" type="number" value="1" min="1"/>
+            <button onclick="getBuffer()">Get Buffer</button>
+        </div>
+        <h2>Logs</h2>
+        <ul id="out"></ul>
+        <h2>Buffers reçus</h2>
+        <ul id="bufferList"></ul>
         <script>
             const ws = new WebSocket("ws://192.168.0.180:8000/ws");
-            ws.onmessage = function(event) {
-                const messages = document.getElementById('messages');
-                let message = document.createElement('li');
-                message.textContent = event.data;
-                messages.appendChild(message);
+            ws.onmessage = e => {
+                const data = e.data;
+                // Essaie de parser en JSON
+                try {
+                    const obj = JSON.parse(data);
+                    // Si c'est la réponse à get_buffer
+                    if (obj.action === "get_buffer") {
+                        const bufList = document.getElementById("bufferList");
+                        const li = document.createElement("li");
+                        li.textContent = `Module ${obj.module} buffer : ${JSON.stringify(obj.buffer)}`;
+                        bufList.appendChild(li);
+                        return;
+                    }
+                } catch(_) {
+                    // not JSON or autre action
+                }
+                // Log normal
+                const li = document.createElement("li");
+                li.textContent = data;
+                document.getElementById("out").append(li);
             };
-            function sendMessage() {
-                const input = document.getElementById("messageInput");
-                ws.send(input.value);
-                input.value = "";
+            function send() {
+                const v = document.getElementById("inp").value;
+                ws.send(v);
+                document.getElementById("inp").value = "";
+            }
+            function getBuffer() {
+                const moduleId = parseInt(document.getElementById("moduleInput").value) || 0;
+                const msg = JSON.stringify({
+                    module: moduleId,
+                    action: "get",
+                    request: "buffer"
+                });
+                ws.send(msg);
             }
         </script>
     </body>
