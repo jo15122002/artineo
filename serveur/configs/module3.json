@@ -1,3 +1,19 @@
 {
-    
+    "answers": [
+        {
+            "lieu": "8804eaa5c3",
+            "couleur": "8804d091cd",
+            "emotion": "8804fa8cfa"
+        },
+        {
+            "lieu": "uidset2_lieu",
+            "couleur": "uidset2_couleur",
+            "emotion": "uidset2_emotion"
+        },
+        {
+            "lieu": "uidset3_lieu",
+            "couleur": "uidset3_couleur",
+            "emotion": "uidset3_emotion"
+        }
+    ]
 }

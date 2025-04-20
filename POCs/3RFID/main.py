@@ -1,4 +1,7 @@
+# main.py
+
 import neopixel
+import uasyncio as asyncio
 import ujson
 from machine import SPI, Pin
 from utime import sleep, ticks_diff, ticks_ms
@@ -6,84 +9,76 @@ from utime import sleep, ticks_diff, ticks_ms
 import mfrc522
 from ArtineoClient import ArtineoClient
 
-# Variable globale d'intensité (0 = LED éteintes, 1 = intensité maximale)
-intensity = 0.1
-COOLDOWN_SECONDS = 2  # Cooldown entre deux essais
+# Constants
+INTENSITY = 0.1             # 0 = off, 1 = full brightness
+COOLDOWN_SECONDS = 2        # seconds between attempts
+MAX_ATTEMPTS = 3            # attempts per set
+
+# Globals
+rdr1 = rdr2 = rdr3 = None
+led1 = led2 = led3 = None
+button = None
+
+button_pressed = False
+current_set = 1
+attempt_count = 0
+last_uid1 = last_uid2 = last_uid3 = None
+
+client = None
+config = {}
 
 def scale_color(color):
     """
-    Applique l'intensité à une couleur.
-    color est une tuple (r, g, b) avec des valeurs comprises entre 0 et 255.
-    Retourne une nouvelle tuple avec chaque composante multipliée par intensity.
+    Scale an (r,g,b) tuple by INTENSITY.
     """
-    return (int(color[0] * intensity), int(color[1] * intensity), int(color[2] * intensity))
-
-# Flag global pour l'appui du bouton
-button_pressed = False
+    return (
+        int(color[0] * INTENSITY),
+        int(color[1] * INTENSITY),
+        int(color[2] * INTENSITY),
+    )
 
 def button_irq_handler(pin):
+    """
+    IRQ handler: set the global flag when the button is pressed.
+    """
     global button_pressed
-    # Dès que le bouton est appuyé (front descendant), définir le flag.
     button_pressed = True
 
-def setup():
+def setup_hardware():
+    """
+    Synchronous hardware initialization:
+      - SPI + three MFRC522 readers
+      - WS2812 LEDs
+      - button with IRQ
+    """
     global rdr1, rdr2, rdr3, led1, led2, led3, button
-    global last_uid1, last_uid2, last_uid3
-    global expected_uid1, expected_uid2, expected_uid3
-    global client, config
 
-    print("Setup...")
-    # Configuration SPI pour l'ESP32 (adaptation selon votre câblage)
-    spi = SPI(2, baudrate=2500000, polarity=0, phase=0,
+    # SPI bus on VSPI (SPI(2)), pins may be adjusted
+    spi = SPI(2, baudrate=2_500_000, polarity=0, phase=0,
               sck=Pin(12), mosi=Pin(23), miso=Pin(13))
     spi.init()
-    
-    # Initialisation des trois lecteurs RFID
-    rdr1 = mfrc522.MFRC522(spi=spi, gpioRst=4, gpioCs=5)
+
+    # RFID readers
+    rdr1 = mfrc522.MFRC522(spi=spi, gpioRst=4,  gpioCs=5)
     rdr2 = mfrc522.MFRC522(spi=spi, gpioRst=16, gpioCs=17)
     rdr3 = mfrc522.MFRC522(spi=spi, gpioRst=25, gpioCs=26)
-    
-    # Initialiser et réinitialiser les modules
-    rdr1.init()
-    rdr2.init()
-    rdr3.init()
-    print("Lecteurs RFID initialisés.")
-    
-    # Facultatif : ajuster le gain (ici à 0x07, maximum)
-    rdr1.set_gain(0x07)
-    rdr2.set_gain(0x07)
-    rdr3.set_gain(0x07)
-    print("Gain ajusté.")
-    
-    # Initialisation des LED WS2812b pour chaque lecteur RFID
+    for rdr in (rdr1, rdr2, rdr3):
+        rdr.init()
+        rdr.set_gain(rdr.MAX_GAIN)
+
+    # WS2812 LEDs
     led1 = neopixel.NeoPixel(Pin(15), 1)
     led2 = neopixel.NeoPixel(Pin(18), 1)
     led3 = neopixel.NeoPixel(Pin(19), 1)
     for led in (led1, led2, led3):
         led[0] = (0, 0, 0)
         led.write()
-    
-    # Configuration du bouton sur le GPIO14 en mode pull-up.
+
+    # Button on GPIO14, pull-up, falling edge IRQ
     button = Pin(14, Pin.IN, Pin.PULL_UP)
     button.irq(trigger=Pin.IRQ_FALLING, handler=button_irq_handler)
 
-    client = ArtineoClient(module_id=3)
-    client.connect_ws()
-    print("Connecté au serveur WebSocket.")
-    config = client.fetch_config()
-    print("Configuration récupérée:", config)
-    
-    # Variables pour stocker les UID lus par chaque lecteur (en string)
-    last_uid1 = None
-    last_uid2 = None
-    last_uid3 = None
-    
-    # UID attendus par défaut (utilisés ici pour tests initiaux)
-    expected_uid1 = "8804eaa5c3"
-    expected_uid2 = "8804d091cd"
-    expected_uid3 = "8804fa8cfa"
-    
-    print("Placez une carte RFID et appuyez sur le bouton pour lancer la lecture ou l'assignation.")
+    print("Hardware setup complete.")
 
 def read_uid(reader, attempts=2):
     """
@@ -94,6 +89,7 @@ def read_uid(reader, attempts=2):
     :param attempts: Nombre d'essais à effectuer.
     :return: L'UID lu sous forme de chaîne hexadécimale ou None si aucune lecture n'a réussi.
     """
+    reader.init()
     uid = None
     for _ in range(attempts):
         stat, tag_type = reader.request(reader.REQIDL)
@@ -108,217 +104,158 @@ def read_uid(reader, attempts=2):
     reader.stop_crypto1()
     return uid
 
-def get_answers(number):
+def get_answers():
     """
-    Renvoie le dictionnaire des réponses correctes correspondant au numéro donné.
-    Permet ainsi de sélectionner différents sets de réponses.
-    
-    :param number: Numéro du set de réponses.
-    :return: Dictionnaire avec les clés "lieu", "couleur" et "emotion".
+    Return the correct-answer dict for the current_set from `config`.
     """
-    answers = {
-        1: {"lieu": "8804eaa5c3", "couleur": "8804d091cd", "emotion": "8804fa8cfa"},
-        2: {"lieu": "uidset2_lieu", "couleur": "uidset2_couleur", "emotion": "uidset2_emotion"}
-    }
-    return answers.get(number, answers[1])
+    # assume config["answers"] is a list of dicts
+    answers = config.get("answers", [])
+    # wrap-around or fallback to first set
+    idx = (current_set - 1) % len(answers) if answers else 0
+    return answers[idx]
 
-def check_answers(uid_lieu, uid_couleur, uid_emotion, answer_set=1):
+def check_answers(uid1, uid2, uid3):
     """
-    Vérifie si les UID fournis correspondent aux réponses correctes pour un set donné.
-    Utilise get_answers(answer_set) pour récupérer le dictionnaire des réponses correctes.
-    Met à jour les LED (led1, led2, led3) en appliquant l'intensité.
-    
-    - Si aucune carte n'est détectée → LED orange.
-    - Si l'UID est correct → LED verte.
-    - Sinon → LED rouge.
-    
-    Affiche également les messages correspondants.
-    
-    :param uid_lieu: UID du "lieu" (lecteur 1).
-    :param uid_couleur: UID de la "couleur" (lecteur 2).
-    :param uid_emotion: UID de l'"emotion" (lecteur 3).
-    :param answer_set: Numéro du set de réponses à utiliser.
-    :return: True si toutes les réponses sont correctes, sinon False.
+    Compare the three UIDs to the correct answers for current_set,
+    update led1/led2/led3 accordingly, and return True iff all correct.
     """
-    correct = get_answers(answer_set)
-    all_correct = True
+    correct = get_answers()
+    print(f"Set #{current_set}:", correct)
+    print("UIDs:", uid1, uid2, uid3)
+    print("correct:", correct["lieu"], correct["couleur"], correct["emotion"])
+    all_ok = True
 
-    # Vérification du lieu via led1
-    if uid_lieu is None:
-        led1[0] = scale_color((255, 165, 0))  # Orange
-        print("Lecteur 1 : Aucune carte détectée")
-        all_correct = False
-    elif uid_lieu.lower().strip() == correct["lieu"].lower().strip():
-        led1[0] = scale_color((0, 255, 0))    # Vert
-        print("Lecteur 1 : UID correct")
+    # Lieu (reader 1)
+    if uid1 is None:
+        led1[0] = scale_color((255, 165, 0))
+        print("Lecteur 1: aucune carte")
+        all_ok = False
+    elif uid1 == correct["lieu"]:
+        led1[0] = scale_color((0, 255, 0))
+        print("Lecteur 1: correct")
     else:
-        led1[0] = scale_color((255, 0, 0))    # Rouge
-        print("Lecteur 1 : UID incorrect (attendu: {}, reçu: {})".format(correct["lieu"], uid_lieu))
-        all_correct = False
+        led1[0] = scale_color((255, 0, 0))
+        print(f"Lecteur 1: incorrect (attendu {correct['lieu']}, reçu {uid1})")
+        all_ok = False
     led1.write()
-    
-    # Vérification de la couleur via led2
-    if uid_couleur is None:
+
+    # Couleur (reader 2)
+    if uid2 is None:
         led2[0] = scale_color((255, 165, 0))
-        print("Lecteur 2 : Aucune carte détectée")
-        all_correct = False
-    elif uid_couleur.lower().strip() == correct["couleur"].lower().strip():
+        print("Lecteur 2: aucune carte")
+        all_ok = False
+    elif uid2 == correct["couleur"]:
         led2[0] = scale_color((0, 255, 0))
-        print("Lecteur 2 : UID correct")
+        print("Lecteur 2: correct")
     else:
         led2[0] = scale_color((255, 0, 0))
-        print("Lecteur 2 : UID incorrect (attendu: {}, reçu: {})".format(correct["couleur"], uid_couleur))
-        all_correct = False
+        print(f"Lecteur 2: incorrect (attendu {correct['couleur']}, reçu {uid2})")
+        all_ok = False
     led2.write()
-    
-    # Vérification de l'émotion via led3
-    if uid_emotion is None:
+
+    # Émotion (reader 3)
+    if uid3 is None:
         led3[0] = scale_color((255, 165, 0))
-        print("Lecteur 3 : Aucune carte détectée")
-        all_correct = False
-    elif uid_emotion.lower().strip() == correct["emotion"].lower().strip():
+        print("Lecteur 3: aucune carte")
+        all_ok = False
+    elif uid3 == correct["emotion"]:
         led3[0] = scale_color((0, 255, 0))
-        print("Lecteur 3 : UID correct")
+        print("Lecteur 3: correct")
     else:
         led3[0] = scale_color((255, 0, 0))
-        print("Lecteur 3 : UID incorrect (attendu: {}, reçu: {})".format(correct["emotion"], uid_emotion))
-        all_correct = False
+        print(f"Lecteur 3: incorrect (attendu {correct['emotion']}, reçu {uid3})")
+        all_ok = False
     led3.write()
-    
-    if all_correct:
+
+    if all_ok:
         print("Toutes les réponses sont correctes!")
     else:
         print("Certaines réponses sont incorrectes.")
-    
-    return all_correct
+    return all_ok
 
-def assign_cards(reader):
-    """
-    Fonction d'assignation des cartes aux mots-clés.
-    Pour chaque mot dans chaque catégorie ("lieux", "couleurs", "émotions"),
-    le programme attend que l'utilisateur place une carte RFID pour récupérer son UID,
-    puis stocke l'association dans le fichier JSON "assignments.json".
-    """
-    assignments = {"lieux": {}, "couleurs": {}, "émotions": {}}
-    
-    # Charger les assignations existantes si le fichier existe
-    try:
-        with open("assignments.json", "r") as f:
-            assignments = ujson.load(f)
-            print("Assignations existantes chargées :", assignments)
-    except Exception as e:
-        print("Aucun fichier d'assignation existant, création d'un nouveau.")
-    
-    # Listes de mots-clés à assigner par catégorie
-    lieux = ["Ville", "Campagne", "Jardin", "Rivière", "Restaurant", "Marché", "Océan", "Montagne", "Maison", "Atelier"]
-    couleurs = ["Bleu", "Vert", "Gris", "Jaune", "Rouge", "Rose", "Orange", "Marron", "Violet", "Beige"]
-    emotions = ["Curiosité", "Calme", "Monotonie", "joie", "tristesse", "colère", "amour", "fatigue", "Motivation", "Dégoût"]
-    
-    def assign_keyword(category, word):
-        print("----")
-        print("Pour la catégorie '{}', assignez le mot '{}'".format(category, word))
-        uid = None
-        print("Placez une carte RFID sur le lecteur pour assigner '{}'".format(word))
-        while uid is None:
-            uid = read_uid(reader, attempts=3)
-            sleep(0.1)
-        assignments[category][word] = uid
-        with open("assignments.json", "w") as f:
-            ujson.dump(assignments, f)
-        print("Assignation enregistrée: {} -> {}".format(word, uid))
-        sleep(1)
-    
-    print("Début de l'assignation des cartes aux mots-clés")
-    for word in lieux:
-        assign_keyword("lieux", word)
-    for word in couleurs:
-        assign_keyword("couleurs", word)
-    for word in emotions:
-        assign_keyword("émotions", word)
-    print("Fin de l'assignation.")
+async def async_main():
+    global client, config, current_set, attempt_count, last_uid1, last_uid2, last_uid3
 
-def main():
-    global last_uid1, last_uid2, last_uid3, button_pressed
-    global expected_uid1, expected_uid2, expected_uid3
-    global client, config
-    setup()
-    
-    # Gestion du mode : 'a' pour assignation, 'r' pour lecture et vérification
-    mode = "r"  # Par défaut, mode lecture. (Décommentez la ligne suivante pour interactivité)
-    # mode = input("Tapez 'a' pour assigner les cartes aux mots-clés ou 'r' pour lire les tags et vérifier les réponses : ").strip().lower()
-    if mode.lower() == 'a':
-        print("Mode assignation activé. Utilisation de rdr1 pour l'assignation...")
-        assign_cards(rdr1)
-        print("Assignation terminée. Redémarrage du programme...")
-    
-    # Initialisation de la logique des sets de réponses et du nombre d'essais
-    board_index = 1
-    attempt_count = 0
-    MAX_ATTEMPTS = 3  # 3 essais par set
-    
-    print("Mode lecture activé. Vous avez {} essais par set de réponses.".format(MAX_ATTEMPTS))
-    print("Appuyez sur le bouton pour lancer une tentative.")
+    # 1) Hardware init
+    setup_hardware()
 
-    uid1 = None
-    uid2 = None
-    uid3 = None
-    
+    # 2) Create ArtineoClient & WebSocket
+    client = ArtineoClient(module_id=3, host="192.168.0.180", port=8000, ssid="Bob_bricolo", password="bobbricolo")
+    ws = await client.connect_ws()
+    if ws is None:
+        print("⚠️ Aucune WS, on utilisera la configuration locale par défaut.")
+        config = {}
+    else:
+        print("Connecté au serveur WebSocket.")
+        try:
+            config = client.fetch_config()
+        except OSError as e:
+            print("⚠️ Impossible de récupérer la config:", e)
+            config = {}
+
+    # 4) Push initial empty buffer
+    await client.set_buffer({
+        "uid1": None,
+        "uid2": None,
+        "uid3": None,
+        "current_set": current_set
+    })
+
+    print("Async setup done. Entering main loop.")
+
+    # Main loop: poll RFID constantly, handle button presses
     while True:
-
-        uid1 = read_uid(rdr1, attempts=3)
-        uid2 = read_uid(rdr2, attempts=3)
-        uid3 = read_uid(rdr3, attempts=3)
-
-        if (uid1 != last_uid1 or
-            uid2 != last_uid2 or
-            uid3 != last_uid3):
-            last_uid1 = uid1
-            last_uid2 = uid2
-            last_uid3 = uid3
-
-            client.send_ws(ujson.dumps({
-                "moduleNum": 3,
-                "action": "set",
-                "data" : {
-                    "uid1": uid1,
-                    "uid2": uid2,
-                    "uid3": uid3
-                }
-            }))
+        # 4a) Always keep UI updated: read each tag once
+        uid1 = read_uid(rdr1, attempts=1)
+        uid2 = read_uid(rdr2, attempts=1)
+        uid3 = read_uid(rdr3, attempts=1)
         
+        print(f"UIDs: {uid1}, {uid2}, {uid3}")
+
+        # If UIDs changed, send update
+        if (uid1, uid2, uid3) != (last_uid1, last_uid2, last_uid3):
+            last_uid1, last_uid2, last_uid3 = uid1, uid2, uid3
+            await client.set_buffer({
+                "uid1": uid1,
+                "uid2": uid2,
+                "uid3": uid3,
+                "current_set": current_set
+            })
+            print("UIDs updated:", uid1, uid2, uid3)
+
+        # 4b) On button press, evaluate answers
         if button_pressed:
-            button_pressed = False
-            start_time = ticks_ms()
-            
-            print("Bouton appuyé, tentative {} pour le set {}.".format(attempt_count+1, board_index))
-            # Vérification des réponses avec le set correspondant
-            correct = check_answers(last_uid1, last_uid2, last_uid3, answer_set=board_index)
-            
+            # reset flag
+            globals()['button_pressed'] = False
+
+            start = ticks_ms()
+            print(f"Tentative {attempt_count+1} pour set #{current_set}")
+
+            correct = check_answers(uid1, uid2, uid3)
             attempt_count += 1
+
+            # advance set if correct or max attempts reached
             if correct or attempt_count >= MAX_ATTEMPTS:
                 if correct:
-                    print("Bonne réponse obtenue après {} essai(s).".format(attempt_count))
+                    print(f"Réussi en {attempt_count} essai(s).")
                 else:
-                    print("Maximum d'essais atteint. Passage au set suivant.")
-                board_index += 1
+                    print("Max essais atteint, passage au set suivant.")
+                current_set += 1
                 attempt_count = 0
-                # Vous pouvez ici afficher le nouveau set de réponses attendu pour l'utilisateur
-                new_answers = get_answers(board_index)
-                print("Nouveau set de réponses sélectionné:", new_answers)
-            
-            # Cooldown entre essais
-            print("Cooldown de {} secondes...".format(COOLDOWN_SECONDS))
-            sleep(COOLDOWN_SECONDS)
-            
-            # Afficher le temps écoulé
-            elapsed = ticks_diff(ticks_ms(), start_time)
-            print("Temps écoulé pour cet essai : {} ms".format(elapsed))
-            
-        sleep(0.05)
+                print("Nouveau set:", get_answers())
+
+            # cooldown
+            print(f"Cooldown {COOLDOWN_SECONDS}s…")
+            await asyncio.sleep(COOLDOWN_SECONDS)
+
+            elapsed = ticks_diff(ticks_ms(), start)
+            print(f"Temps essai: {elapsed} ms")
+
+        # short sleep to yield
+        await asyncio.sleep_ms(50)
 
 if __name__ == "__main__":
-    print("Démarrage du programme...")
     try:
-        main()
+        asyncio.run(async_main())
     except KeyboardInterrupt:
         print("Arrêt du programme")
