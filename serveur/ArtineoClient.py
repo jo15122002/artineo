@@ -108,6 +108,29 @@ if MICROPY:
                     msg = raw
                 if self._handler:
                     self._handler(msg)
+                    
+        async def set_buffer(self, buffer_data):
+            """
+            Envoie le buffer (quel que soit son format JSON-serializable)
+            au serveur pour mise à jour.
+            """
+            msg = {
+                "module": self.module_id,
+                "action": ArtineoAction.SET.value,
+                "buffer": buffer_data
+            }
+            return await self.send_ws_json(msg)
+
+        async def get_buffer(self):
+            """
+            Demande au serveur le buffer associé à ce module.
+            """
+            msg = {
+                "module": self.module_id,
+                "action": ArtineoAction.GET.value,
+                "request": "buffer"
+            }
+            return await self.send_ws_json(msg)
 
         async def close_ws(self):
             if self.ws:
@@ -185,6 +208,30 @@ else:
         def start_listening(self):
             if not self._listen_task:
                 self._listen_task = asyncio.create_task(self._listen_loop())
+
+        async def set_buffer(self, buffer_data) -> dict:
+            """
+            Envoie le buffer au serveur pour mise à jour.
+            buffer_data peut être n'importe quel objet JSON-serializable.
+            Retourne la réponse du serveur sous forme de dict.
+            """
+            msg = {
+                "module": self.module_id,
+                "action": ArtineoAction.SET.value,
+                "buffer": buffer_data
+            }
+            return await self.send_ws_json(msg)
+
+        async def get_buffer(self) -> dict:
+            """
+            Récupère le buffer sur le serveur pour ce module.
+            Retourne le buffer sous forme de dict (ou autre format défini).
+            """
+            msg = {
+                "module": self.module_id,
+                "action": ArtineoAction.GET.value
+            }
+            return await self.send_ws_json(msg)
 
         async def close_ws(self):
             if self.ws and not self.ws.closed:
