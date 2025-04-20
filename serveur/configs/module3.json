@@ -1,3 +1,95 @@
 {
-    
+    "answers": [
+        {
+            "lieu": "8804eaa5c3",
+            "couleur": "8804d091cd",
+            "emotion": "8804fa8cfa"
+        },
+        {
+            "lieu": "uidset2_lieu",
+            "couleur": "uidset2_couleur",
+            "emotion": "uidset2_emotion"
+        },
+        {
+            "lieu": "uidset3_lieu",
+            "couleur": "uidset3_couleur",
+            "emotion": "uidset3_emotion"
+        }
+    ],
+    "wanted_assignments": {
+        "lieux": [
+            "Ville",
+            "Campagne",
+            "Jardin",
+            "Rivière",
+            "Restaurant",
+            "Marché",
+            "Océan",
+            "Montagne",
+            "Maison",
+            "Atelier"
+        ],
+        "couleurs": [
+            "Bleu",
+            "Vert",
+            "Gris",
+            "Jaune",
+            "Rouge",
+            "Rose",
+            "Orange",
+            "Marron",
+            "Violet",
+            "Beige"
+        ],
+        "émotions": [
+            "Curiosité",
+            "Calme",
+            "Monotonie",
+            "joie",
+            "tristesse",
+            "colère",
+            "amour",
+            "fatigue",
+            "Motivation",
+            "Dégoût"
+        ]
+    },
+    "assignments": {
+        "lieux": {
+            "Restaurant": "88047a8f79",
+            "Bord de mer": "880449eb2e",
+            "Montagne": "880424973f",
+            "Rivière": "8804afffdc",
+            "Campagne": "8804f3abd4",
+            "Maison": "8804090b8e",
+            "Atelier": "8804dda2f3",
+            "Jardin": "8804eaa5c3",
+            "Marché": "880461a548",
+            "Ville": "880449a762"
+        },
+        "couleurs": {
+            "Jaune": "880416af35",
+            "Violet": "88048aa4a2",
+            "Vert": "8804d091cd",
+            "Beige": "880434843c",
+            "Gris": "880429d075",
+            "Bleu": "8804b099a5",
+            "Rose": "88040ce262",
+            "Rouge": "8804f78af1",
+            "Marron": "880480f4f8",
+            "Orange": "8804198f1a"
+        },
+        "émotions": {
+            "Dégoût": "880417b02b",
+            "colère": "8804dfd98a",
+            "fatigue": "88044e9250",
+            "amour": "88044bad6a",
+            "joie": "88043d8637",
+            "Curiosité": "880425b41d",
+            "Monotonie": "880453d50a",
+            "Calme": "8804fa8cfa",
+            "Motivation": "8804e49cf4",
+            "tristesse": "880444a46c"
+        }
+    }
 }
