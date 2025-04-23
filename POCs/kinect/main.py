@@ -1,12 +1,104 @@
 import cv2
 import numpy as np
 from dependencies.pykinect2 import PyKinectRuntime, PyKinectV2
+import os
+import glob
 
 # --- Paramètres de la Région d'Intérêt (ROI) ---
 ROI_X0, ROI_Y0 = 160, 130
 ROI_X1, ROI_Y1 = 410, 300
 ROI_WIDTH = ROI_X1 - ROI_X0   # 250 pixels
 ROI_HEIGHT = ROI_Y1 - ROI_Y0  # 170 pixels
+
+TEMPLATE_DIR = "images/templates/"
+
+# Méthode de comparaison choisie :
+# - pour matchShapes : utilisez cv2.matchShapes
+# - pour Hu moments + KNN : on construira un simple KNN
+USE_MATCHSHAPES = False
+
+template_contours = {}
+overlays = {}
+
+for filepath in glob.glob(os.path.join(TEMPLATE_DIR, "*.png")):
+    name = os.path.splitext(os.path.basename(filepath))[0]  # e.g. "moulin"
+    img = cv2.imread(filepath, cv2.IMREAD_GRAYSCALE)
+    # Binarisation : noir (0) = contour, blanc (255) = fond
+    _, thresh = cv2.threshold(img, 128, 255, cv2.THRESH_BINARY_INV)
+    # Extraction des contours
+    cnts, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    # On prend le plus grand contour (en aire)
+    cnt = max(cnts, key=cv2.contourArea)
+    template_contours[name] = cnt
+
+for name, cnt in template_contours.items():
+    path = os.path.join(TEMPLATE_DIR, f"{name}.png")
+    # IMREAD_UNCHANGED pour charger le canal alpha si présent
+    img = cv2.imread(path, cv2.IMREAD_UNCHANGED)
+    if img is None:
+        raise FileNotFoundError(f"Overlay introuvable : {path}")
+    overlays[name] = img  # img.shape = (h, w, 4)
+
+def classify_contour(cnt):
+    """
+    Retourne le nom du template le plus proche de cnt.
+    """
+    best_score = float("inf")
+    best_name  = None
+
+    if USE_MATCHSHAPES:
+        # Méthode cv2.matchShapes
+        for name, template_cnt in template_contours.items():
+            score = cv2.matchShapes(cnt, template_cnt,
+                                    cv2.CONTOURS_MATCH_I1, 0.0)
+            if score < best_score:
+                best_score, best_name = score, name
+    else:
+        # Méthode Hu moments + KNN (ici, un 1-Nearest-Neighbor très basique)
+        hu_cnt = cv2.HuMoments(cv2.moments(cnt)).flatten()
+        for name, template_cnt in template_contours.items():
+            hu_temp = cv2.HuMoments(cv2.moments(template_cnt)).flatten()
+            score = np.linalg.norm(hu_cnt - hu_temp)
+            if score < best_score:
+                best_score, best_name = score, name
+
+    return best_name
+
+def overlay_png(canvas, overlay, center_x, center_y, scale=1.0):
+    """
+    Superpose `overlay` (RGBA) sur `canvas` (BGR) centré en (center_x, center_y).
+    scale permet d'agrandir/réduire l'overlay.
+    """
+    # 1) Redimensionner l'overlay si besoin
+    h0, w0 = overlay.shape[:2]
+    if scale != 1.0:
+        overlay = cv2.resize(overlay, (int(w0*scale), int(h0*scale)), interpolation=cv2.INTER_AREA)
+    h, w = overlay.shape[:2]
+
+    # 2) Calculer les coordonnées du ROI sur le canvas
+    x0 = int(center_x - w//2)
+    y0 = int(center_y - h//2)
+    x1, y1 = x0 + w, y0 + h
+
+    # 3) Vérifier limites
+    if x0 < 0 or y0 < 0 or x1 > canvas.shape[1] or y1 > canvas.shape[0]:
+        # découper l'overlay et ajuster le ROI
+        x0_c = max(0, -x0);   y0_c = max(0, -y0)
+        x1_c = min(w, canvas.shape[1] - x0)
+        y1_c = min(h, canvas.shape[0] - y0)
+        overlay = overlay[y0_c:y1_c, x0_c:x1_c]
+        x0, y0 = max(0, x0), max(0, y0)
+        h, w = overlay.shape[:2]
+
+    # 4) Séparer BGR et Alpha
+    bgr    = overlay[..., :3].astype(float)
+    alpha  = overlay[..., 3:] / 255.0  # normalisé [0,1]
+    inv_a  = 1.0 - alpha
+
+    # 5) Mélanger sur le canvas
+    roi = canvas[y0:y0+h, x0:x0+w].astype(float)
+    blended = roi * inv_a + bgr * alpha
+    canvas[y0:y0+h, x0:x0+w] = blended.astype(np.uint8)
 
 # Facteur de mise à l'échelle pour l'affichage dans les fenêtres
 display_scale = 2  # vous pourrez ainsi voir une image agrandie (250x170 devient 500x340)
@@ -68,9 +160,9 @@ alpha = 0.3             # Coefficient de lissage pour la mise à jour des dessin
 brush_scale_factor = 1.2
 
 # --- Chargement du brush personnalisé ---
-brush = cv2.imread("brush3.png", cv2.IMREAD_GRAYSCALE)
+brush = cv2.imread("images/brushes/brush3.png", cv2.IMREAD_GRAYSCALE)
 if brush is None:
-    print("Erreur : Fichier brush introuvable à l'emplacement 'brush3.png'")
+    print("Erreur : Fichier brush introuvable à l'emplacement 'images/brushes/brush3.png'")
     exit(1)
 brush = brush.astype(np.float32) / 255.0  # Normalisation
 
@@ -83,10 +175,11 @@ def resize_brush(base_brush, size):
 window_names = [
     "Mapped Depth", 
     "Depth frame", 
-    "Colored Drawing", 
+    # "Colored Drawing", 
     "Binary Mask Debug", 
-    "Brushed Result Debug", 
-    "Distance Map Debug"
+    # "Brushed Result Debug", 
+    "Distance Map Debug",
+    "Mask Objects"
 ]
 for name in window_names:
     cv2.namedWindow(name, cv2.WINDOW_NORMAL)
@@ -105,6 +198,36 @@ def process_depth_frame(current_frame):
     diff = current_frame.astype(np.int32) - base_frame.astype(np.int32)
     mapped = 128 + (diff * scale)
     mapped = np.clip(mapped, 0, 255).astype(np.uint8)
+    show_image("Mapped Depth", mapped)
+
+    _, mask_objects = cv2.threshold(mapped, 95, 255, cv2.THRESH_BINARY_INV)
+    kernel = np.ones((5,5), np.uint8)
+    mask_objects = cv2.morphologyEx(mask_objects, cv2.MORPH_OPEN, kernel, iterations=2)
+    mask_objects = cv2.morphologyEx(mask_objects, cv2.MORPH_CLOSE, kernel, iterations=2)
+    contours_objs, _ = cv2.findContours(mask_objects, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    cv2.imshow("Mask Objects", mask_objects)
+
+    detections = []
+    min_area_obj = 500
+
+    for cnt in contours_objs:
+        area = cv2.contourArea(cnt)
+        if area < min_area_obj:
+            continue
+
+        # Calcul du centroïde
+        M = cv2.moments(cnt)
+        if M["m00"] == 0: 
+            continue
+        cx = int(M["m10"]/M["m00"])
+        cy = int(M["m01"]/M["m00"])
+
+        # Classification de la forme (fonction classify_contour déjà définie)
+        shape_name = classify_contour(cnt)
+        print(f"Objet détecté : {shape_name} à ({cx}, {cy})")
+        detections.append((shape_name, cx, cy))
+
     
     # Création d'une image colorée pour l'outil actif
     color_channel = tool_color_channel[current_tool]
@@ -130,7 +253,8 @@ def process_depth_frame(current_frame):
 # --- Rendu des dessins finaux ---
 def render_final_drawings():
     """Affiche pour chaque outil son dessin final sur fond blanc."""
-    for tool in ['1', '2', '3']:
+    # for tool in ['1', '2', '3']:
+    for tool in ['1']:
         fd = cv2.convertScaleAbs(final_drawings[tool])
         white_bg = np.full(fd.shape, 255, dtype=np.uint8)
         channel = tool_color_channel[tool]
@@ -237,21 +361,21 @@ def process_brush_strokes():
                 brushed[y_start:y_end, x_start:x_end] = blended.astype(np.uint8)
             except Exception as e:
                 print(f"Erreur brush : {str(e)}")
-    
+
     brushed = cv2.medianBlur(brushed, 5)
     if 0 <= mouse_y < ROI_HEIGHT and 0 <= mouse_x < ROI_WIDTH:
         dist_val = dist_map[mouse_y, mouse_x]
         text = f"Distance: {dist_val:.2f}mm | Pos: ({mouse_x},{mouse_y})"
         cv2.putText(dist_display, text, (10, 30),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.3, (255,255,0), 2)
-    
-    upscale_factor = 2
-    upscaled_brushed = cv2.resize(brushed, (brushed.shape[1] * upscale_factor, brushed.shape[0] * upscale_factor), interpolation=cv2.INTER_CUBIC)
-    cv2.imshow("Brushed Result Upscaled", upscaled_brushed)
+
+    # upscale_factor = 2
+    # upscaled_brushed = cv2.resize(brushed, (brushed.shape[1] * upscale_factor, brushed.shape[0] * upscale_factor), interpolation=cv2.INTER_CUBIC)
+    # cv2.imshow("Brushed Result Upscaled", upscaled_brushed)
     show_image("Brushed Result Debug", brushed)
     show_image("Binary Mask Debug", binary)
     show_image("Distance Map Debug", dist_display)
-    show_image("Composite Drawing", composite_img)
+    # show_image("Composite Drawing", composite_img)
 
 # --- Boucle principale ---
 while True:
