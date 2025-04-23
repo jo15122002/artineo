@@ -4,7 +4,7 @@ export default defineNuxtConfig({
   devtools: { enabled: true },
   runtimeConfig: {
     public: {
-      apiBase: process.env.ARTINEO_HOST || '192.168.0.180',
+      apiUrl: process.env.ARTINEO_HOST || '192.168.0.180',
       apiPort: process.env.ARTINEO_PORT || '8000',
     },
   }
