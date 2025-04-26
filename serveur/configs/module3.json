@@ -57,7 +57,7 @@
     "assignments": {
         "lieux": {
             "Restaurant": "88047a8f79",
-            "Bord de mer": "880449eb2e",
+            "Océan": "880449eb2e",
             "Montagne": "880424973f",
             "Rivière": "8804afffdc",
             "Campagne": "8804f3abd4",
@@ -65,7 +65,8 @@
             "Atelier": "8804dda2f3",
             "Jardin": "8804eaa5c3",
             "Marché": "880461a548",
-            "Ville": "880449a762"
+            "Ville": "880449a762",
+            "TestLieux": "533e9cd524"
         },
         "couleurs": {
             "Jaune": "880416af35",
