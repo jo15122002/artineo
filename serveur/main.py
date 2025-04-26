@@ -5,10 +5,20 @@ from typing import Dict
 
 from fastapi import (Body, FastAPI, HTTPException, Query, WebSocket,
                      WebSocketDisconnect)
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 
 app = FastAPI()
 
+# Autoriser les requêtes CORS (Cross-Origin Resource Sharing)
+# pour permettre aux clients d'accéder à l'API depuis d'autres origines
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 # --------------------------------------------------
 # Configuration des endpoints REST existants
 # --------------------------------------------------
