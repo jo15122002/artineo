@@ -160,6 +160,7 @@ async def websocket_endpoint(ws: WebSocket):
                 # get_buffer
                 if action == "get":
                     buf = buffer.get(module_id, {})
+                    # Envoi du buffer au client
                     await ws.send_text(json.dumps({
                         "action": "get_buffer",
                         "module": module_id,
