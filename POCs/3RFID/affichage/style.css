@@ -1,3 +1,8 @@
+@font-face {
+    font-family: "CheeseSauce";
+    src: url(./assets/Cheese-Sauce.woff2);
+}
+
 html, body { margin:0; padding:0; height:100%; }
 body {
     /* Chemin vers votre fond */
@@ -20,6 +25,7 @@ body {
     text-align: center;
     pointer-events: none;
     bottom: 0%;
+    font-family: "CheeseSauce", sans-serif;
 }
 /* Ajustez ces positions (et chemins vers vos SVG) */
 #blob1 {
