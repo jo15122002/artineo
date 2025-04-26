@@ -3,6 +3,7 @@ import numpy as np
 from dependencies.pykinect2 import PyKinectRuntime, PyKinectV2
 import os
 import glob
+import math
 
 # --- Paramètres de la Région d'Intérêt (ROI) ---
 ROI_X0, ROI_Y0 = 160, 130
@@ -15,10 +16,15 @@ TEMPLATE_DIR = "images/templates/"
 # Méthode de comparaison choisie :
 # - pour matchShapes : utilisez cv2.matchShapes
 # - pour Hu moments + KNN : on construira un simple KNN
-USE_MATCHSHAPES = False
+USE_MATCHSHAPES = True
+AREA_THRESHOLD = 2000 
+
+frame_idx = 0
 
 template_contours = {}
+template_sizes = {}
 overlays = {}
+clusters = []
 
 for filepath in glob.glob(os.path.join(TEMPLATE_DIR, "*.png")):
     name = os.path.splitext(os.path.basename(filepath))[0]  # e.g. "moulin"
@@ -31,13 +37,43 @@ for filepath in glob.glob(os.path.join(TEMPLATE_DIR, "*.png")):
     cnt = max(cnts, key=cv2.contourArea)
     template_contours[name] = cnt
 
+    x_t, y_t, w_t, h_t = cv2.boundingRect(cnt)
+    template_sizes[name] = (w_t, h_t)
+
+    template_areas = {
+        name: cv2.contourArea(cnt)
+        for name, cnt in template_contours.items()
+    }
+
+forme_templates = {name:cnt for name, cnt in template_contours.items() if name.startswith("Forme_")}
+fond_templates = {name:cnt for name, cnt in template_contours.items() if name.startswith("Fond_")}
+
 for name, cnt in template_contours.items():
     path = os.path.join(TEMPLATE_DIR, f"{name}.png")
     # IMREAD_UNCHANGED pour charger le canal alpha si présent
     img = cv2.imread(path, cv2.IMREAD_UNCHANGED)
     if img is None:
         raise FileNotFoundError(f"Overlay introuvable : {path}")
-    overlays[name] = img  # img.shape = (h, w, 4)
+    
+    if img.shape[2] == 4:
+        mask = img[...,3] > 0
+    else:
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        _, mask = cv2.threshold(gray, 254, 255, cv2.THRESH_BINARY_INV)
+        mask = mask.astype(bool)
+
+    # 3) Trouve l'encadrant du masque
+    ys, xs = np.where(mask)
+    y0, y1 = ys.min(), ys.max()
+    x0, x1 = xs.min(), xs.max()
+
+    # 4) Coupe l'image pour ne garder que la partie utile
+    sprite = img[y0:y1+1, x0:x1+1].copy()
+
+    # 5) Sauvegarde
+    overlays[name] = sprite
+    h_s, w_s = sprite.shape[:2]
+    template_sizes[name] = (w_s, h_s)
 
 def classify_contour(cnt):
     """
@@ -46,9 +82,16 @@ def classify_contour(cnt):
     best_score = float("inf")
     best_name  = None
 
+    area = cv2.contourArea(cnt)
+
+    if area < AREA_THRESHOLD:
+        candidates = forme_templates
+    else:
+        candidates = fond_templates
+
     if USE_MATCHSHAPES:
         # Méthode cv2.matchShapes
-        for name, template_cnt in template_contours.items():
+        for name, template_cnt in candidates.items():
             score = cv2.matchShapes(cnt, template_cnt,
                                     cv2.CONTOURS_MATCH_I1, 0.0)
             if score < best_score:
@@ -56,7 +99,7 @@ def classify_contour(cnt):
     else:
         # Méthode Hu moments + KNN (ici, un 1-Nearest-Neighbor très basique)
         hu_cnt = cv2.HuMoments(cv2.moments(cnt)).flatten()
-        for name, template_cnt in template_contours.items():
+        for name, template_cnt in candidates.items():
             hu_temp = cv2.HuMoments(cv2.moments(template_cnt)).flatten()
             score = np.linalg.norm(hu_cnt - hu_temp)
             if score < best_score:
@@ -66,39 +109,106 @@ def classify_contour(cnt):
 
 def overlay_png(canvas, overlay, center_x, center_y, scale=1.0):
     """
-    Superpose `overlay` (RGBA) sur `canvas` (BGR) centré en (center_x, center_y).
-    scale permet d'agrandir/réduire l'overlay.
+    Superpose `overlay` sur `canvas`. Gère :
+      - overlay en niveau de gris (2D)
+      - overlay Gray+Alpha (2 canaux)
+      - overlay BGR (3 canaux)
+      - overlay BGRA (4 canaux)
+    Le blanc pur (255) est considéré transparent si pas de canal alpha.
     """
-    # 1) Redimensionner l'overlay si besoin
+    # 1) Redimension si besoin
     h0, w0 = overlay.shape[:2]
     if scale != 1.0:
-        overlay = cv2.resize(overlay, (int(w0*scale), int(h0*scale)), interpolation=cv2.INTER_AREA)
+        new_w = int(w0 * scale)
+        new_h = int(h0 * scale)
+        overlay = cv2.resize(overlay, (new_w, new_h), interpolation=cv2.INTER_AREA)
     h, w = overlay.shape[:2]
 
-    # 2) Calculer les coordonnées du ROI sur le canvas
-    x0 = int(center_x - w//2)
-    y0 = int(center_y - h//2)
+    # 2) Détermination du ROI sur canvas
+    x0 = int(center_x - w//2);   y0 = int(center_y - h//2)
     x1, y1 = x0 + w, y0 + h
 
-    # 3) Vérifier limites
-    if x0 < 0 or y0 < 0 or x1 > canvas.shape[1] or y1 > canvas.shape[0]:
-        # découper l'overlay et ajuster le ROI
-        x0_c = max(0, -x0);   y0_c = max(0, -y0)
-        x1_c = min(w, canvas.shape[1] - x0)
-        y1_c = min(h, canvas.shape[0] - y0)
-        overlay = overlay[y0_c:y1_c, x0_c:x1_c]
-        x0, y0 = max(0, x0), max(0, y0)
-        h, w = overlay.shape[:2]
+    # 3) Recadrage si hors-limites
+    ox0 = max(0, -x0); oy0 = max(0, -y0)
+    x0_clamped = max(0, x0);    y0_clamped = max(0, y0)
+    x1_clamped = min(canvas.shape[1], x1)
+    y1_clamped = min(canvas.shape[0], y1)
+    overlay = overlay[oy0 : oy0 + (y1_clamped - y0_clamped),
+                      ox0 : ox0 + (x1_clamped - x0_clamped)]
+    h, w = overlay.shape[:2]
 
-    # 4) Séparer BGR et Alpha
-    bgr    = overlay[..., :3].astype(float)
-    alpha  = overlay[..., 3:] / 255.0  # normalisé [0,1]
-    inv_a  = 1.0 - alpha
+    # 4) Préparer bgr et alpha selon le nombre de canaux
+    if overlay.ndim == 2:
+        # Grayscale seul
+        bgr   = cv2.cvtColor(overlay, cv2.COLOR_GRAY2BGR).astype(float)
+        # tout ce qui est blanc (255) -> alpha=0, sinon alpha=1
+        _, a = cv2.threshold(overlay, 254, 255, cv2.THRESH_BINARY_INV)
+        alpha = (a.astype(float) / 255.0)[..., None]
 
-    # 5) Mélanger sur le canvas
-    roi = canvas[y0:y0+h, x0:x0+w].astype(float)
+    elif overlay.ndim == 3 and overlay.shape[2] == 2:
+        # Gray + Alpha
+        gray  = overlay[..., 0]
+        a     = overlay[..., 1]
+        bgr   = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR).astype(float)
+        alpha = (a.astype(float) / 255.0)[..., None]
+
+    elif overlay.ndim == 3 and overlay.shape[2] == 3:
+        # BGR sans alpha
+        bgr   = overlay.astype(float)
+        # blanc => transparent
+        gray  = cv2.cvtColor(overlay, cv2.COLOR_BGR2GRAY)
+        _, a = cv2.threshold(gray, 254, 255, cv2.THRESH_BINARY_INV)
+        alpha = (a.astype(float) / 255.0)[..., None]
+
+    elif overlay.ndim == 3 and overlay.shape[2] == 4:
+        # BGRA
+        bgr   = overlay[..., :3].astype(float)
+        alpha = (overlay[..., 3].astype(float) / 255.0)[..., None]
+
+    else:
+        raise ValueError(f"Overlay de forme inattendue : {overlay.shape}")
+
+    # 5) Blending
+    inv_a = 1.0 - alpha
+    roi   = canvas[y0_clamped:y0_clamped+h, x0_clamped:x0_clamped+w].astype(float)
     blended = roi * inv_a + bgr * alpha
-    canvas[y0:y0+h, x0:x0+w] = blended.astype(np.uint8)
+    canvas[y0_clamped:y0_clamped+h, x0_clamped:x0_clamped+w] = blended.astype(np.uint8)
+
+
+def update_clusters(detections, max_history=10, tol=3):
+    global clusters, frame_idx
+    for shape, cx, cy, area, angle, w, h in detections:
+        matched = False
+        for cl in clusters:
+            if cl['shape']==shape \
+               and abs(cx - cl['centroid'][0]) <= tol \
+               and abs(cy - cl['centroid'][1]) <= tol:
+                # on met à jour le cluster existant…
+                cl['points'].append((cx, cy, area, angle, w, h))
+                # on garde max_history
+                if len(cl['points']) > max_history:
+                    cl['points'].pop(0)
+                # recalculs (centroid, avg_area, avg_angle, avg_w, avg_h) comme avant…
+                cl['last_seen'] = frame_idx    # <-- on note quand on l’a vu
+                matched = True
+                break
+        if not matched:
+            # création d’un nouveau cluster
+            clusters.append({
+                'shape': shape,
+                'points': [(cx, cy, area, angle, w, h)],
+                'centroid': (cx, cy),
+                'avg_area': area,
+                'avg_angle': angle,
+                'avg_w': w,
+                'avg_h': h,
+                'sprite': None,
+                'sprite_params': (0.0, 0.0),
+                'last_seen': frame_idx       # <-- initialisé à la frame courante
+            })
+    # **Après** avoir mis à jour tous les clusters, on supprime les stale :
+    # on ne conserve que ceux vus dans les 10 dernières frames
+    clusters[:] = [cl for cl in clusters if frame_idx - cl['last_seen'] <= 10]
 
 # Facteur de mise à l'échelle pour l'affichage dans les fenêtres
 display_scale = 2  # vous pourrez ainsi voir une image agrandie (250x170 devient 500x340)
@@ -201,15 +311,15 @@ def process_depth_frame(current_frame):
     show_image("Mapped Depth", mapped)
 
     _, mask_objects = cv2.threshold(mapped, 95, 255, cv2.THRESH_BINARY_INV)
-    kernel = np.ones((5,5), np.uint8)
-    mask_objects = cv2.morphologyEx(mask_objects, cv2.MORPH_OPEN, kernel, iterations=2)
-    mask_objects = cv2.morphologyEx(mask_objects, cv2.MORPH_CLOSE, kernel, iterations=2)
+    kernel = np.ones((2,2), np.uint8)
+    mask_objects = cv2.morphologyEx(mask_objects, cv2.MORPH_OPEN, kernel, iterations=1)
+    mask_objects = cv2.morphologyEx(mask_objects, cv2.MORPH_CLOSE, kernel, iterations=1)
     contours_objs, _ = cv2.findContours(mask_objects, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
     cv2.imshow("Mask Objects", mask_objects)
 
     detections = []
-    min_area_obj = 500
+    min_area_obj = 300
 
     for cnt in contours_objs:
         area = cv2.contourArea(cnt)
@@ -222,13 +332,18 @@ def process_depth_frame(current_frame):
             continue
         cx = int(M["m10"]/M["m00"])
         cy = int(M["m01"]/M["m00"])
+        rect = cv2.minAreaRect(cnt)  
+        angle = rect[2]
+
+        _, _, w_d, h_d = cv2.boundingRect(cnt)
 
         # Classification de la forme (fonction classify_contour déjà définie)
         shape_name = classify_contour(cnt)
         print(f"Objet détecté : {shape_name} à ({cx}, {cy})")
-        detections.append((shape_name, cx, cy))
-
+        detections.append((shape_name, cx, cy, area, angle, w_d, h_d))
     
+    update_clusters(detections)
+
     # Création d'une image colorée pour l'outil actif
     color_channel = tool_color_channel[current_tool]
     colored_frame = np.zeros((ROI_HEIGHT, ROI_WIDTH, 3), dtype=np.uint8)
@@ -369,6 +484,64 @@ def process_brush_strokes():
         cv2.putText(dist_display, text, (10, 30),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.3, (255,255,0), 2)
 
+    for cl in clusters:
+        if len(cl['points']) < 10:
+            continue
+
+        name      = cl['shape']
+        cx, cy    = map(int, cl['centroid'])
+        avg_area  = cl['avg_area']
+
+        # Filtrer si la zone est déraisonnable (ex : votre main)
+        if avg_area > ROI_WIDTH*ROI_HEIGHT*0.5:
+            continue
+
+        w_t, h_t = template_sizes[name]
+        scale_x = cl['avg_w'] / w_t
+        scale_y = cl['avg_h'] / h_t
+        scale   = (scale_x + scale_y) / 2.0
+        # scale   = max(0.5, min(2.0, scale))
+
+        # Préparer ou récupérer le sprite mis à l'échelle+rotaté
+        prev_scale, prev_angle = cl['sprite_params']
+        if cl['sprite'] is None or abs(scale-prev_scale)>0.1 or abs(prev_angle-cl['sprite_params'][1])>5:
+            orig = overlays[name]
+            w0, h0 = orig.shape[1], orig.shape[0]
+            w1, h1 = int(w0*scale), int(h0*scale)
+            # redimension
+            sprite = cv2.resize(orig, (w1,h1), interpolation=cv2.INTER_AREA)
+            # rotation
+            M = cv2.getRotationMatrix2D((w1/2,h1/2), cl['avg_angle'], 1.0)
+            sprite = cv2.warpAffine(sprite, M, (w1,h1),
+                                    flags=cv2.INTER_AREA,
+                                    borderMode=cv2.BORDER_TRANSPARENT)
+            cl['sprite'] = sprite
+            cl['sprite_params'] = (scale, cl['avg_angle'])
+
+        # Blitter binaire (pas de floats)
+        sprite = cl['sprite']
+        h, w = sprite.shape[:2]
+        x0, y0 = cx - w//2, cy - h//2
+        x1, y1 = x0 + w, y0 + h
+        ox0 = max(0, -x0); oy0 = max(0, -y0)
+        x0 = max(0, x0);   y0 = max(0, y0)
+        x1 = min(brushed.shape[1], x1)
+        y1 = min(brushed.shape[0], y1)
+        sprite_roi = sprite[oy0:oy0+(y1-y0), ox0:ox0+(x1-x0)]
+        # masque
+        if sprite_roi.shape[2]==4:
+            mask = sprite_roi[...,3] > 0
+            fg   = sprite_roi[...,:3]
+        else:
+            gray = cv2.cvtColor(sprite_roi, cv2.COLOR_BGR2GRAY)
+            _, mask = cv2.threshold(gray, 254, 255, cv2.THRESH_BINARY_INV)
+            mask = mask.astype(bool)
+            fg = sprite_roi
+        # fusion rapide
+        dest = brushed[y0:y1, x0:x1]
+        dest[mask] = fg[mask]
+
+
     # upscale_factor = 2
     # upscaled_brushed = cv2.resize(brushed, (brushed.shape[1] * upscale_factor, brushed.shape[0] * upscale_factor), interpolation=cv2.INTER_CUBIC)
     # cv2.imshow("Brushed Result Upscaled", upscaled_brushed)
@@ -379,6 +552,7 @@ def process_brush_strokes():
 
 # --- Boucle principale ---
 while True:
+    frame_idx += 1
     if kinect.has_new_depth_frame():
         depth_frame = kinect.get_last_depth_frame()
         full_frame = depth_frame.reshape((424, 512)).astype(np.uint16)
