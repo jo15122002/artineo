@@ -148,8 +148,8 @@ async def websocket_endpoint(ws: WebSocket):
 
                 # --- traitement du buffer ---
                 # set_buffer
-                if action == "set" and "buffer" in msg:
-                    buffer[module_id] = msg["buffer"]
+                if action == "set" and "data" in msg:
+                    buffer[module_id] = msg["data"]
                     await ws.send_text(json.dumps({
                         "status": "ok",
                         "action": "set_buffer",
@@ -159,7 +159,7 @@ async def websocket_endpoint(ws: WebSocket):
 
                 # get_buffer
                 if action == "get":
-                    buf = buffer.get(module_id, {})
+                    buf = buffer[module_id]
                     # Envoi du buffer au client
                     await ws.send_text(json.dumps({
                         "action": "get_buffer",
