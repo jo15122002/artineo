@@ -1,5 +1,6 @@
 import asyncio
 import json
+import mimetypes
 import os
 from typing import Dict
 
@@ -103,15 +104,35 @@ async def get_history():
         media_type="application/json; charset=utf-8"
     )
     
-@app.get("/background")
-async def get_background(module: int, set: int):
+@app.get("/getAsset")
+async def get_asset(
+    module: int = Query(..., description="Numéro du module"),
+    path: str  = Query(..., description="Chemin relatif vers l'asset dans le dossier du module")
+):
     """
-    Renvoie le PNG de fond pour le module et le set demandés.
+    Renvoie le fichier situé dans assets/module{module}/{path}
+    Exemples d'appel :
+      GET /getAsset?module=3&path=1.png
+      GET /getAsset?module=3&path=blob1.svg
     """
-    path = os.path.join("assets", f"act{module}/background", f"tableau{set}.png")
-    if not os.path.isfile(path):
-        raise HTTPException(404, "Background not found")
-    return FileResponse(path, media_type="image/png")
+    # 1. On définit le répertoire de base pour ce module
+    base_dir = os.path.abspath(os.path.join("assets", f"module{module}"))
+    # 2. On normalise le chemin fourni
+    normalized = os.path.normpath(path)
+    full_path = os.path.abspath(os.path.join(base_dir, normalized))
+
+    # 3. Sécurité : on vérifie que full_path est bien dans base_dir
+    if not full_path.startswith(base_dir + os.sep):
+        raise HTTPException(400, "Chemin invalide")
+
+    # 4. Vérifie que le fichier existe
+    if not os.path.isfile(full_path):
+        raise HTTPException(404, "Asset non trouvé")
+
+    # 5. Détermine le media_type automatiquement
+    media_type, _ = mimetypes.guess_type(full_path)
+
+    return FileResponse(full_path, media_type=media_type)
 
 # --------------------------------------------------
 # Gestion des connexions WebSocket
