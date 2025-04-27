@@ -289,6 +289,7 @@ async def async_main():
                 "button_pressed": button_pressed
             })
             print("UIDs updated:", uid1, uid2, uid3, current_set, button_pressed)
+            
 
         # 4b) On button press, evaluate answers
         if button_pressed:
@@ -321,6 +322,14 @@ async def async_main():
             # cooldown
             print(f"Cooldown {COOLDOWN_SECONDS}s…")
             await asyncio.sleep(COOLDOWN_SECONDS)
+            
+            await client.set_buffer({
+                "uid1": uid1,
+                "uid2": uid2,
+                "uid3": uid3,
+                "current_set": current_set,
+                "button_pressed": button_pressed
+            })
 
             elapsed = ticks_diff(ticks_ms(), start)
             print(f"Temps essai: {elapsed} ms")
