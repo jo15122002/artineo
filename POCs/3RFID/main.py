@@ -323,6 +323,7 @@ async def async_main():
             print(f"Cooldown {COOLDOWN_SECONDS}s…")
             await asyncio.sleep(COOLDOWN_SECONDS)
             
+            #reset buffer
             await client.set_buffer({
                 "uid1": uid1,
                 "uid2": uid2,
