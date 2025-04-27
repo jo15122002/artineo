@@ -3,11 +3,11 @@ import json
 import os
 from typing import Dict
 
-from fastapi import (
-    Body, FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
-)
+from fastapi import (Body, FastAPI, HTTPException, Query, WebSocket,
+                     WebSocketDisconnect)
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 app = FastAPI()
 
@@ -16,6 +16,12 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], allow_credentials=True,
     allow_methods=["*"], allow_headers=["*"],
+)
+
+app.mount(
+    "/assets",
+    StaticFiles(directory="assets"),
+    name="assets"
 )
 
 # --------------------------------------------------
@@ -96,6 +102,16 @@ async def get_history():
         content={"historique": []},
         media_type="application/json; charset=utf-8"
     )
+    
+@app.get("/background")
+async def get_background(module: int, set: int):
+    """
+    Renvoie le PNG de fond pour le module et le set demandés.
+    """
+    path = os.path.join("assets", f"act{module}/background", f"tableau{set}.png")
+    if not os.path.isfile(path):
+        raise HTTPException(404, "Background not found")
+    return FileResponse(path, media_type="image/png")
 
 # --------------------------------------------------
 # Gestion des connexions WebSocket
@@ -183,7 +199,6 @@ async def websocket_endpoint(ws: WebSocket):
 
     except WebSocketDisconnect:
         manager.disconnect(ws)
-
 # --------------------------------------------------
 # Health check étendu
 # --------------------------------------------------
