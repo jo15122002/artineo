@@ -1,0 +1,53 @@
+@font-face {
+    font-family: "CheeseSauce";
+    src: url(./assets/Cheese-Sauce.woff2) format("woff2");
+}
+
+html, body { margin:0; padding:0; height:100%; }
+body {
+    /* Votre fond plein-écran */
+    background: no-repeat center center;
+    background-size: cover;
+    position: relative;
+    font-family: 'Comic Sans MS', cursive, sans-serif;
+}
+
+.blob {
+    position: absolute;
+    width: 200px;
+    height: 140px;
+    /* on supprime background-image */
+    background-color: white;       /* on coloriera via JS */
+    mask-repeat: no-repeat;
+    mask-position: center;
+    mask-size: contain;
+    -webkit-mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+    -webkit-mask-size: contain;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #333;
+    font-size: 1.2em;
+    text-align: center;
+    pointer-events: none;
+    bottom: 0;
+    font-family: "CheeseSauce", sans-serif;
+  }
+  
+  #blob1 {
+    left: 10%;
+    mask-image: url('./assets/blob1.svg');
+    -webkit-mask-image: url('./assets/blob1.svg');
+  }
+  #blob2 {
+    left: 40%;
+    mask-image: url('./assets/blob2.svg');
+    -webkit-mask-image: url('./assets/blob2.svg');
+  }
+  #blob3 {
+    left: 70%;
+    mask-image: url('./assets/blob3.svg');
+    -webkit-mask-image: url('./assets/blob3.svg');
+  }
+  

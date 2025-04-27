@@ -224,7 +224,7 @@ async def assign_cards(reader):
     print("🎉 Toutes les assignations souhaitées ont été faites.")
 
 async def async_main():
-    global client, config, current_set, attempt_count, last_uid1, last_uid2, last_uid3
+    global client, config, current_set, attempt_count, last_uid1, last_uid2, last_uid3, button_pressed
 
     # 1) Hardware init
     setup_hardware()
@@ -285,14 +285,23 @@ async def async_main():
                 "uid1": uid1,
                 "uid2": uid2,
                 "uid3": uid3,
-                "current_set": current_set
+                "current_set": current_set,
+                "button_pressed": button_pressed
             })
-            print("UIDs updated:", uid1, uid2, uid3)
+            print("UIDs updated:", uid1, uid2, uid3, current_set, button_pressed)
+            
 
         # 4b) On button press, evaluate answers
         if button_pressed:
+            await client.set_buffer({
+                "uid1": uid1,
+                "uid2": uid2,
+                "uid3": uid3,
+                "current_set": current_set,
+                "button_pressed": button_pressed
+            })
             # reset flag
-            globals()['button_pressed'] = False
+            button_pressed = False
 
             start = ticks_ms()
             print(f"Tentative {attempt_count+1} pour set #{current_set}")
@@ -313,6 +322,15 @@ async def async_main():
             # cooldown
             print(f"Cooldown {COOLDOWN_SECONDS}s…")
             await asyncio.sleep(COOLDOWN_SECONDS)
+            
+            #reset buffer
+            await client.set_buffer({
+                "uid1": uid1,
+                "uid2": uid2,
+                "uid3": uid3,
+                "current_set": current_set,
+                "button_pressed": button_pressed
+            })
 
             elapsed = ticks_diff(ticks_ms(), start)
             print(f"Temps essai: {elapsed} ms")
