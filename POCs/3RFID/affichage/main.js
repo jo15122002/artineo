@@ -115,25 +115,34 @@ function updateBlobs(buf) {
  * 5️⃣ Coloration des blobs en recolorant les SVG de fond
  */
 function highlightBlobs(buf) {
-    const setIdx = (buf.current_set || 1) - 1;
+    if (buf.button_pressed == true) {
+        const setIdx = (buf.current_set || 1) - 1;
 
-    ['blob1', 'blob2', 'blob3'].forEach((id, i) => {
-        const el = document.getElementById(id);
-        const uid = buf[`uid${i + 1}`];
-        const key = i === 0 ? 'lieu'
-            : i === 1 ? 'couleur'
-                : 'emotion';
+        ['blob1', 'blob2', 'blob3'].forEach((id, i) => {
+            const el = document.getElementById(id);
+            const uid = buf[`uid${i + 1}`];
+            const key = i === 0 ? 'lieu'
+                : i === 1 ? 'couleur'
+                    : 'emotion';
 
-        // même logique que pour les LEDs
-        const col = !uid
-            ? '#FFA500'  // pas de carte
-            : uid.toLowerCase() === answers[setIdx][key].toLowerCase()
-                ? '#00FF00' // correct
-                : '#FF0000';// incorrect
+            // même logique que pour les LEDs
+            const col = !uid
+                ? '#FFA500'  // pas de carte
+                : uid.toLowerCase() === answers[setIdx][key].toLowerCase()
+                    ? '#00FF00' // correct
+                    : '#FF0000';// incorrect
 
-        // on applique juste la couleur de fond
-        el.style.backgroundColor = col;
-    });
+            // on applique juste la couleur de fond
+            el.style.backgroundColor = col;
+        });
+    } else {
+        // Si pas de bouton appuyé, on remet les SVG de fond
+        ['blob1', 'blob2', 'blob3'].forEach((id, i) => {
+            const el = document.getElementById(id);
+            el.style.backgroundColor = 'white';
+            el.innerHTML = svgCache[`blob${i + 1}`];
+        });
+    }
 }
 
 
