@@ -16,8 +16,14 @@ body {
     position: absolute;
     width: 200px;
     height: 140px;
-    background-size: contain;
-    background-repeat: no-repeat;
+    /* on supprime background-image */
+    background-color: white;       /* on coloriera via JS */
+    mask-repeat: no-repeat;
+    mask-position: center;
+    mask-size: contain;
+    -webkit-mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+    -webkit-mask-size: contain;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -25,20 +31,23 @@ body {
     font-size: 1.2em;
     text-align: center;
     pointer-events: none;
-    bottom: 0%;
+    bottom: 0;
     font-family: "CheeseSauce", sans-serif;
-}
-
-/* Position et SVG spécifiques à chaque blob */
-#blob1 {
+  }
+  
+  #blob1 {
     left: 10%;
-    background-image: url('./assets/blob1.svg');
-}
-#blob2 {
+    mask-image: url('./assets/blob1.svg');
+    -webkit-mask-image: url('./assets/blob1.svg');
+  }
+  #blob2 {
     left: 40%;
-    background-image: url('./assets/blob2.svg');
-}
-#blob3 {
+    mask-image: url('./assets/blob2.svg');
+    -webkit-mask-image: url('./assets/blob2.svg');
+  }
+  #blob3 {
     left: 70%;
-    background-image: url('./assets/blob3.svg');
-}
+    mask-image: url('./assets/blob3.svg');
+    -webkit-mask-image: url('./assets/blob3.svg');
+  }
+  
