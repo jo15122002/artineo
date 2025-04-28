@@ -638,6 +638,9 @@ while True:
                 active_channel_buffer = []
             current_tool = new_tool
             print(f"Outil changé: {current_tool}")
+    elif key == ord(' '): 
+        USE_MATCHSHAPES = not USE_MATCHSHAPES
+        print(f"Utilisation de cv2.matchShapes : {USE_MATCHSHAPES}")
     
 kinect.close()
 cv2.destroyAllWindows()
