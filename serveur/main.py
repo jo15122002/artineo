@@ -176,6 +176,7 @@ async def websocket_endpoint(ws: WebSocket):
     try:
         while True:
             raw = await ws.receive_text()
+            print(f"Message reçu : {raw}")
 
             # JSON ?
             try:

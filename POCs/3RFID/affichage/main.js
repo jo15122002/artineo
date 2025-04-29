@@ -67,6 +67,7 @@ function setupWebSocket() {
     ws.onopen = () => console.log('WS ouverte');
     ws.onmessage = e => {
         let msg;
+        console.log('Message reçu', e.data);
         try { msg = JSON.parse(e.data); }
         catch { return; }
         if (msg.action === 'get_buffer') {
