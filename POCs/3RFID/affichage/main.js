@@ -96,7 +96,11 @@ function updateBlobs(buf) {
             : i === 1 ? wanted.couleurs
                 : wanted.emotions;
         const word = uid ? (arr.find(([w, u]) => u === uid) || [])[0] : '';
-        el.textContent = word || 'Aucun';
+        let html = document.createElement('p');
+        html.className = 'blob-text';
+        html.innerHTML = word || 'Aucun';
+        el.innerHTML = '';
+        el.appendChild(html);
     });
 
     // Background si set change
@@ -130,11 +134,17 @@ function highlightBlobs(buf) {
             const col = !uid
                 ? '#FFA500'  // pas de carte
                 : uid.toLowerCase() === answers[setIdx][key].toLowerCase()
-                    ? '#00FF00' // correct
-                    : '#FF0000';// incorrect
+                    ? '#BFFF8E' // correct
+                    : '#eb6a49';// incorrect
 
+            const textColor = !uid
+                ? '#000000'  // pas de carte
+                : uid.toLowerCase() === answers[setIdx][key].toLowerCase()
+                    ? '#000000' // correct
+                    : '#ffffff';// incorrect
             // on applique juste la couleur de fond
             el.style.backgroundColor = col;
+            el.firstChild.style.color = textColor;
         });
     } else {
         // Si pas de bouton appuyé, on remet les SVG de fond
