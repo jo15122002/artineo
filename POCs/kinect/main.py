@@ -17,7 +17,11 @@ TEMPLATE_DIR = "images/templates/"
 # - pour matchShapes : utilisez cv2.matchShapes
 # - pour Hu moments + KNN : on construira un simple KNN
 USE_MATCHSHAPES = True
-AREA_THRESHOLD = 2000 
+AREA_THRESHOLD = 2000
+SMALL_AREA_THRESHOLD = 300 
+
+N_PROFILE = 100 
+background_profiles = {} 
 
 frame_idx = 0
 
@@ -27,26 +31,51 @@ overlays = {}
 clusters = []
 
 for filepath in glob.glob(os.path.join(TEMPLATE_DIR, "*.png")):
-    name = os.path.splitext(os.path.basename(filepath))[0]  # e.g. "moulin"
-    img = cv2.imread(filepath, cv2.IMREAD_GRAYSCALE)
-    # Binarisation : noir (0) = contour, blanc (255) = fond
-    _, thresh = cv2.threshold(img, 128, 255, cv2.THRESH_BINARY_INV)
-    # Extraction des contours
-    cnts, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    # On prend le plus grand contour (en aire)
+    name = os.path.splitext(os.path.basename(filepath))[0]
+    img_gray = cv2.imread(filepath, cv2.IMREAD_GRAYSCALE)
+    if img_gray is None:
+        raise FileNotFoundError(f"Image introuvable : {filepath}")
+    _, thresh_inv = cv2.threshold(img_gray, 128, 255, cv2.THRESH_BINARY_INV)
+    cnts, _ = cv2.findContours(thresh_inv, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     cnt = max(cnts, key=cv2.contourArea)
     template_contours[name] = cnt
-
-    x_t, y_t, w_t, h_t = cv2.boundingRect(cnt)
+    x, y, w_t, h_t = cv2.boundingRect(cnt)
     template_sizes[name] = (w_t, h_t)
-
-    template_areas = {
-        name: cv2.contourArea(cnt)
-        for name, cnt in template_contours.items()
-    }
 
 forme_templates = {name:cnt for name, cnt in template_contours.items() if name.startswith("Forme_")}
 fond_templates = {name:cnt for name, cnt in template_contours.items() if name.startswith("Fond_")}
+small_templates = {name:cnt for name, cnt in template_contours.items() if name.startswith("Small_")}
+
+def compute_profile(mask, name=None, n=N_PROFILE):
+    """
+    mask : image binaire (0/255) de la silhouette
+    name : nom pour la fenêtre d'affichage (ex. 'Fond_mer2' ou 'Kinect')
+    renvoie un vecteur de longueur n, normalisé [0,1]
+    """
+    h, w = mask.shape
+    xs = np.linspace(0, w-1, n).astype(int)
+    prof = np.zeros(n, dtype=np.float32)
+    for i, x in enumerate(xs):
+        ys = np.where(mask[:, x] == 255)[0]
+        if ys.size:
+            prof[i] = ys.min() / float(h)
+        else:
+            prof[i] = 0.0
+
+    if name is not None:
+        # Crée une image blanche de 200px de haut pour dessiner le profil
+        plot_h, plot_w = 200, n
+        img_plot = np.ones((plot_h, plot_w, 3), dtype=np.uint8) * 255
+        # Prépare les points (i, y) inversé pour que y=0 soit en haut
+        pts = [(i, int((1 - prof[i]) * (plot_h - 1))) for i in range(n)]
+        for i in range(1, n):
+            cv2.line(img_plot, pts[i-1], pts[i], (0, 0, 0), 1)
+        cv2.namedWindow(f"profile_{name}", cv2.WINDOW_NORMAL)
+        cv2.imshow(f"profile_{name}", img_plot)
+
+    return prof
+
+
 
 for name, cnt in template_contours.items():
     path = os.path.join(TEMPLATE_DIR, f"{name}.png")
@@ -54,41 +83,73 @@ for name, cnt in template_contours.items():
     if img is None:
         raise FileNotFoundError(f"Overlay introuvable : {path}")
 
-    if name.startswith("Forme_"):
-        # 1) Masque utile
+    if name.startswith("Forme_") or name.startswith("Small_"):
+        # ——— Création du sprite recadré avec canal alpha ———
         if img.shape[2] == 4:
             mask = img[...,3] > 0
         else:
             gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
             _, m = cv2.threshold(gray, 254, 255, cv2.THRESH_BINARY_INV)
             mask = m.astype(bool)
+
         ys, xs = np.where(mask)
         y0, y1 = ys.min(), ys.max()
         x0, x1 = xs.min(), xs.max()
-
-        # 2) Recadrage serré et ajout canal alpha
         sprite = img[y0:y1+1, x0:x1+1].copy()
+
+        # Ajout du canal alpha si besoin
         if sprite.shape[2] == 3:
             gray = cv2.cvtColor(sprite, cv2.COLOR_BGR2GRAY)
             _, a = cv2.threshold(gray, 254, 255, cv2.THRESH_BINARY_INV)
             sprite = np.dstack([sprite, a])
-        # 3) Fermer les trous de l’alpha
+
+        # Fermer les trous de l’alpha
         kernel = np.ones((3,3), np.uint8)
         alpha = cv2.morphologyEx(sprite[...,3], cv2.MORPH_CLOSE, kernel, iterations=2)
         sprite[...,3] = alpha
 
-    else:
-        # Fond_XXX : on garde l'image entière, on s'assure d’avoir un alpha
-        if img.shape[2] == 3:
-            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-            _, a = cv2.threshold(gray, 254, 255, cv2.THRESH_BINARY_INV)
-            sprite = np.dstack([img, a])
-        else:
-            sprite = img
+        overlays[name] = sprite
 
-    h_s, w_s = sprite.shape[:2]
-    overlays[name]      = sprite
-    template_sizes[name] = (w_s, h_s)
+    else:
+        # 1) Extraire le canal BGR
+        if img.shape[2] == 4:
+            bgr = img[..., :3]
+        else:
+            bgr = img
+        gray_full = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
+
+        # 2) Binarisation directe : intérieur de la forme = 255, extérieur = 0
+        _, mask = cv2.threshold(gray_full, 128, 255, cv2.THRESH_BINARY)
+
+        # 3) Calcul et stockage du profil
+        background_profiles[name] = compute_profile(mask, name)
+
+        # 4) Stockage de l’overlay brut pour éviter le KeyError
+        overlays[name] = img
+
+for name, prof in background_profiles.items():
+    print(name, np.unique(prof)[:5], prof.mean())
+
+def classify_background_by_profile(cnt):
+    # 1) reconstruire un mask binaire du contour
+    x,y,w_d,h_d = cv2.boundingRect(cnt)
+    mask = np.zeros((h_d, w_d), dtype=np.uint8)
+    cnt_shifted = cnt - [x,y]            # déplacer le contour à l’origine du mask
+    cv2.drawContours(mask, [cnt_shifted], -1, 255, thickness=cv2.FILLED)
+
+    # 2) calculer son profil
+    prof = compute_profile(mask, name='Kinect')
+
+    # 3) comparer aux profils stockés et choisir le plus proche
+    best_name, best_dist = None, float("inf")
+    for name, tpl_prof in background_profiles.items():
+        # distance euclidienne
+        d = np.linalg.norm(prof - tpl_prof)
+        print(f"Distance {name} : {d:.2f}")
+        if d < best_dist:
+            best_dist, best_name = d, name
+    print(f"Profil classifié : {best_name} (distance={best_dist:.2f})")
+    return best_name
 
 def classify_contour(cnt):
     """
@@ -99,16 +160,19 @@ def classify_contour(cnt):
 
     area = cv2.contourArea(cnt)
 
-    if area < AREA_THRESHOLD:
+    if area < SMALL_AREA_THRESHOLD:
+        candidates = small_templates
+    elif area < AREA_THRESHOLD:
         candidates = forme_templates
     else:
-        candidates = fond_templates
+        return classify_background_by_profile(cnt)
 
     if USE_MATCHSHAPES:
         # Méthode cv2.matchShapes
         for name, template_cnt in candidates.items():
             score = cv2.matchShapes(cnt, template_cnt,
                                     cv2.CONTOURS_MATCH_I1, 0.0)
+            print(f"Score {name} : {score:.2f}")
             if score < best_score:
                 best_score, best_name = score, name
     else:
@@ -117,6 +181,7 @@ def classify_contour(cnt):
         for name, template_cnt in candidates.items():
             hu_temp = cv2.HuMoments(cv2.moments(template_cnt)).flatten()
             score = np.linalg.norm(hu_cnt - hu_temp)
+            print(f"Score {name} : {score:.2f}")
             if score < best_score:
                 best_score, best_name = score, name
 
@@ -195,6 +260,8 @@ def update_clusters(detections, max_history=10, tol=3):
     global clusters, frame_idx
     for shape, cx, cy, area, angle, w, h in detections:
         matched = False
+        if area > AREA_THRESHOLD:
+            angle = 0.0
         for cl in clusters:
             if cl['shape']==shape \
                and abs(cx - cl['centroid'][0]) <= tol \
