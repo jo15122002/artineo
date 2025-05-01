@@ -1,105 +1,58 @@
-import asyncio
-import sys
-from pathlib import Path
+import cv2, numpy as np, queue, threading, sys
+from ArtineoClient import ArtineoClient, ArtineoAction
 
-import cv2
-import numpy as np
-
-# On ajoute ../../serveur au path pour pouvoir y importer ArtineoClient
-sys.path.insert(
-    0,
-    str(
-        Path(__file__)
-        .resolve()
-        .parent
-        .joinpath("..", "..", "serveur")
-        .resolve()
-    )
-)
-from ArtineoClient import ArtineoAction, ArtineoClient
-
-
-def preprocess(gray):
-    """Égalisation d'histogramme + ouverture/fermeture pour nettoyer l'image."""
-    eq = cv2.equalizeHist(gray)
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-    opened = cv2.morphologyEx(eq, cv2.MORPH_OPEN, kernel)
-    closed = cv2.morphologyEx(opened, cv2.MORPH_CLOSE, kernel)
-    return closed
-
-
-def find_best_circle(img):
-    """Détecte le plus grand cercle via HoughCircles ou retourne None."""
-    circles = cv2.HoughCircles(
-        img,
-        cv2.HOUGH_GRADIENT,
-        dp=1.2,
-        minDist=100,
-        param1=100,
-        param2=30,
-        minRadius=20,
-        maxRadius=150
-    )
-    if circles is None:
-        return None
-    circles = np.uint16(np.around(circles[0]))
-    x, y, r = max(circles, key=lambda c: c[2])
-    return int(x), int(y), int(r)
-
-
-def main():
-    width, height = 640, 480
-    frame_size = width * height * 3  # bgr24 = 3 octets/pixel
-
-    # Création du client et récupération de la config
-    client = ArtineoClient(module_id=1)
-    config = client.fetch_config()
-    print("Config reçue :", config)
-
-    # Préparer la boucle asyncio pour la WS
+# 1. Thread WS
+ws_queue = queue.Queue()
+def ws_loop():
+    import asyncio
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
+    client = ArtineoClient(module_id=1)
     loop.run_until_complete(client.connect_ws())
-    print("WebSocket connectée.")
+    while True:
+        data = ws_queue.get()
+        if data is None: break
+        loop.run_until_complete(client.send_ws(ArtineoAction.SET, data))
+    loop.run_until_complete(client.close_ws())
 
-    cv2.namedWindow("Flux de la caméra", cv2.WINDOW_NORMAL)
+threading.Thread(target=ws_loop, daemon=True).start()
 
-    try:
-        while True:
-            buf = sys.stdin.buffer.read(frame_size)
-            if len(buf) < frame_size:
-                break
+# 2. Capture direct
+cap = cv2.VideoCapture(0, cv2.CAP_V4L2)
+cap.set(cv2.CAP_PROP_FRAME_WIDTH, 320)
+cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 240)
+cap.set(cv2.CAP_PROP_FPS, 30)
 
-            frame = np.frombuffer(buf, dtype=np.uint8).reshape((height, width, 3))
+def detect_circle(gray):
+    blur = cv2.GaussianBlur(gray, (5,5), 1)
+    clean = cv2.morphologyEx(blur, cv2.MORPH_OPEN,
+               cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(3,3)))
+    circles = cv2.HoughCircles(clean, cv2.HOUGH_GRADIENT,
+            dp=2.0, minDist=100, param1=100, param2=40,
+            minRadius=30, maxRadius=80)
+    if circles is None: return None
+    x,y,r = max(np.round(circles[0]).astype(int), key=lambda c: c[2])
+    return x,y,r
 
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            blurred = cv2.GaussianBlur(gray, (9, 9), 2)
-            clean = preprocess(blurred)
+frame_idx=0
+cv2.namedWindow("Cam", cv2.WINDOW_NORMAL)
+while True:
+    ret, frame = cap.read()
+    if not ret: break
+    frame_idx += 1
 
-            circ = find_best_circle(clean)
-            if circ:
-                x, y, r = circ
-                diameter = 2 * r
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    if frame_idx % 3 == 0:
+        res = detect_circle(gray)
+        if res:
+            x,y,r = res
+            cv2.circle(frame,(x,y),r,(0,255,0),2)
+            ws_queue.put({"x":x,"y":y,"diameter":2*r})
 
-                # Dessin
-                cv2.circle(frame, (x, y), r, (0, 255, 0), 2)
-                cv2.circle(frame, (x, y), 2, (0, 0, 255), 3)
+    cv2.imshow("Cam", frame)
+    if cv2.waitKey(1)&0xFF==ord('q'): break
 
-                # Envoi au serveur
-                data = {"x": x, "y": y, "diameter": diameter}
-                loop.run_until_complete(
-                    client.send_ws(ArtineoAction.SET, data)
-                )
-
-            cv2.imshow("Flux de la caméra", frame)
-            if cv2.waitKey(1) & 0xFF == ord("q"):
-                break
-    finally:
-        # Fermeture propre
-        loop.run_until_complete(client.close_ws())
-        loop.close()
-        cv2.destroyAllWindows()
-
-
-if __name__ == "__main__":
-    main()
+# propre arrêt
+ws_queue.put(None)
+cap.release()
+cv2.destroyAllWindows()
