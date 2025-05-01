@@ -1,11 +1,11 @@
-import os
+import asyncio
 import sys
 from pathlib import Path
 
 import cv2
 import numpy as np
 
-# On ajoute ../../serveur au path pour pouvoir y importer ArtineoClient
+# On ajoute ../../serveur au path pour importer ArtineoClient
 sys.path.insert(
     0,
     str(
@@ -16,66 +16,92 @@ sys.path.insert(
         .resolve()
     )
 )
+from ArtineoClient import ArtineoAction, ArtineoClient
 
-from ArtineoClient import ArtineoClient
+
+def preprocess(gray):
+    blur = cv2.GaussianBlur(gray, (5, 5), 1)
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+    return cv2.morphologyEx(blur, cv2.MORPH_OPEN, kernel)
+
+
+def find_brightest_circle(gray, clean):
+    circles = cv2.HoughCircles(
+        clean,
+        cv2.HOUGH_GRADIENT,
+        dp=2.0,
+        minDist=80,
+        param1=100,
+        param2=30,
+        minRadius=15,
+        maxRadius=80
+    )
+    if circles is None:
+        return None
+
+    candidates = np.round(circles[0]).astype(int)
+    best = None
+    best_mean = -1.0
+
+    for x, y, r in candidates:
+        mask = np.zeros_like(gray, dtype=np.uint8)
+        cv2.circle(mask, (x, y), r, 255, thickness=-1)
+        mean_val = cv2.mean(gray, mask=mask)[0]
+        if mean_val > best_mean:
+            best_mean = mean_val
+            best = (int(x), int(y), int(r))
+
+    return best
 
 
 def main():
-    width = 640
-    height = 480
-    frame_size = width * height * 3  # bgr24 = 3 octets par pixel
-    
+    W, H = 320, 240
+    frame_size = W * H * 3  # BGR24
+
     client = ArtineoClient(module_id=1)
-    client.connect_ws()
-    print("Connecté au serveur WebSocket.")
-    client.fetch_config()
-    print("Config reçue :", client.fetch_config())
+    config = client.fetch_config()
+    print("Config reçue :", config)
 
-    # Crée explicitement une fenêtre pour l'affichage
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(client.connect_ws())
+    print("WebSocket connectée.")
+
     cv2.namedWindow("Flux de la caméra", cv2.WINDOW_NORMAL)
-    # cv2.namedWindow("niveaux de gris", cv2.WINDOW_NORMAL)
+    frame_idx = 0
 
-    while True:
-        # Lecture de la taille d'un frame
-        raw_data = sys.stdin.buffer.read(frame_size)
-        if len(raw_data) < frame_size:
-            break  # Fin du flux
-        frame = np.frombuffer(raw_data, dtype=np.uint8).reshape((height, width, 3))
-        
-        # Convertir en niveaux de gris pour la détection
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        # Appliquer un flou pour réduire le bruit et améliorer la détection
-        blurred = cv2.GaussianBlur(gray, (9, 9), 2)
+    try:
+        while True:
+            raw = sys.stdin.buffer.read(frame_size)
+            if len(raw) < frame_size:
+                break
+            frame = np.frombuffer(raw, dtype=np.uint8).reshape((H, W, 3))
 
-        # Détection de cercles avec la méthode HoughCircles
-        circles = cv2.HoughCircles(
-            blurred,
-            cv2.HOUGH_GRADIENT,
-            dp=1.2,           # Inverse du rapport de résolution
-            minDist=50,       # Distance minimale entre les cercles détectés
-            param1=50,        # Seuil pour la détection des contours (pour Canny)
-            param2=30,        # Seuil d'accumulateur (plus petit = plus de fausses détections)
-            minRadius=10,     # Rayon minimum du cercle à détecter
-            maxRadius=100     # Rayon maximum du cercle à détecter
-        )
+            frame_idx += 1
+            if frame_idx % 3 == 0:
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                clean = preprocess(gray)
+                circ = find_brightest_circle(gray, clean)
+                if circ:
+                    x, y, r = circ
+                    diameter = int(2 * r)
+                    # Dessin
+                    cv2.circle(frame, (x, y), r, (0, 255, 0), 2)
+                    cv2.circle(frame, (x, y), 2, (0, 0, 255), 3)
+                    # Envoi en convertissant en int Python
+                    data = {"x": x, "y": y, "diameter": diameter}
+                    loop.run_until_complete(
+                        client.send_ws(ArtineoAction.SET, data)
+                    )
 
-        if circles is not None:
-            # Arrondir et convertir en type entier
-            circles = np.uint16(np.around(circles))
-            for i in circles[0, :]:
-                # Dessiner le cercle extérieur en vert
-                cv2.circle(frame, (i[0], i[1]), i[2], (0, 255, 0), 2)
-                # Dessiner le centre du cercle en rouge
-                cv2.circle(frame, (i[0], i[1]), 2, (0, 0, 255), 3)
+            cv2.imshow("Flux de la caméra", frame)
+            if cv2.waitKey(1) & 0xFF == ord("q"):
+                break
+    finally:
+        loop.run_until_complete(client.close_ws())
+        loop.close()
+        cv2.destroyAllWindows()
 
-        # Affichage de l'image avec détection de sphère (cercles)
-        cv2.imshow("Flux de la caméra", frame)
-        # # Affichage de l'image en niveaux de gris
-        # cv2.imshow("niveaux de gris", blurred)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
 
-    cv2.destroyAllWindows()
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
