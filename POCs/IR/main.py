@@ -16,66 +16,91 @@ sys.path.insert(
         .resolve()
     )
 )
-
 from ArtineoClient import ArtineoClient
 
 
+def preprocess(gray):
+    """
+    Applique égalisation d'histogramme et morphologie pour réduire le bruit
+    et améliorer les contours circulaires.
+    """
+    # égalisation pour étirer le contraste
+    eq = cv2.equalizeHist(gray)
+    # ouverture puis fermeture pour lisser les petits artifacts
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    opened = cv2.morphologyEx(eq, cv2.MORPH_OPEN, kernel)
+    closed = cv2.morphologyEx(opened, cv2.MORPH_CLOSE, kernel)
+    return closed
+
+
+def find_best_circle(img):
+    """
+    Retourne le cercle de plus grand rayon détecté par HoughCircles,
+    ou None si aucun cercle.
+    """
+    circles = cv2.HoughCircles(
+        img,
+        cv2.HOUGH_GRADIENT,
+        dp=1.2,
+        minDist=100,      # on veut un seul cercle, on augmente minDist
+        param1=100,       # seuil Canny plus élevé pour limiter le bruit
+        param2=30,        # accumulateur
+        minRadius=20,     # ajuster selon la taille de votre sphère
+        maxRadius=150
+    )
+    if circles is None:
+        return None
+    circles = np.uint16(np.around(circles[0]))
+    # choisir le cercle de plus grand rayon
+    best = max(circles, key=lambda c: c[2])
+    x, y, r = int(best[0]), int(best[1]), int(best[2])
+    return (x, y, r)
+
+
 def main():
-    width = 640
-    height = 480
-    frame_size = width * height * 3  # bgr24 = 3 octets par pixel
-    
+    width, height = 640, 480
+    frame_size = width * height * 3  # bgr24 = 3 octets/pixel
+
+    # initialisation WebSocket
     client = ArtineoClient(module_id=1)
     client.connect_ws()
-    print("Connecté au serveur WebSocket.")
-    client.fetch_config()
-    print("Config reçue :", client.fetch_config())
+    config = client.fetch_config()
+    print("Config reçue :", config)
 
-    # Crée explicitement une fenêtre pour l'affichage
     cv2.namedWindow("Flux de la caméra", cv2.WINDOW_NORMAL)
-    # cv2.namedWindow("niveaux de gris", cv2.WINDOW_NORMAL)
 
     while True:
-        # Lecture de la taille d'un frame
-        raw_data = sys.stdin.buffer.read(frame_size)
-        if len(raw_data) < frame_size:
-            break  # Fin du flux
-        frame = np.frombuffer(raw_data, dtype=np.uint8).reshape((height, width, 3))
-        
-        # Convertir en niveaux de gris pour la détection
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        # Appliquer un flou pour réduire le bruit et améliorer la détection
-        blurred = cv2.GaussianBlur(gray, (9, 9), 2)
-
-        # Détection de cercles avec la méthode HoughCircles
-        circles = cv2.HoughCircles(
-            blurred,
-            cv2.HOUGH_GRADIENT,
-            dp=1.2,           # Inverse du rapport de résolution
-            minDist=50,       # Distance minimale entre les cercles détectés
-            param1=50,        # Seuil pour la détection des contours (pour Canny)
-            param2=30,        # Seuil d'accumulateur (plus petit = plus de fausses détections)
-            minRadius=10,     # Rayon minimum du cercle à détecter
-            maxRadius=100     # Rayon maximum du cercle à détecter
-        )
-
-        if circles is not None:
-            # Arrondir et convertir en type entier
-            circles = np.uint16(np.around(circles))
-            for i in circles[0, :]:
-                # Dessiner le cercle extérieur en vert
-                cv2.circle(frame, (i[0], i[1]), i[2], (0, 255, 0), 2)
-                # Dessiner le centre du cercle en rouge
-                cv2.circle(frame, (i[0], i[1]), 2, (0, 0, 255), 3)
-
-        # Affichage de l'image avec détection de sphère (cercles)
-        cv2.imshow("Flux de la caméra", frame)
-        # # Affichage de l'image en niveaux de gris
-        # cv2.imshow("niveaux de gris", blurred)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
+        buf = sys.stdin.buffer.read(frame_size)
+        if len(buf) < frame_size:
             break
 
+        frame = np.frombuffer(buf, dtype=np.uint8).reshape((height, width, 3))
+
+        # conversion + prétraitement
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        smooth = cv2.GaussianBlur(gray, (9, 9), 2)
+        clean = preprocess(smooth)
+
+        # détection du meilleur cercle
+        result = find_best_circle(clean)
+        if result:
+            x, y, r = result
+            diameter = 2 * r
+
+            # dessin sur l'image
+            cv2.circle(frame, (x, y), r, (0, 255, 0), 2)
+            cv2.circle(frame, (x, y), 2, (0, 0, 255), 3)
+
+            # envoi de la position & diameter
+            client.send_position(x=x, y=y, diameter=diameter)
+
+        cv2.imshow("Flux de la caméra", frame)
+        if cv2.waitKey(1) & 0xFF == ord("q"):
+            break
+
+    client.close_ws()
     cv2.destroyAllWindows()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()
