@@ -1,5 +1,5 @@
-import sys
 import asyncio
+import sys
 from pathlib import Path
 
 import cv2
@@ -16,21 +16,16 @@ sys.path.insert(
         .resolve()
     )
 )
-from ArtineoClient import ArtineoClient, ArtineoAction
+from ArtineoClient import ArtineoAction, ArtineoClient
 
 
 def preprocess(gray):
-    """Flou léger + ouverture morphologique."""
     blur = cv2.GaussianBlur(gray, (5, 5), 1)
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
     return cv2.morphologyEx(blur, cv2.MORPH_OPEN, kernel)
 
 
 def find_brightest_circle(gray, clean):
-    """
-    Détecte tous les cercles sur 'clean', puis choisit celui dont la
-    zone dans 'gray' est la plus lumineuse.
-    """
     circles = cv2.HoughCircles(
         clean,
         cv2.HOUGH_GRADIENT,
@@ -54,17 +49,15 @@ def find_brightest_circle(gray, clean):
         mean_val = cv2.mean(gray, mask=mask)[0]
         if mean_val > best_mean:
             best_mean = mean_val
-            best = (x, y, r)
+            best = (int(x), int(y), int(r))
 
     return best
 
 
 def main():
-    # Dimensions matching ffmpeg output
     W, H = 320, 240
     frame_size = W * H * 3  # BGR24
 
-    # Initialise client et boucle asyncio
     client = ArtineoClient(module_id=1)
     config = client.fetch_config()
     print("Config reçue :", config)
@@ -85,18 +78,17 @@ def main():
             frame = np.frombuffer(raw, dtype=np.uint8).reshape((H, W, 3))
 
             frame_idx += 1
-            # Traiter 1 frame sur 3
             if frame_idx % 3 == 0:
                 gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
                 clean = preprocess(gray)
                 circ = find_brightest_circle(gray, clean)
                 if circ:
                     x, y, r = circ
-                    diameter = 2 * r
-                    # Dessiner le cercle
+                    diameter = int(2 * r)
+                    # Dessin
                     cv2.circle(frame, (x, y), r, (0, 255, 0), 2)
                     cv2.circle(frame, (x, y), 2, (0, 0, 255), 3)
-                    # Envoi synchronique au WebSocket
+                    # Envoi en convertissant en int Python
                     data = {"x": x, "y": y, "diameter": diameter}
                     loop.run_until_complete(
                         client.send_ws(ArtineoAction.SET, data)
@@ -106,7 +98,6 @@ def main():
             if cv2.waitKey(1) & 0xFF == ord("q"):
                 break
     finally:
-        # Fermeture propre
         loop.run_until_complete(client.close_ws())
         loop.close()
         cv2.destroyAllWindows()
