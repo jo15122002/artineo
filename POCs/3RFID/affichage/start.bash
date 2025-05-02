@@ -10,9 +10,16 @@ xset s noblank
 FRONTEND_DIR="$(dirname "$0")"
 cd "$FRONTEND_DIR"
 
-# Installation des dépendances si nécessaire
+# Vérification et installation de Node.js & npm sur le Raspberry si nécessaire
+if ! command -v npm >/dev/null 2>&1; then
+  echo "npm non trouvé, installation de Node.js et npm via apt..."
+  sudo apt-get update
+  sudo apt-get install -y nodejs npm
+fi
+
+# Installation des dépendances du projet si manquantes
 if [ ! -d "node_modules" ]; then
-  echo "Installation des dépendances..."
+  echo "Installation des dépendances du projet..."
   npm install
 fi
 
@@ -20,19 +27,19 @@ fi
 echo "Compilation de l'application Nuxt..."
 npm run build
 
-# Démarre Nuxt en production (écoute sur le port 3000)
+# Démarrage du serveur Nuxt en production (écoute par défaut sur le port 3000)
 echo "Démarrage du serveur Nuxt..."
 npm run start &
 NUXT_PID=$!
 
-# Donne le temps au serveur de démarrer
+# Laisser le temps au serveur de démarrer
 sleep 5
 
-# Lance Chromium en mode kiosque pointant sur l'application Nuxt
+# Lancement de Chromium en mode kiosque pointant vers l'application Nuxt
 echo "Lancement de Chromium en mode kiosque..."
 chromium-browser --noerrdialogs --disable-infobars --incognito --kiosk http://localhost:3000
 
-# À la fermeture du navigateur, arrête le serveur Nuxt
+# À la fermeture du navigateur, arrêt du serveur Nuxt
 echo "Arrêt du serveur Nuxt..."
 kill $NUXT_PID
 
