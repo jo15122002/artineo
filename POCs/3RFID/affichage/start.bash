@@ -28,7 +28,7 @@ if command -v npx >/dev/null 2>&1; then
   npx nuxi build || npx nuxt build
 else
   echo "npx introuvable, installation..."
-  npm install -g npx
+  npm install -y -g npx
   npx nuxi build || npx nuxt build
 fi
 
@@ -38,7 +38,7 @@ if command -v npx >/dev/null 2>&1; then
   npx nuxi preview --hostname 0.0.0.0 --port 3000 &
   NUXT_PID=$!
 else
-  npm install -g npx
+  npm install -y -g npx
   npx nuxi preview --hostname 0.0.0.0 --port 3000 &
   NUXT_PID=$!
 fi
