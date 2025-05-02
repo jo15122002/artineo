@@ -145,7 +145,7 @@ def classify_background_by_profile(cnt):
     for name, tpl_prof in background_profiles.items():
         # distance euclidienne
         d = np.linalg.norm(prof - tpl_prof)
-        print(f"Distance {name} : {d:.2f}")
+        # print(f"Distance {name} : {d:.2f}")
         if d < best_dist:
             best_dist, best_name = d, name
     print(f"Profil classifié : {best_name} (distance={best_dist:.2f})")
@@ -282,7 +282,7 @@ def update_clusters(detections, max_history=10, tol=3):
                 'points': [(cx, cy, area, angle, w, h)],
                 'centroid': (cx, cy),
                 'avg_area': area,
-                'avg_angle': angle,
+                'avg_angle': 0.0,
                 'avg_w': w,
                 'avg_h': h,
                 'sprite': None,
@@ -317,7 +317,7 @@ def mouse_callback(event, x, y, flags, param):
         mouse_x, mouse_y = int(x / display_scale), int(y / display_scale)
 
 # --- Mapping outil → canal couleur (BGR) ---
-tool_color_channel = {'1': 0, '2': 2, '3': 1}
+tool_color_channel = {'1': 0, '2': 2, '3': 1, '4': 3}
 
 # --- Initialisation de la Kinect v2 ---
 try:
@@ -340,7 +340,8 @@ active_channel_buffer = []  # Buffer pour le lissage temporel du canal actif
 final_drawings = {
     '1': np.zeros((ROI_HEIGHT, ROI_WIDTH, 3), dtype=np.float32),
     '2': np.zeros((ROI_HEIGHT, ROI_WIDTH, 3), dtype=np.float32),
-    '3': np.zeros((ROI_HEIGHT, ROI_WIDTH, 3), dtype=np.float32)
+    '3': np.zeros((ROI_HEIGHT, ROI_WIDTH, 3), dtype=np.float32),
+    # '4': np.zeros((ROI_HEIGHT, ROI_WIDTH, 3), dtype=np.float32)
 }
 
 # Outil actif par défaut
@@ -384,16 +385,8 @@ cv2.setMouseCallback("Mapped Depth", mouse_callback)
 cv2.setMouseCallback("Depth frame", mouse_callback)
 cv2.setMouseCallback("Distance Map Debug", mouse_callback)
 
-# --- Traitement de la depth frame ---
-def process_depth_frame(current_frame):
-    global base_frame, final_drawings
-    # Calcul de la différence par rapport à la baseline
-    diff = current_frame.astype(np.int32) - base_frame.astype(np.int32)
-    mapped = 128 + (diff * scale)
-    mapped = np.clip(mapped, 0, 255).astype(np.uint8)
-    show_image("Mapped Depth", mapped)
-
-    _, mask_objects = cv2.threshold(mapped, 80, 255, cv2.THRESH_BINARY_INV)
+def detect_objects(frame):
+    _, mask_objects = cv2.threshold(frame, 80, 255, cv2.THRESH_BINARY_INV)
     kernel = np.ones((2,2), np.uint8)
     mask_objects = cv2.morphologyEx(mask_objects, cv2.MORPH_OPEN, kernel, iterations=1)
     mask_objects = cv2.morphologyEx(mask_objects, cv2.MORPH_CLOSE, kernel, iterations=1)
@@ -448,6 +441,21 @@ def process_depth_frame(current_frame):
     
     update_clusters(detections)
 
+# --- Traitement de la depth frame ---
+def process_depth_frame(current_frame):
+    global base_frame, final_drawings
+    # Calcul de la différence par rapport à la baseline
+    diff = current_frame.astype(np.int32) - base_frame.astype(np.int32)
+    mapped = 128 + (diff * scale)
+    mapped = np.clip(mapped, 0, 255).astype(np.uint8)
+    show_image("Mapped Depth", mapped)
+
+    # detect_objects(mapped)
+
+    if current_tool == '4':
+        detect_objects(mapped)
+        return
+
     # Création d'une image colorée pour l'outil actif
     color_channel = tool_color_channel[current_tool]
     colored_frame = np.zeros((ROI_HEIGHT, ROI_WIDTH, 3), dtype=np.uint8)
@@ -483,12 +491,25 @@ def render_final_drawings():
             stroke_color = np.array([255, 0, 0], dtype=np.float32)
         elif tool == '2':
             stroke_color = np.array([0, 0, 255], dtype=np.float32)
-        else:
+        elif tool == '3':
             stroke_color = np.array([0, 255, 0], dtype=np.float32)
         mask_3 = np.repeat(mask_norm[:, :, np.newaxis], 3, axis=2)
         result = (1 - mask_3) * white_bg.astype(np.float32) + mask_3 * stroke_color
         result = np.clip(result, 0, 255).astype(np.uint8)
         show_image(f"Final Drawing {tool}", result)
+
+def render_classification():
+    canvas = np.zeros((ROI_HEIGHT, ROI_WIDTH, 3), dtype=np.uint8)
+    for cl in clusters:
+        if len(cl['points']) < 10:
+            continue
+        name = cl['shape']
+        cx, cy = map(int, cl['centroid'])
+        w_t, h_t = template_sizes[name]
+        avg_w, avg_h = cl['avg_w'], cl['avg_h']
+        scale = max(0.1, min(3.0, ((avg_w/w_t + avg_h/h_t)/2)*0.6))
+        overlay_png(canvas, overlays[name], cx, cy, scale=scale)
+    show_image("Classification", canvas)
 
 # --- Composition des dessins finaux ---
 def composite_colored_drawing():
@@ -520,7 +541,7 @@ def process_brush_strokes():
 
     # 3) Binarisation + morpho
     _, binary = cv2.threshold(gray, 3, 255, cv2.THRESH_BINARY)
-    kernel = np.ones((5, 5), np.uint8)
+    kernel = np.ones((3, 3), np.uint8)
     binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN,  kernel, iterations=3)
     binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel, iterations=3)
 
@@ -563,7 +584,7 @@ def process_brush_strokes():
             if val < min_brush_size or val > max_brush_size:
                 continue
             custom_brush = resize_brush(brush, int(val * brush_scale_factor))
-            color = { '1': (0,0,255), '2': (255,0,0), '3': (0,255,0) }[current_tool]
+            color = { '1': (0,0,255), '2': (255,0,0), '3': (0,255,0), '4': (0,0,0) }[current_tool]
             bh, bw = custom_brush.shape
             y0 = max(0, py - bh//2); x0 = max(0, px - bw//2)
             y1 = min(ROI_HEIGHT, y0 + bh);    x1 = min(ROI_WIDTH,  x0 + bw)
@@ -581,6 +602,18 @@ def process_brush_strokes():
 
     # 8) Annotation des clusters : superposition des sprites
     # Purge des clusters stale est géré dans update_clusters()
+
+    # 9) Affichage des widgets de debug
+    if 0 <= mouse_y < ROI_HEIGHT and 0 <= mouse_x < ROI_WIDTH:
+        d = dist_map[mouse_y, mouse_x]
+        cv2.putText(dist_display, f"Distance: {d:.2f} @({mouse_x},{mouse_y})",
+                    (10,30), cv2.FONT_HERSHEY_SIMPLEX, 0.3, (255,255,0), 1)
+    show_image("Brushed Result Debug", brushed)
+    show_image("Binary Mask Debug", binary)
+    show_image("Distance Map Debug", dist_display)
+
+def process_objects():
+    brushed = np.full((ROI_HEIGHT, ROI_WIDTH, 3), 255, dtype=np.uint8)
     for cl in clusters:
         if len(cl['points']) < 10:
             continue
@@ -651,16 +684,6 @@ def process_brush_strokes():
         dst  = brushed[y0:y1, x0:x1]
         dst[mask] = fg[mask]
 
-    # 9) Affichage des widgets de debug
-    if 0 <= mouse_y < ROI_HEIGHT and 0 <= mouse_x < ROI_WIDTH:
-        d = dist_map[mouse_y, mouse_x]
-        cv2.putText(dist_display, f"Distance: {d:.2f} @({mouse_x},{mouse_y})",
-                    (10,30), cv2.FONT_HERSHEY_SIMPLEX, 0.3, (255,255,0), 1)
-    show_image("Brushed Result Debug", brushed)
-    show_image("Binary Mask Debug", binary)
-    show_image("Distance Map Debug", dist_display)
-
-# --- Boucle principale ---
 while True:
     frame_idx += 1
     if kinect.has_new_depth_frame():
@@ -687,11 +710,16 @@ while True:
     
     render_final_drawings()
     process_brush_strokes()
+
+    if current_tool == '4':
+        process_objects()
+        render_classification()
+
     
     key = cv2.waitKey(1) & 0xFF
     if key == ord('q'):
         break
-    elif key in [ord('1'), ord('2'), ord('3')]:
+    elif key in [ord('1'), ord('2'), ord('3'), ord('4')]:
         new_tool = chr(key)
         if new_tool != current_tool:
             if last_depth_frame is not None:
