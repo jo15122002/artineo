@@ -11,11 +11,11 @@ xset s off        # Désactive l'écran de veille
 xset -dpms        # Désactive DPMS (gestion d'alimentation)
 xset s noblank    # Empêche l'écran de se mettre en veille
 
-# 2️⃣ Vérifie/installe Node.js
-if ! command -v node >/dev/null 2>&1; then
-  echo "Node.js non trouvé, installation via NodeSource..."
+# 2️⃣ Vérifie/installe Node.js et npm
+if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
+  echo "Node.js ou npm non trouvé, installation via NodeSource..."
   curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
-  sudo apt-get install -y nodejs build-essential
+  sudo apt-get install -y nodejs npm build-essential
 fi
 
 # 3️⃣ Vérifie/installe PM2
