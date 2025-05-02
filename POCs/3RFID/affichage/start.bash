@@ -17,45 +17,30 @@ if ! command -v npm >/dev/null 2>&1; then
   sudo apt-get install -y nodejs npm
 fi
 
-# Installation des dépendances du projet si manquantes
-if [ ! -d "node_modules" ]; then
-  echo "Installation des dépendances du projet..."
-  npm install
-fi
+# Installation des dépendances du projet (package.json doit contenir nuxt)
+echo "Installation des dépendances..."
+npm install
 
-# Build de l'application Nuxt en mode production
-# On tente d'abord npm run build, sinon on utilise npx nuxi build (Nuxt 3) ou npx nuxt build (Nuxt 2)
+# Build de l'application Nuxt
+# Utilisation de npx nuxi pour Nuxt 3 ou npx nuxt pour Nuxt 2
 echo "Compilation de l'application Nuxt..."
-if npm run build --if-present; then
-  echo "Build via npm OK."
+if command -v npx >/dev/null 2>&1; then
+  npx nuxi build || npx nuxt build
 else
-  echo "Script 'build' manquant, exécution de npx nuxi build..."
-  if command -v npx >/dev/null 2>&1; then
-    npx nuxi build || npx nuxt build
-  else
-    echo "npx introuvable, installation temporaire de npx..."
-    npm install -g npx
-    npx nuxi build || npx nuxt build
-  fi
+  echo "npx introuvable, installation..."
+  npm install -g npx
+  npx nuxi build || npx nuxt build
 fi
 
-# Démarrage du serveur Nuxt en production
-# On tente d'abord npm run start, sinon fallback sur npx nuxi preview (Nuxt 3) ou npx nuxt start (Nuxt 2)
-echo "Démarrage du serveur Nuxt..."
-if npm run start --if-present & then
+# Lancement du serveur Nuxt en mode preview (production)
+echo "Démarrage du serveur Nuxt en preview..."
+if command -v npx >/dev/null 2>&1; then
+  npx nuxi preview --hostname 0.0.0.0 --port 3000 &
   NUXT_PID=$!
 else
-  echo "Script 'start' manquant, exécution de npx nuxi preview..."
-  if command -v npx >/dev/null 2>&1; then
-    npx nuxi preview & NUXT_PID=$!
-    # fallback
-    wait 1 || (npx nuxt start & NUXT_PID=$!)
-  else
-    echo "npx introuvable, installation temporaire de npx..."
-    npm install -g npx
-    npx nuxi preview & NUXT_PID=$!
-    wait 1 || (npx nuxt start & NUXT_PID=$!)
-  fi
+  npm install -g npx
+  npx nuxi preview --hostname 0.0.0.0 --port 3000 &
+  NUXT_PID=$!
 fi
 
 # Laisser le temps au serveur de démarrer
@@ -63,7 +48,12 @@ sleep 5
 
 # Lancement de Chromium en mode kiosque pointant vers l'application Nuxt
 echo "Lancement de Chromium en mode kiosque..."
-chromium-browser --noerrdialogs --disable-infobars --incognito --kiosk http://localhost:3000
+chromium-browser \
+  --noerrdialogs \
+  --disable-infobars \
+  --incognito \
+  --kiosk \
+  http://localhost:3000
 
 # À la fermeture du navigateur, arrêt du serveur Nuxt
 echo "Arrêt du serveur Nuxt..."
