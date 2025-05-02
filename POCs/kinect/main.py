@@ -4,6 +4,34 @@ from dependencies.pykinect2 import PyKinectRuntime, PyKinectV2
 import os
 import glob
 import math
+from pathlib import Path
+import sys
+import asyncio
+
+sys.path.insert(
+    0,
+    str(
+        Path(__file__)
+        .resolve()
+        .parent
+        .joinpath("..", "..", "serveur")
+        .resolve()
+    )
+)
+from ArtineoClient import ArtineoAction, ArtineoClient # type: ignore
+
+client = ArtineoClient(module_id=4, host="192.168.0.180", port=8000)
+config = client.fetch_config()
+print("Configuration récupérée : ", config)
+
+loop = asyncio.new_event_loop()
+asyncio.set_event_loop(loop)
+loop.run_until_complete(client.connect_ws())
+print("WebSocket connecté.")
+
+latest_payload = None
+strokes_events = []
+objects_events = []
 
 # --- Paramètres de la Région d'Intérêt (ROI) ---
 ROI_X0, ROI_Y0 = 160, 130
@@ -45,6 +73,13 @@ for filepath in glob.glob(os.path.join(TEMPLATE_DIR, "*.png")):
 forme_templates = {name:cnt for name, cnt in template_contours.items() if name.startswith("Forme_")}
 fond_templates = {name:cnt for name, cnt in template_contours.items() if name.startswith("Fond_")}
 small_templates = {name:cnt for name, cnt in template_contours.items() if name.startswith("Small_")}
+
+async def send_latest_payload():
+    global latest_payload
+    if latest_payload is None:
+        return
+    # envoie via WebSocket
+    await client.set_buffer(latest_payload)
 
 def compute_profile(mask, name=None, n=N_PROFILE):
     """
@@ -525,7 +560,8 @@ def composite_colored_drawing():
 # --- Traitement des brush strokes ---
 def process_brush_strokes():
     """Applique le pipeline de rendu avec brush strokes sur la ROI et superpose les sprites."""
-    global frame_idx
+    global frame_idx, strokes_events
+    strokes_events.clear()
 
     # ––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
     # 1) Mise à jour du frame counter
@@ -592,6 +628,11 @@ def process_brush_strokes():
             region = brushed[y0:y1, x0:x1].astype(float)
             blended = region * (1-roi_brush) + np.array(color, float) * roi_brush
             brushed[y0:y1, x0:x1] = blended.astype(np.uint8)
+            strokes_events.append({
+                'tool': current_tool,
+                'x': px, 'y': py, 'size': val,
+                'color': color, 'brush': custom_brush
+            })
 
     brushed = cv2.medianBlur(brushed, 5)
 
@@ -613,6 +654,10 @@ def process_brush_strokes():
     show_image("Distance Map Debug", dist_display)
 
 def process_objects():
+    global objects_events
+
+    objects_events.clear()
+
     brushed = np.full((ROI_HEIGHT, ROI_WIDTH, 3), 255, dtype=np.uint8)
     for cl in clusters:
         if len(cl['points']) < 10:
@@ -684,58 +729,85 @@ def process_objects():
         dst  = brushed[y0:y1, x0:x1]
         dst[mask] = fg[mask]
 
-while True:
-    frame_idx += 1
-    if kinect.has_new_depth_frame():
-        depth_frame = kinect.get_last_depth_frame()
-        full_frame = depth_frame.reshape((424, 512)).astype(np.uint16)
-        full_frame = cv2.medianBlur(full_frame, 5)
-        
-        # Recadrer la frame sur la ROI
-        current_frame = crop_to_roi(full_frame)
-        current_frame = cv2.flip(current_frame, 1)
-        last_depth_frame = current_frame.copy()
-        
-        if base_frame is None:
-            frames.append(current_frame)
-            if len(frames) >= 10:
-                base_frame = np.mean(frames, axis=0).astype(np.uint16)
-                print(f"Baseline calculée pour l'outil {current_tool}.")
-        else:
-            cropped_frames.append(current_frame)
-            if len(cropped_frames) > 10:
-                cropped_frames.pop(0)
-            mean_cropped_frame = np.mean(cropped_frames, axis=0).astype(np.uint16)
-            process_depth_frame(mean_cropped_frame)
-    
-    render_final_drawings()
-    process_brush_strokes()
+        objects_events.append({
+            'tool': current_tool,
+            'shape': name,
+            'cx': cx, 'cy': cy,
+            'w': avg_w, 'h': avg_h,
+            'angle': avg_angle,
+            'scale': scale,
+            'sprite': sprite
+        })
+async def main():
 
-    if current_tool == '4':
-        process_objects()
-        render_classification()
+    client.start_listening()
 
-    
-    key = cv2.waitKey(1) & 0xFF
-    if key == ord('q'):
-        break
-    elif key in [ord('1'), ord('2'), ord('3'), ord('4')]:
-        new_tool = chr(key)
-        if new_tool != current_tool:
-            if last_depth_frame is not None:
-                tool_base_frames[current_tool] = last_depth_frame.copy()
-            if new_tool in tool_base_frames:
-                base_frame = tool_base_frames[new_tool].copy()
-                print(f"Utilisation de la baseline sauvegardée pour l'outil {new_tool}.")
+    while True:
+        frame_idx += 1
+        if kinect.has_new_depth_frame():
+            depth_frame = kinect.get_last_depth_frame()
+            full_frame = depth_frame.reshape((424, 512)).astype(np.uint16)
+            full_frame = cv2.medianBlur(full_frame, 5)
+            
+            # Recadrer la frame sur la ROI
+            current_frame = crop_to_roi(full_frame)
+            current_frame = cv2.flip(current_frame, 1)
+            last_depth_frame = current_frame.copy()
+            
+            if base_frame is None:
+                frames.append(current_frame)
+                if len(frames) >= 10:
+                    base_frame = np.mean(frames, axis=0).astype(np.uint16)
+                    print(f"Baseline calculée pour l'outil {current_tool}.")
             else:
-                base_frame = None
-                frames = []
-                active_channel_buffer = []
-            current_tool = new_tool
-            print(f"Outil changé: {current_tool}")
-    elif key == ord(' '): 
-        USE_MATCHSHAPES = not USE_MATCHSHAPES
-        print(f"Utilisation de cv2.matchShapes : {USE_MATCHSHAPES}")
-    
-kinect.close()
-cv2.destroyAllWindows()
+                cropped_frames.append(current_frame)
+                if len(cropped_frames) > 10:
+                    cropped_frames.pop(0)
+                mean_cropped_frame = np.mean(cropped_frames, axis=0).astype(np.uint16)
+                process_depth_frame(mean_cropped_frame)
+        
+        render_final_drawings()
+        process_brush_strokes()
+
+        if current_tool == '4':
+            process_objects()
+            render_classification()
+
+        latest_payload = {
+            "tool": current_tool,
+            "strokes": strokes_events,
+            "objects": objects_events
+        }
+
+        await client.set_buffer(latest_payload)
+        
+        key = cv2.waitKey(1) & 0xFF
+        if key == ord('q'):
+            break
+        elif key in [ord('1'), ord('2'), ord('3'), ord('4')]:
+            new_tool = chr(key)
+            if new_tool != current_tool:
+                if last_depth_frame is not None:
+                    tool_base_frames[current_tool] = last_depth_frame.copy()
+                if new_tool in tool_base_frames:
+                    base_frame = tool_base_frames[new_tool].copy()
+                    print(f"Utilisation de la baseline sauvegardée pour l'outil {new_tool}.")
+                else:
+                    base_frame = None
+                    frames = []
+                    active_channel_buffer = []
+                current_tool = new_tool
+                print(f"Outil changé: {current_tool}")
+        elif key == ord(' '): 
+            USE_MATCHSHAPES = not USE_MATCHSHAPES
+            print(f"Utilisation de cv2.matchShapes : {USE_MATCHSHAPES}")
+        
+        await asyncio.sleep(0)
+        
+    kinect.close()
+    cv2.destroyAllWindows()
+    loop.run_until_complete(client.close_ws())
+    loop.close()
+
+if __name__ == "__main__":
+    asyncio.run(main())
