@@ -2,58 +2,53 @@
 set -e
 
 # ----------------------------------------------------------------
-# start.bash — Démarrage de l'application Nuxt avec PM2 en kiosque
-# Placez ce script à la racine de votre projet
+# start_mac.bash — Démarrage et gestion de l'application Nuxt sur Mac
+# Placez ce script à la racine de votre projet Nuxt
+# Usage: ./start_mac.bash
 # ----------------------------------------------------------------
 
-# 1️⃣ Désactive la mise en veille et l'économiseur d’écran X11
-xset s off        # Désactive l'écran de veille
-xset -dpms        # Désactive DPMS (gestion d'alimentation)
-xset s noblank    # Empêche l'écran de se mettre en veille
+# 1️⃣ Vérifie la présence de Homebrew
+if ! command -v brew >/dev/null 2>&1; then
+  echo "Homebrew non trouvé. Veuillez installer Homebrew depuis https://brew.sh"
+  exit 1
+fi
 
-# 2️⃣ Vérifie/installe Node.js et npm
+# 2️⃣ Vérifie/installe Node.js et npm via Homebrew
 if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
-  echo "Node.js ou npm non trouvé, installation via NodeSource..."
-  curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
-  sudo apt-get install -y nodejs npm build-essential
+  echo "Node.js/npm non trouvés. Installation via Homebrew..."
+  brew update
+  brew install node
 fi
 
 # 3️⃣ Vérifie/installe PM2
 if ! command -v pm2 >/dev/null 2>&1; then
   echo "PM2 non trouvé, installation globale via npm..."
-  sudo npm install -g pm2
+  npm install -g pm2
 fi
 
 # 4️⃣ Se place dans le dossier du script
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-# 5️⃣ Installe les dépendances et build Nuxt
 echo "📦 Installation des dépendances..."
 npm install
 
 echo "🔨 Build de l'application Nuxt..."
 npm run build
 
-# 6️⃣ Démarre Nuxt en arrière-plan via PM2
+# 5️⃣ Démarre l'application en production avec PM2
 APP_NAME="nuxt-artineo"
-echo "🚀 Démarrage de Nuxt avec PM2 (nom: $APP_NAME)..."
-pm2 start --name "$APP_NAME" -- npx nuxi preview --hostname 0.0.0.0 --port 3000
+echo "🚀 Démarrage de Nuxt (production) via PM2 (nom: $APP_NAME)..."
+pm2 start npm --name "$APP_NAME" -- start
 
-# 7️⃣ Laisse le temps au serveur de démarrer
-sleep 5
+# 6️⃣ Enregistre la configuration PM2 pour redémarrage automatique au boot
+echo "🔄 Sauvegarde de la configuration PM2 et activation au démarrage du système..."
+pm2 save
+pm2 startup launchd -u $(whoami) --hp $HOME
 
-# 8️⃣ Lance Chromium en mode kiosque sur l'application
-echo "🌐 Lancement de Chromium en mode kiosque..."
-chromium-browser \
-  --noerrdialogs \
-  --disable-infobars \
-  --incognito \
-  --kiosk http://localhost:3000
-
-# 9️⃣ À la fermeture de Chromium, on arrête Nuxt via PM2
-echo "🛑 Chromium fermé, arrêt de Nuxt ($APP_NAME) via PM2..."
-pm2 stop "$APP_NAME"
-pm2 delete "$APP_NAME"
+echo "✅ L'application Nuxt est lancée et gérée par PM2."  
+echo "   Pour voir les logs: pm2 logs $APP_NAME"  
+echo "   Pour arrêter: pm2 stop $APP_NAME"  
+echo "   Pour redémarrer: pm2 restart $APP_NAME"
 
 exit 0
