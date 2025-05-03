@@ -1,12 +1,13 @@
+import asyncio
+import glob
+import math
+import os
+import sys
+from pathlib import Path
+
 import cv2
 import numpy as np
 from dependencies.pykinect2 import PyKinectRuntime, PyKinectV2
-import os
-import glob
-import math
-from pathlib import Path
-import sys
-import asyncio
 
 sys.path.insert(
     0,
@@ -18,16 +19,11 @@ sys.path.insert(
         .resolve()
     )
 )
-from ArtineoClient import ArtineoAction, ArtineoClient # type: ignore
+from ArtineoClient import ArtineoAction, ArtineoClient  # type: ignore
 
 client = ArtineoClient(module_id=4, host="192.168.0.180", port=8000)
 config = client.fetch_config()
 print("Configuration récupérée : ", config)
-
-loop = asyncio.new_event_loop()
-asyncio.set_event_loop(loop)
-loop.run_until_complete(client.connect_ws())
-print("WebSocket connecté.")
 
 latest_payload = None
 strokes_events = []
@@ -739,6 +735,11 @@ def process_objects():
             'sprite': sprite
         })
 async def main():
+    global frame_idx, current_tool, last_depth_frame
+    global base_frame, active_channel_buffer, USE_MATCHSHAPES
+
+    await client.connect_ws()
+    print("WebSocket connecté.")
 
     client.start_listening()
 
