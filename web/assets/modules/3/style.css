@@ -1,0 +1,49 @@
+@font-face {
+  font-family: "CheeseSauce";
+  src: url('~assets/modules/3rfid/Cheese-Sauce.woff2') format("woff2");
+}
+
+html, body { margin:0; padding:0; height:100%; width:100%; }
+body {
+  background: no-repeat center center;
+  background-size: cover;
+  position: relative;
+  font-family: 'Comic Sans MS', cursive, sans-serif;
+}
+
+.blob {
+  position: absolute;
+  width: 400px; height: 240px;
+  background-color: white;            /* base avant coloration */
+  mask-repeat: no-repeat;
+  mask-position: center;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  -webkit-mask-size: contain;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #333;
+  font-size: 1.3em;
+  text-align: center;
+  pointer-events: none;
+  bottom: 0;
+  font-family: "CheeseSauce", sans-serif;
+}
+
+#blob1 {
+  left: calc(25% - 200px);
+  mask-image: url('~/assets/modules/3/blob1.svg');
+  -webkit-mask-image: url('~/assets/modules/3/blob1.svg');
+}
+#blob2 {
+  left: calc(50% - 200px);
+  mask-image: url('~/assets/modules/3/blob2.svg');
+  -webkit-mask-image: url('~/assets/modules/3/blob2.svg');
+}
+#blob3 {
+  left: calc(75% - 200px);
+  mask-image: url('~/assets/modules/3/blob3.svg');
+  -webkit-mask-image: url('~/assets/modules/3/blob3.svg');
+}
