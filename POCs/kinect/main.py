@@ -734,8 +734,11 @@ def process_objects():
             'scale': scale,
             'sprite': sprite
         })
+        
 async def main():
-    global frame_idx, current_tool, last_depth_frame
+    global frame_idx, current_tool, last_depth_frame, frames, tool_base_frames
+    global clusters, strokes_events, objects_events
+    global kinect, client, overlays, background_profiles
     global base_frame, active_channel_buffer, USE_MATCHSHAPES
 
     await client.connect_ws()
