@@ -8,7 +8,7 @@
   
   <script setup>
   import { onMounted } from 'vue'
-import use3rfid from '~/composables/use3rfid'
+import use3rfid from '~/composables/module3'
   
   definePageMeta({
     layout: 'module'

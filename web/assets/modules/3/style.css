@@ -34,16 +34,16 @@ body {
 
 #blob1 {
   left: calc(25% - 200px);
-  mask-image: url('~assets/modules/3rfid/blob1.svg');
-  -webkit-mask-image: url('~assets/modules/3rfid/blob1.svg');
+  mask-image: url('~/assets/modules/3/blob1.svg');
+  -webkit-mask-image: url('~/assets/modules/3/blob1.svg');
 }
 #blob2 {
   left: calc(50% - 200px);
-  mask-image: url('~assets/modules/3rfid/blob2.svg');
-  -webkit-mask-image: url('~assets/modules/3rfid/blob2.svg');
+  mask-image: url('~/assets/modules/3/blob2.svg');
+  -webkit-mask-image: url('~/assets/modules/3/blob2.svg');
 }
 #blob3 {
   left: calc(75% - 200px);
-  mask-image: url('~assets/modules/3rfid/blob3.svg');
-  -webkit-mask-image: url('~assets/modules/3rfid/blob3.svg');
+  mask-image: url('~/assets/modules/3/blob3.svg');
+  -webkit-mask-image: url('~/assets/modules/3/blob3.svg');
 }
