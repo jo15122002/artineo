@@ -1,8 +1,5 @@
 <template>
-    <div>
-      <div id="blob1" class="blob"/>
-      <div id="blob2" class="blob"/>
-      <div id="blob3" class="blob"/>
+    <div class="fullscreen">
     </div>
   </template>
   
@@ -11,6 +8,15 @@
   </script>
   
   <style scoped>
-  /* si besoin, scoper quelques règles spécifiques */
+  .fullscreen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: #f0f0f0;
+    z-index: 9999;
+    background-image: url('~/assets/Parcours.png');
+  }
   </style>
   
