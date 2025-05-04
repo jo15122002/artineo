@@ -9,7 +9,7 @@ export default function use1ir() {
     // paramètres calibrage reçus depuis le serveur
     const realDiameter = ref(6)    // en cm, valeur par défaut
     const focalLength = ref(400)     // en pixels, valeur par défaut
-    const backgroundPath = ref('painting.jpeg')   // chemin du PNG plein écran
+    const backgroundPath = ref('tableau.png')   // chemin du PNG plein écran
 
     // état du module
     const x = ref(0), y = ref(0), diamPx = ref(1), z = ref(0)
