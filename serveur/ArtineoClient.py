@@ -189,6 +189,7 @@ else:
             self.ws        = None
             self._handler  = None
             self._task     = None
+            self.open      = False
 
         def fetch_config(self):
             params = {}
@@ -205,8 +206,9 @@ else:
             return r.json()
 
         async def connect_ws(self):
-            if self.ws is None or self.ws.closed:
+            if self.ws is None or not self.open:
                 self.ws = await websockets.connect(self.ws_url)
+                self.open = True
             return self.ws
 
         async def send_ws_json(self, message: dict):
@@ -248,8 +250,9 @@ else:
                 self._task = asyncio.create_task(self._listen_loop())
 
         async def close_ws(self):
-            if self.ws and not self.ws.closed:
+            if self.ws and self.open:
                 await self.ws.close()
+                self.open = False
             if self._task:
                 self._task.cancel()
                 self._task = None
