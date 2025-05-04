@@ -32,7 +32,7 @@ onBeforeUnmount(() => {
 <template>
   <div>
     <h1>Dashboard</h1>
-    <div v-for="(status, moduleId) in data.modules" :key="moduleId">
+    <div v-for="(status, moduleId) in data?.modules" :key="moduleId">
       <!-- ActivityOverview est auto-importé depuis components/activity/overview.vue -->
       <ActivityOverview :activity-status="status" />
     </div>
@@ -44,3 +44,5 @@ h1 {
   margin-bottom: 1.5rem;
 }
 </style>
+
+
