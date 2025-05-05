@@ -3,8 +3,8 @@ import { useRuntimeConfig } from '#app'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
 export default function use1ir() {
-    const { public: { apiBase } } = useRuntimeConfig()
-    const serverUrl = apiBase
+    const { public: { apiUrl } } = useRuntimeConfig()
+    const serverUrl = apiUrl
 
     // paramètres calibrage reçus depuis le serveur
     const realDiameter = ref(6)    // en cm, valeur par défaut

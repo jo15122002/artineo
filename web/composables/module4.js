@@ -2,8 +2,7 @@ import { useRuntimeConfig } from '#app'
 import { onBeforeUnmount } from 'vue'
 
 export default function use4kinect(canvasRef) {
-    const { public: { apiBase } } = useRuntimeConfig()
-    const serverUrl = apiBase.replace(/^http/, 'ws') // ws://…
+    const { public: { wsUrl } } = useRuntimeConfig()
     const moduleId = 4
 
     let ws
@@ -30,7 +29,7 @@ export default function use4kinect(canvasRef) {
 
     // 1️⃣ Ouverture du WS
     function setupWebSocket() {
-        ws = new WebSocket(`${serverUrl}/ws`)
+        ws = new WebSocket(`${wsUrl}/ws`)
         ws.onopen = () => console.log('4KINECT WS ouverte')
         ws.onmessage = msg => {
             const data = JSON.parse(msg.data)
