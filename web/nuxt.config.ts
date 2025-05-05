@@ -7,8 +7,8 @@ export default defineNuxtConfig({
   },
   runtimeConfig: {
     public: {
-      wsUrl: 'ws://' + process.env.IP,
-      apiUrl: 'http://' + process.env.IP
+      wsUrl: 'ws://' + process.env.SERVER_ADDRESS,
+      apiUrl: 'http://' + process.env.SERVER_ADDRESS
     }
   }
 })
