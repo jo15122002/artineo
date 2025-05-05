@@ -8,6 +8,8 @@ call env\Scripts\activate.bat
 REM 3) Met à jour pip et installe les dépendances
 python -m pip install --upgrade pip
 python -m pip install fastapi uvicorn
+python -m pip uninstall uvicorn
+python -m pip install "uvicorn[standard]"
 
 REM 4) Démarre le serveur
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
