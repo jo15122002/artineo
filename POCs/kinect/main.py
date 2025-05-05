@@ -21,7 +21,7 @@ sys.path.insert(
 )
 from ArtineoClient import ArtineoAction, ArtineoClient  # type: ignore
 
-client = ArtineoClient(module_id=4, host="192.168.0.180", port=8000)
+client = ArtineoClient(module_id=4, host="192.168.0.100", port=8000)
 config = client.fetch_config()
 print("Configuration récupérée : ", config)
 
@@ -40,7 +40,7 @@ TEMPLATE_DIR = "images/templates/"
 # Méthode de comparaison choisie :
 USE_MATCHSHAPES = True
 AREA_THRESHOLD = 2000
-SMALL_AREA_THRESHOLD = 300
+SMALL_AREA_THRESHOLD = 250
 
 N_PROFILE = 100
 background_profiles = {}
@@ -475,11 +475,22 @@ async def main():
             USE_MATCHSHAPES = not USE_MATCHSHAPES
             print(f"matchShapes : {USE_MATCHSHAPES}")
 
-        await asyncio.sleep(0)
+        await asyncio.sleep(1/30)
 
     kinect.close()
     cv2.destroyAllWindows()
     await client.close_ws()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("Interruption du programme.")
+    except Exception as e:
+        print("Erreur:", e)
+    finally:
+        if kinect:
+            kinect.close()
+        cv2.destroyAllWindows()
+        asyncio.run(client.close_ws())
+        print("Fermeture du client Artineo.")
