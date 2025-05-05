@@ -73,6 +73,10 @@ def setup_hardware():
     for led in (led1, led2, led3):
         led[0] = (0, 0, 0)
         led.write()
+        
+    for led in (led1, led2, led3):
+        led[0] = scale_color((255, 0, 0))
+        led.write()
 
     # Button on GPIO14, pull-up, falling edge IRQ
     button = Pin(14, Pin.IN, Pin.PULL_UP)
@@ -230,13 +234,19 @@ async def async_main():
     setup_hardware()
 
     # 2) Create ArtineoClient & WebSocket
-    client = ArtineoClient(module_id=3, host="192.168.0.180", port=8000, ssid="Bob_bricolo", password="bobbricolo")
+    client = ArtineoClient(module_id=3, host="192.168.0.100", port=8000, ssid="Bob_bricolo", password="bobbricolo")
     ws = await client.connect_ws()
     if ws is None:
         print("⚠️ Aucune WS, on utilisera la configuration locale par défaut.")
         config = {}
     else:
         print("Connecté au serveur WebSocket.")
+        led1[0] = scale_color((255, 127, 0))
+        led1.write()
+        led2[0] = scale_color((255, 127, 0))
+        led2.write()
+        led3[0] = scale_color((255, 127, 0))
+        led3.write()
         try:
             config = client.fetch_config()
         except OSError as e:
@@ -255,6 +265,13 @@ async def async_main():
     print("Assignations chargées depuis le serveur :", assignments)
 
     print("Async setup done. Entering main loop.")
+    
+    led1[0] = scale_color((0, 255, 0))
+    led1.write()
+    led2[0] = scale_color((0, 255, 0))
+    led2.write()
+    led3[0] = scale_color((0, 255, 0))
+    led3.write()
 
     # Exemple dans main():
     # mode = input("Tapez 'a' pour assigner, 'r' pour lire : ").strip().lower()
@@ -263,6 +280,14 @@ async def async_main():
         await assign_cards(rdr1)  # on n'utilise qu'un seul lecteur pour l'assignation
         print("Assignations terminées. Redémarrage…")
 
+    sleep(1)
+    # On éteint les LEDs avant de commencer
+    led1[0] = (0, 0, 0)
+    led1.write()
+    led2[0] = (0, 0, 0)
+    led2.write()
+    led3[0] = (0, 0, 0)
+    led3.write()
 
     # Main loop: poll RFID constantly, handle button presses
     while True:
