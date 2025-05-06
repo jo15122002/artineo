@@ -234,7 +234,7 @@ async def async_main():
     setup_hardware()
 
     # 2) Create ArtineoClient & WebSocket
-    client = ArtineoClient(module_id=3, host="192.168.0.100", port=8000, ssid="Bob_bricolo", password="bobbricolo")
+    client = ArtineoClient(module_id=3, host="192.168.0.180", port=8000, ssid="Bob_bricolo", password="bobbricolo")
     ws = await client.connect_ws()
     if ws is None:
         print("⚠️ Aucune WS, on utilisera la configuration locale par défaut.")
@@ -281,6 +281,7 @@ async def async_main():
         print("Assignations terminées. Redémarrage…")
 
     sleep(1)
+    print("on etein les LEDs")
     # On éteint les LEDs avant de commencer
     led1[0] = (0, 0, 0)
     led1.write()
