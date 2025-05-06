@@ -3,15 +3,42 @@
   src: url('~assets/modules/3rfid/Cheese-Sauce.woff2') format("woff2");
 }
 
-html, body { margin:0; padding:0; height:100%; width:100%; }
+html, body { margin:0; padding:0; height:100vh; width:100vw; }
+
 body {
-  background: no-repeat center center;
-  background-size: cover;
-  position: relative;
-  font-family: 'Comic Sans MS', cursive, sans-serif;
+  background-repeat: no-repeat !important;
+  background-size: contain !important;
+  position: relative !important;
+  font-family: 'Comic Sans MS', cursive, sans-serif !important;
+}
+
+#background {
+  z-index: 0;
+  position: fixed;
+  top: 0; left: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;      /* on cache l’overflow */
+  margin: 0; padding: 0;
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center center;
+  background-attachment: fixed;
+}
+
+.overlay-video {
+  z-index: 1;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: auto;
+  height: 100vh;
+  pointer-events: none; /* si tu veux pas gêner la WS ou la page */
 }
 
 .blob {
+  z-index: 2;
   position: absolute;
   width: 400px; height: 240px;
   background-color: white;            /* base avant coloration */
@@ -46,4 +73,13 @@ body {
   left: calc(75% - 200px);
   mask-image: url('~/assets/modules/3/blob3.svg');
   -webkit-mask-image: url('~/assets/modules/3/blob3.svg');
+}
+
+.fade-out {
+  animation: fade-out 1s ease-in-out forwards;
+}
+
+@keyframes fade-out {
+  0% { opacity: 1; }
+  100% { opacity: 0; }
 }
