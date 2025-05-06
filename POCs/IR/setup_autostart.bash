@@ -8,7 +8,7 @@
 # Variables
 SERVICE_NAME="artineo-ir"
 SERVICE_PATH="/etc/systemd/system/${SERVICE_NAME}.service"
-WORKDIR="${HOME}/Desktop/artineo/POCs/IR"
+WORKDIR="${HOME}/pi/Desktop/artineo/POCs/IR"
 SCRIPT="${WORKDIR}/start.bash"
 
 # Vérifie que le script start.bash existe
