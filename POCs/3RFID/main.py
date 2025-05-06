@@ -156,6 +156,7 @@ async def async_main():
     client = ArtineoClient(module_id=3,
                            host="192.168.0.180", port=8000,
                            ssid="Bob_bricolo", password="bobbricolo")
+    
     ws = await client.connect_ws()
     if ws:
         try:

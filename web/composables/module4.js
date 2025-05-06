@@ -2,20 +2,39 @@ import { useRuntimeConfig } from '#app'
 import { onBeforeUnmount } from 'vue'
 
 export default function use4kinect(canvasRef) {
-    const { public: { apiBase } } = useRuntimeConfig()
-    const serverUrl = apiBase.replace(/^http/, 'ws') // ws://…
+    const { public: { wsUrl } } = useRuntimeConfig()
     const moduleId = 4
 
     let ws
     let animationId
 
+    const imgModules = import.meta.glob(
+        '~/assets/modules/4/images/*.png',
+        { eager: true, as: 'url' }
+    )
+
+    const objectSprites = {}
+    const objectImages  = {}
+
+    Object.entries(imgModules).forEach(([path, url]) => {
+        const filename = path.split('/').pop()          // ex. "Fond_mer2.png"
+        const name     = filename.replace('.png', '')   // ex. "Fond_mer2"
+        objectSprites[name] = url
+
+        // Pré-création de l'Image
+        const img = new Image()
+        img.src = url
+        objectImages[name] = img
+    })
+
     // 1️⃣ Ouverture du WS
     function setupWebSocket() {
-        ws = new WebSocket(`${serverUrl}/ws`)
+        ws = new WebSocket(`${wsUrl}/ws`)
         ws.onopen = () => console.log('4KINECT WS ouverte')
         ws.onmessage = msg => {
             const data = JSON.parse(msg.data)
             if (data.action === 'get_buffer' && data.buffer.tool) {
+                console.log('buffer', data.buffer)
                 drawBuffer(data.buffer)
             }
         }
@@ -56,9 +75,18 @@ export default function use4kinect(canvasRef) {
 
         // (optionnel) superposer objets
         buf.objects.forEach(o => {
-            // placeholder : un petit carré noir
+        const img = objectImages[o.shape]
+        if (img && img.complete) {
+            const w = o.w * scale
+            const h = o.h * scale
+            const x = o.cx * scale - w/2
+            const y = o.cy * scale - h/2
+            ctx.drawImage(img, x, y, w, h)
+        } else {
+            // placeholder
             ctx.fillStyle = '#000'
-            ctx.fillRect(o.cx * scale - 5, o.cy * scale - 5, 10, 10)
+            ctx.fillRect(o.cx*scale - 5, o.cy*scale - 5, 10, 10)
+        }
         })
     }
 

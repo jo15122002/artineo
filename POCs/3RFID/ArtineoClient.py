@@ -35,7 +35,7 @@ if MICROPY:
         def __init__(self, module_id=None, host=None, port=None,
                      ssid=None, password=None):
             self.module_id = module_id
-            self.host      = host or "192.168.0.180"
+            self.host      = host or "192.168.0.100"
             self.port      = port or 8000
             self.base_url  = f"http://{self.host}:{self.port}"
             self.ws_url    = f"ws://{self.host}:{self.port}/ws"

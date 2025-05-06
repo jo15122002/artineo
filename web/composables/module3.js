@@ -2,8 +2,7 @@ import { useRuntimeConfig } from '#app'
 import { onBeforeUnmount } from 'vue'
 
 export default function use3rfid() {
-    const { public: { apiBase } } = useRuntimeConfig()
-    const serverUrl = apiBase || 'http://127.0.0.1:8000'
+    const { public: { apiUrl, wsUrl } } = useRuntimeConfig()
     const moduleId = 3
 
     let ws
@@ -13,7 +12,7 @@ export default function use3rfid() {
 
     // 1️⃣ Récupère la config et initialise tout
     async function fetchConfig() {
-        const res = await fetch(`${serverUrl}/config?module=${moduleId}`)
+        const res = await fetch(`${apiUrl}/config?module=${moduleId}`)
         const json = await res.json()
         assignments = json.config.assignments
         answers = json.config.answers
@@ -32,7 +31,7 @@ export default function use3rfid() {
 
     // 2️⃣ WebSocket pour recevoir le buffer
     function setupWebSocket() {
-        ws = new WebSocket(`ws://${serverUrl}/ws`)
+        ws = new WebSocket(`${wsUrl}/ws`)
         ws.onopen = () => console.log('3RFID WS ouverte')
         ws.onmessage = e => {
             const msg = JSON.parse(e.data)
@@ -93,7 +92,7 @@ export default function use3rfid() {
         _lastBackgroundSet = set
         let backgroundDiv = document.getElementById('background')
 
-        fetch(`${serverUrl}/getAsset?module=${moduleId}&path=tableau${set}.png`)
+        fetch(`${apiUrl}/getAsset?module=${moduleId}&path=tableau${set}.png`)
             .then(r => r.blob())
             .then(b => {
                 backgroundDiv.style.backgroundImage = `url(${URL.createObjectURL(b)})`
