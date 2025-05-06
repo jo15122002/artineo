@@ -1,6 +1,6 @@
 @font-face {
   font-family: "CheeseSauce";
-  src: url('~assets/modules/3rfid/Cheese-Sauce.woff2') format("woff2");
+  src: url('./Cheese-Sauce.woff2') format("woff2");
 }
 
 html, body { margin:0; padding:0; height:100vh; width:100vw; }
