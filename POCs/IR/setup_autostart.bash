@@ -5,20 +5,36 @@
 # Usage : sudo ./setup_autostart.sh
 #
 
-# Variables
+set -e
+
 SERVICE_NAME="artineo-ir"
 SERVICE_PATH="/etc/systemd/system/${SERVICE_NAME}.service"
-WORKDIR="${HOME}/pi/Desktop/artineo/POCs/IR"
+
+# Détecte l'utilisateur propriétaire (pour trouver correctement son HOME)
+if [ -n "$SUDO_USER" ] && [ "$SUDO_USER" != "root" ]; then
+  OWNER="$SUDO_USER"
+else
+  OWNER="$USER"
+fi
+HOME_DIR=$(eval echo "~${OWNER}")
+
+WORKDIR="${HOME_DIR}/Desktop/artineo/POCs/IR"
 SCRIPT="${WORKDIR}/start.bash"
 
-# Vérifie que le script start.bash existe
-if [ ! -x "${SCRIPT}" ]; then
-  echo "Erreur : ${SCRIPT} introuvable ou non exécutable."
+# Vérifie que start.bash existe
+if [ ! -f "${SCRIPT}" ]; then
+  echo "Erreur : ${SCRIPT} introuvable."
   exit 1
 fi
 
-# Crée le fichier de service systemd
-cat <<EOF | sudo tee "${SERVICE_PATH}" > /dev/null
+# S'il n'est pas exécutable, on le rend exécutable
+if [ ! -x "${SCRIPT}" ]; then
+  echo "Le script ${SCRIPT} n'est pas exécutable. Ajout du bit exécutable..."
+  chmod +x "${SCRIPT}"
+fi
+
+# Crée (ou remplace) le service systemd
+sudo tee "${SERVICE_PATH}" > /dev/null <<EOF
 [Unit]
 Description=Artineo Module 1 Auto-Start
 After=network-online.target
@@ -26,7 +42,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=${USER}
+User=${OWNER}
 WorkingDirectory=${WORKDIR}
 ExecStart=${SCRIPT}
 Restart=on-failure
@@ -39,7 +55,7 @@ EOF
 # Recharge systemd et active le service
 sudo systemctl daemon-reload
 sudo systemctl enable "${SERVICE_NAME}.service"
-sudo systemctl start "${SERVICE_NAME}.service"
+sudo systemctl start  "${SERVICE_NAME}.service"
 
-echo "Service ${SERVICE_NAME}.service créé et démarré."
+echo "Service ${SERVICE_NAME}.service créé, activé et démarré."
 echo "Pour vérifier : sudo systemctl status ${SERVICE_NAME}.service"
