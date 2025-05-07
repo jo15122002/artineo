@@ -1,5 +1,5 @@
 import { useRuntimeConfig } from '#app'
-import { onBeforeUnmount } from 'vue'
+import { onBeforeUnmount, onMounted } from 'vue'
 
 export default function use4kinect(canvasRef) {
     const { public: { wsUrl } } = useRuntimeConfig()
@@ -9,7 +9,12 @@ export default function use4kinect(canvasRef) {
     let animationId
 
     const imgModules = import.meta.glob(
-        '~/assets/modules/4/images/*.png',
+        '~/assets/modules/4/images/objects/*.png',
+        { eager: true, as: 'url' }
+    )
+
+    const brushModules = import.meta.glob(
+        '~/assets/modules/4/images/brushes/*.png',
         { eager: true, as: 'url' }
     )
 
@@ -26,6 +31,35 @@ export default function use4kinect(canvasRef) {
         img.src = url
         objectImages[name] = img
     })
+
+    const rawBrushImages = Object.values(brushModules).map(url => {
+        const img = new Image()
+        img.src = url
+        return img
+    })
+
+    const brushCanvases = []
+    function prepareBrushes() {
+        rawBrushImages.forEach(img => {
+        const cw = img.width, ch = img.height
+        const c = document.createElement('canvas')
+        c.width = cw; c.height = ch
+        const ctx = c.getContext('2d')
+        ctx.drawImage(img, 0, 0)
+        const id = ctx.getImageData(0, 0, cw, ch)
+        const d  = id.data
+        for (let i = 0; i < d.length; i += 4) {
+            const lum = d[i]            // R=G=B=lum
+            d[i]   = 255                // R
+            d[i+1] = 0                  // G
+            d[i+2] = 0                  // B
+            d[i+3] = lum                // alpha = niveau de gris
+        }
+        ctx.putImageData(id, 0, 0)
+        brushCanvases.push(c)
+        })
+        console.log(`✅ ${brushCanvases.length} brushes prêts`)
+    }
 
     // 1️⃣ Ouverture du WS
     function setupWebSocket() {
@@ -61,17 +95,23 @@ export default function use4kinect(canvasRef) {
         ctx.fillRect(0, 0, W, H)
 
         // Pour chaque stroke : un cercle (approx brush)
-        buf.strokes.forEach(s => {
-            ctx.beginPath()
-            ctx.arc(
-                s.x * scale,
-                s.y * scale,
-                (s.size || 5) * scale,
-                0, Math.PI * 2
-            )
-            ctx.fillStyle = `rgb(${s.color[0]},${s.color[1]},${s.color[2]})`
-            ctx.fill()
-        })
+        if (brushCanvases.length) {
+            buf.strokes.forEach(s => {
+              const bc = brushCanvases[
+                Math.floor(Math.random() * brushCanvases.length)
+              ]
+              const px    = s.x * scale
+              const py    = s.y * scale
+              const size  = (s.size || 5) * scale
+              const angle = Math.random() * Math.PI * 2
+      
+              ctx.save()
+              ctx.translate(px, py)
+              ctx.rotate(angle)
+              ctx.drawImage(bc, -size/2, -size/2, size, size)
+              ctx.restore()
+            })
+          }
 
         // (optionnel) superposer objets
         buf.objects.forEach(o => {
@@ -92,6 +132,13 @@ export default function use4kinect(canvasRef) {
 
     // 4️⃣ Lancement au montage
     if (process.client) {
+        console.log('4Kinect module monté')
+        const loads = rawBrushImages.map(img => new Promise(res => {
+            if (img.complete) res()
+            else img.onload = () => res()
+        }))
+        Promise.all(loads).then(() => prepareBrushes())
+
         setupWebSocket()
         requestBuffer()
         animationId = setInterval(requestBuffer, 100) // plus fluide
