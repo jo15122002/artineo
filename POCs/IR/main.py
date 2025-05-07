@@ -58,7 +58,7 @@ def main():
     W, H = 320, 240
     frame_size = W * H * 3  # BGR24
 
-    client = ArtineoClient(module_id=1)
+    client = ArtineoClient(module_id=1, host="192.168.0.175", port=8000)
     config = client.fetch_config()
     print("Config reçue :", config)
 
