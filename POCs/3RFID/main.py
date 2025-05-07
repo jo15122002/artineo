@@ -147,6 +147,7 @@ async def async_main():
 
     setup_hardware()
 
+    # 2) Create ArtineoClient & WebSocket
     client = ArtineoClient(
         module_id=3,
         host="192.168.0.180", port=8000,
