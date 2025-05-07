@@ -86,6 +86,8 @@ async def read_uid(reader,
     for i in range(attempts):
         reader.init()
         reader.antenna_on()
+        
+        await asyncio.sleep_ms(50)  # Delay to avoid reader interference
 
         # On lance la requête mais on ne dépend plus de bits==16
         _stat_req, _bits = reader.request(reader.REQIDL)
@@ -150,7 +152,7 @@ async def async_main():
     # 2) Create ArtineoClient & WebSocket
     client = ArtineoClient(
         module_id=3,
-        host="192.168.0.180", port=8000,
+        host="192.168.0.175", port=8000,
         ssid="Bob_bricolo", password="bobbricolo"
     )
     ws = await client.connect_ws()
@@ -177,6 +179,13 @@ async def async_main():
 
     print("▶️ Entering main loop.")
     while True:
+        rdr1.init()
+        rdr2.init()
+        rdr3.init()
+        
+        await asyncio.sleep_ms(50)  # Delay to avoid reader interference
+        
+        # Lecture des UIDs (en série pour éviter les interférences)
         u1 = await read_uid(rdr1)
         u2 = await read_uid(rdr2)
         u3 = await read_uid(rdr3)

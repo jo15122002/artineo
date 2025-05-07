@@ -49,6 +49,7 @@ export default function use3rfid() {
 
     // 4️⃣ Met à jour texte + déclenche coloration si bouton
     function updateBlobs(buf) {
+        console.log('updateBlobs', buf)
         ['blob1', 'blob2', 'blob3'].forEach((id, i) => {
             const el = document.getElementById(id)
             const uid = buf[`uid${i + 1}`]
