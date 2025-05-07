@@ -90,11 +90,12 @@ export default function use3rfid() {
     function changeBackground(set) {
         if (set === _lastBackgroundSet) return
         _lastBackgroundSet = set
+        let backgroundDiv = document.getElementById('background')
 
         fetch(`${apiUrl}/getAsset?module=${moduleId}&path=tableau${set}.png`)
             .then(r => r.blob())
             .then(b => {
-                document.body.style.backgroundImage = `url(${URL.createObjectURL(b)})`
+                backgroundDiv.style.backgroundImage = `url(${URL.createObjectURL(b)})`
             })
             .catch(console.error)
     }

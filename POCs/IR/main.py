@@ -67,7 +67,7 @@ def main():
     loop.run_until_complete(client.connect_ws())
     print("WebSocket connectée.")
 
-    cv2.namedWindow("Flux de la caméra", cv2.WINDOW_NORMAL)
+    # cv2.namedWindow("Flux de la caméra", cv2.WINDOW_NORMAL)
     frame_idx = 0
 
     try:
@@ -94,7 +94,7 @@ def main():
                         client.send_ws(ArtineoAction.SET, data)
                     )
 
-            cv2.imshow("Flux de la caméra", frame)
+            # cv2.imshow("Flux de la caméra", frame)
             if cv2.waitKey(1) & 0xFF == ord("q"):
                 break
     finally:

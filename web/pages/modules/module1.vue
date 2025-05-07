@@ -1,13 +1,13 @@
 <template>
-    <div class="module1-container">
-      <img
-        v-if="backgroundPath"
-        :src="`${apiBase}/getAsset?module=1&path=${backgroundPath}`"
-        class="fullscreen-img"
-        :style="{ filter: filterStyle }"
-      />
-    </div>
-  </template>
+  <div class="module1-container">
+    <img
+      v-if="backgroundPath"
+      :src="`${apiBase}/getAsset?module=1&path=${backgroundPath}`"
+      class="fullscreen-img"
+      :style="{ filter: filterStyle }"
+    />
+  </div>
+</template>
   
   <script setup>
   import { useRuntimeConfig } from '#app'
