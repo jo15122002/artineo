@@ -63,4 +63,6 @@ else
     echo "✅ Entrée crontab déjà présente."
 fi
 
-echo "✅ Installation terminée. Lance maintenant avec : sudo $SCRIPT_PATH"
+echo "✅ Installation terminée. Lancement du script de synchronisation..."
+# Lancer le script immédiatement
+sudo $SCRIPT_PATH
