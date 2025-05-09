@@ -86,10 +86,7 @@ export DISPLAY=:0
 xset s off        >> "\$LOGFILE" 2>&1
 xset -dpms        >> "\$LOGFILE" 2>&1
 xset s noblank    >> "\$LOGFILE" 2>&1
-/usr/bin/chromium-browser \\
-  --noerrdialogs --disable-infobars --enable-logging --v=1 \\
-  --kiosk http://artineo.local:3000/modules/module1 \\
-  >> "\$LOGFILE" 2>&1
+/usr/bin/chromium-browser --noerrdialogs http://artineo.local:3000/modules/module1
 echo "Chromium terminé (\$?) à \$(date)" >> "\$LOGFILE"
 EOF
 chown "${OWNER}:${OWNER}" "$WRAPPER_SCRIPT"
