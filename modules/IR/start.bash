@@ -1,30 +1,24 @@
 #!/bin/bash
+set -e
+set -m   # active le contrôle de job
+# À la sortie du script ou sur interruption, on tue tout le groupe de processus
+trap 'echo "Arrêt de la pipeline vidéo..."; kill 0' EXIT INT TERM
 
-# Pull dernier code
-echo "Récupération des dernières modifications..."
+# Mettre à jour et installer (idem avant)
+echo "Récupération du code et mise à jour du système..."
 git pull
-
-# Mise à jour du système
-echo "Mise à jour du système..."
 sudo apt update && sudo apt upgrade -y
 
-# Installation des paquets essentiels
 echo "Installation des paquets essentiels..."
 sudo apt-get install -y \
     python3 python3-pip python3-opencv \
     libcamera-apps ffmpeg \
     python3-requests python3-websockets python3-dotenv
 
-# Test de la caméra (2 secondes sans preview)
-echo "Test de la caméra avec libcamera-hello..."
+echo "Test de la caméra (2 s)..."
 libcamera-hello -t 2000 --nopreview
-if [ $? -ne 0 ]; then
-    echo "Erreur : libcamera-hello a échoué. Vérifiez votre installation."
-    exit 1
-fi
 
-# Lancement du pipeline : capture 640×480 → ffmpeg scale 320×240@15FPS → main.py
-echo "Lancement du pipeline (320×240 @15FPS)..."
+echo "Démarrage du pipeline (640×480 → 320×240 @15FPS) etc."
 libcamera-vid -t 0 --nopreview --width 640 --height 480 --inline --codec yuv420 --output - | \
 ffmpeg -loglevel error \
        -f rawvideo -pix_fmt yuv420p -s 640x480 -r 30 -i - \
