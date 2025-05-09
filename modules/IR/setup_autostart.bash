@@ -5,8 +5,8 @@ set -euo pipefail
 # setup_autostart.bash
 # Configure automatiquement :
 #  • le service systemd pour lancer start.bash (pipeline IR)
-#  • le kiosk mode Chromium sur module1 au démarrage graphique
-# Usage (exécuter en non-root avec sudo) :
+#  • le lancement de Chromium en kiosk via un .desktop dans ~/.config/autostart
+# Usage (exécuter en non-root, avec sudo si nécessaire) :
 #   chmod +x setup_autostart.bash
 #   ./setup_autostart.bash
 # ================================================================
@@ -24,7 +24,10 @@ WORKDIR="$HOME_DIR/Desktop/artineo/modules/IR"
 START_SCRIPT="$WORKDIR/start.bash"
 SERVICE_NAME="artineo-ir"
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
-AUTOSTART_GLOBAL="/etc/xdg/lxsession/LXDE-pi/autostart"
+WRAPPER_SCRIPT="$HOME_DIR/kiosk_chromium.sh"
+AUTOSTART_DIR="$HOME_DIR/.config/autostart"
+DESKTOP_FILE="$AUTOSTART_DIR/kiosk_chromium.desktop"
+LOGFILE="$HOME_DIR/chromium-kiosk.log"
 
 # 3️⃣ Vérification de start.bash
 if [ ! -f "$START_SCRIPT" ]; then
@@ -73,22 +76,41 @@ sudo systemctl daemon-reload
 sudo systemctl enable "${SERVICE_NAME}.service"
 sudo systemctl start  "${SERVICE_NAME}.service"
 
-# 7️⃣ Configuration du mode kiosk Chromium (global pour LXDE-pi)
-echo "🖥️  Configuration du mode kiosk pour Chromium…"
-sudo mkdir -p "$(dirname "$AUTOSTART_GLOBAL")"
-sudo tee "$AUTOSTART_GLOBAL" > /dev/null <<EOF
-@/usr/bin/chromium-browser --noerrdialogs --disable-infobars --kiosk \
-   --enable-logging --v=1 http://artineo.local:3000/modules/module1 \
-   >> /home/pi/chromium-kiosk.log 2>&1
-
+# 7️⃣ Création du wrapper pour démarrage de Chromium en kiosk
+echo "🖥️  Création du script wrapper $WRAPPER_SCRIPT…"
+cat > "$WRAPPER_SCRIPT" <<EOF
+#!/usr/bin/env bash
+LOGFILE="$LOGFILE"
+echo "=== Lancement Chromium à \$(date) ===" >> "\$LOGFILE"
+export DISPLAY=:0
+xset s off        >> "\$LOGFILE" 2>&1
+xset -dpms        >> "\$LOGFILE" 2>&1
+xset s noblank    >> "\$LOGFILE" 2>&1
+/usr/bin/chromium-browser \\
+  --noerrdialogs --disable-infobars --enable-logging --v=1 \\
+  --kiosk http://artineo.local:3000/modules/module1 \\
+  >> "\$LOGFILE" 2>&1
+echo "Chromium terminé (\$?) à \$(date)" >> "\$LOGFILE"
 EOF
+chown "${OWNER}:${OWNER}" "$WRAPPER_SCRIPT"
+chmod +x "$WRAPPER_SCRIPT"
 
-sudo chown root:root "$AUTOSTART_GLOBAL"
-sudo chmod 644        "$AUTOSTART_GLOBAL"
-
-# 8️⃣ Ajuste les droits sur le dossier .config de l’utilisateur
-sudo chown -R "${OWNER}":"${OWNER}" "$HOME_DIR/.config"
+# 8️⃣ Création du .desktop pour autostart utilisateur
+echo "🔗 Création du .desktop dans $AUTOSTART_DIR…"
+mkdir -p "$AUTOSTART_DIR"
+cat > "$DESKTOP_FILE" <<EOF
+[Desktop Entry]
+Type=Application
+Name=Chromium Kiosk Artineo
+Exec=$WRAPPER_SCRIPT
+X-GNOME-Autostart-enabled=true
+NoDisplay=false
+StartupNotify=false
+EOF
+chown "${OWNER}:${OWNER}" "$DESKTOP_FILE"
+chmod 644               "$DESKTOP_FILE"
 
 echo "✅ Installation terminée !"
 echo "  • Service IR démarré : sudo systemctl status ${SERVICE_NAME}.service"
-echo "  • Chromium démarrera en kiosk sur module1 au prochain login graphique."
+echo "  • Chromium kiosk auto-start configuré via $DESKTOP_FILE"
+echo "  • Logs Chromium : $LOGFILE"
