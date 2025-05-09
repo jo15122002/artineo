@@ -88,10 +88,10 @@ else
 fi
 echo
 
-sudo pip3 install --break-system-packages ../../../serveur/requirements_client.txt
+sudo pip3 install --break-system-packages ../../../serveur/back/requirements_client.txt
 if [ $? -ne 0 ]; then
     echo "[ERROR] Failed to install Python packages from requirements_client.txt."
-    echo "        Please try installing manually: sudo pip3 install --break-system-packages ../../../serveur/requirements_client.txt"
+    echo "        Please try installing manually: sudo pip3 install --break-system-packages ../../../serveur/back/requirements_client.txt"
     exit 1
 fi
 

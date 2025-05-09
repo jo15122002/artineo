@@ -12,7 +12,7 @@ sys.path.insert(
         Path(__file__)
         .resolve()
         .parent
-        .joinpath("..", "..", "serveur")
+        .joinpath("..", "..", "serveur", "back")
         .resolve()
     )
 )
