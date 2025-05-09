@@ -77,9 +77,6 @@ sudo systemctl start  "${SERVICE_NAME}.service"
 echo "🖥️  Configuration du mode kiosk pour Chromium…"
 sudo mkdir -p "$(dirname "$AUTOSTART_GLOBAL")"
 sudo tee "$AUTOSTART_GLOBAL" > /dev/null <<EOF
-@xset s off
-@xset -dpms
-@xset s noblank
 @/usr/bin/chromium-browser --noerrdialogs --disable-infobars --kiosk \
    --enable-logging --v=1 http://artineo.local:3000/modules/module1 \
    >> /home/pi/chromium-kiosk.log 2>&1
