@@ -38,11 +38,24 @@ if [[ "$sync_status" == "Normal" ]]; then
     echo "✅ Synchronisation NTP réussie 🎉"
 else
     echo "❌ Échec de la synchronisation NTP, tentative via HTTPS..."
-    http_date=$(curl -sI https://cloudflare.com | grep '^Date:' | cut -d' ' -f2-)
+
+    servers=("https://cloudflare.com" "https://www.google.com" "https://openai.com")
+    http_date=""
+
+    for url in "${servers[@]}"; do
+        echo "🌐 Tentative d'heure via $url"
+        http_date=$(curl -sI "$url" | tr -d '\r' | grep -i '^Date:' | awk '{for (i=2;i<=NF;++i) printf $i" "; print ""}')
+        if [ -n "$http_date" ]; then
+            echo "✅ Heure récupérée depuis $url : $http_date"
+            break
+        fi
+    done
+
     if [ -z "$http_date" ]; then
-        echo "⚠️ Impossible de récupérer l'heure via HTTPS."
+        echo "⚠️ Impossible de récupérer l'heure via HTTPS sur tous les serveurs."
         exit 1
     fi
+
     date_cmd=$(date -d "$http_date" "+%Y-%m-%d %H:%M:%S")
     echo "📅 Mise à jour manuelle de l'heure avec : $date_cmd"
     date -s "$date_cmd"
