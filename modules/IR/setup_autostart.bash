@@ -18,7 +18,7 @@ fi
 HOME_DIR=$(eval echo "~$OWNER")
 
 # 2️⃣ Chemins
-WORKDIR="$HOME_DIR/Desktop/artineo/POCs/IR"
+WORKDIR="$HOME_DIR/Desktop/artineo/modules/IR"
 START_SCRIPT="$WORKDIR/start.bash"
 SERVICE_NAME="artineo-ir"
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
