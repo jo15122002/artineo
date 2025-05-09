@@ -1,31 +1,44 @@
 #!/usr/bin/env bash
 set -e
 
-BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
 
-### 1) (Optionnel) libère le port 8000 si un ancien uvicorn y tourne
-if lsof -ti:8000 >/dev/null; then
-  echo "⚠ Port 8000 occupé, arrêt de l’ancienne instance UVicorn…"
-  lsof -ti:8000 | xargs kill -9
-fi
+# Fonction pour trouver le premier port libre à partir d'une base
+find_free_port(){
+  local port=$1
+  while lsof -iTCP -sTCP:LISTEN -Pn | grep -q ":${port} "; do
+    port=$((port+1))
+  done
+  echo $port
+}
 
-### 2) Démarre le backend FastAPI
+### 1) Backend FastAPI
 (
-  echo "🚀 Backend…"
+  echo "🚀 Démarrage du backend (FastAPI) sur le port 8000…"
   cd "$BASE_DIR/back"
   source env/bin/activate
   exec uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ) &
 
-### 3) Démarre le frontend Nuxt
+### 2) Frontend Nuxt
+FRONT_START_PORT=3000
+PORT=$(find_free_port $FRONT_START_PORT)
+
 (
-  echo "🌐 Frontend…"
+  echo "🌐 Démarrage du frontend (Nuxt) sur le port ${PORT}…"
   cd "$BASE_DIR/front"
-  exec npm run dev -- --host 0.0.0.0 --port 3000
+  # la commande nuxt (v3) utilise --host et --port
+  exec npm run dev -- --host 0.0.0.0 --port $PORT
 ) &
 
-### 4) Attend que tout tourne
+### 3) Affichage des URLs d’accès réseau
+# on attend un court instant pour que les serveurs démarrent et que l'IP soit connue
+sleep 1
+IP=$(hostname -I | awk '{print $1}')
+echo
+echo "✅ Backend accessible sur : http://${IP}:8000"
+echo "✅ Frontend accessible sur : http://${IP}:${PORT}"
+echo
+
 wait
-echo "✅ Serveurs démarrés !"
-echo "   - Frontend: http://artineo.local:3000"
-echo "   - Backend: http://artineo.local:8000"
+echo "🚀 Tous les serveurs sont en cours d'exécution."
