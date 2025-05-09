@@ -2,7 +2,7 @@
   <div class="module1-container">
     <img
       v-if="backgroundPath"
-      :src="`${apiBase}/getAsset?module=1&path=${backgroundPath}`"
+      :src="`${apiUrl}/getAsset?module=1&path=${backgroundPath}`"
       class="fullscreen-img"
       :style="{ filter: filterStyle }"
     />
@@ -15,7 +15,7 @@ import use1ir from '~/composables/module1'
   
   definePageMeta({ layout: 'module' })
   
-  const { public: { apiBase } } = useRuntimeConfig()
+  const { public: { apiUrl } } = useRuntimeConfig()
   const { backgroundPath, filterStyle } = use1ir()
   </script>
   
