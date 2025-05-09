@@ -18,7 +18,7 @@ fi
 HOME_DIR=$(eval echo "~$OWNER")
 
 # 2️⃣ Chemins
-WORKDIR="$HOME_DIR/Desktop/artineo/modules/IR"
+WORKDIR="$HOME_DIR/Desktop/artineo/POCs/IR"
 START_SCRIPT="$WORKDIR/start.bash"
 SERVICE_NAME="artineo-ir"
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
@@ -38,10 +38,9 @@ fi
 # 4️⃣ Installer les dépendances système si nécessaire
 echo "📦 Mise à jour et installation des paquets requis..."
 sudo apt update
-sudo apt install -y python3 python3-pip python3-opencv libcamera-apps ffmpeg chromium-browser
-
-# (Optionnel) dépendances Python supplémentaires via pip
-pip3 install --user requests websockets python-dotenv
+sudo apt install -y \
+  python3 python3-pip python3-opencv libcamera-apps ffmpeg chromium-browser \
+  python3-requests python3-websockets python3-dotenv
 
 # 5️⃣ Création du service systemd pour le pipeline Python
 echo "🔧 Création du service systemd : $SERVICE_NAME"
