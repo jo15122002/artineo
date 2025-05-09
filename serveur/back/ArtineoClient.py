@@ -41,6 +41,8 @@ if MICROPY:
             self.ws_url    = f"ws://{self.host}:{self.port}/ws"
             self.ws        = None
             self._handler  = None
+            self.ssid      = ssid or "Bob_bricolo"
+            self.password  = password or "bobbricolo"
             # connexion Wi‑Fi si cred fournies
             if ssid and password:
                 self.connect_wifi(ssid, password)
