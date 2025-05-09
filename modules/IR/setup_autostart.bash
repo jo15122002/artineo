@@ -18,7 +18,7 @@ else
 fi
 HOME_DIR=$(eval echo "~${OWNER}")
 
-WORKDIR="${HOME_DIR}/Desktop/artineo/POCs/IR"
+WORKDIR="${HOME_DIR}/Desktop/artineo/modules/IR"
 SCRIPT="${WORKDIR}/start.bash"
 
 # Vérifie que start.bash existe
