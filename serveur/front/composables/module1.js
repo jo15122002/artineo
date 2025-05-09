@@ -31,7 +31,7 @@ export default function use1ir() {
                 const cfg = json.config
                 if (cfg.realDiameter) realDiameter.value = cfg.realDiameter
                 if (cfg.focalLength) focalLength.value = cfg.focalLength
-                // if (cfg.background) backgroundPath.value = cfg.background
+                if (cfg.background) backgroundPath.value = cfg.background
             })
     }
 
