@@ -80,7 +80,10 @@ sudo tee "$AUTOSTART_GLOBAL" > /dev/null <<EOF
 @xset s off
 @xset -dpms
 @xset s noblank
-@/usr/bin/chromium-browser --noerrdialogs --disable-infobars --kiosk http://artineo.local:3000/modules/module1
+@/usr/bin/chromium-browser --noerrdialogs --disable-infobars --kiosk \
+   --enable-logging --v=1 http://artineo.local:3000/modules/module1 \
+   >> /home/pi/chromium-kiosk.log 2>&1
+
 EOF
 
 sudo chown root:root "$AUTOSTART_GLOBAL"
