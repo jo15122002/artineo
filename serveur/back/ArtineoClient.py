@@ -41,6 +41,8 @@ if MICROPY:
             self.ws_url    = f"ws://{self.host}:{self.port}/ws"
             self.ws        = None
             self._handler  = None
+            self.ssid      = ssid or "Bob_bricolo"
+            self.password  = password or "bobbricolo"
             # connexion Wi‑Fi si cred fournies
             if ssid and password:
                 self.connect_wifi(ssid, password)
@@ -181,8 +183,8 @@ else:
 
     class ArtineoClient:
         def __init__(self, module_id=None, host=None, port=None):
-            host = host or os.getenv("ARTINEO_HOST","127.0.0.1")
-            port = port or os.getenv("ARTINEO_PORT","8000")
+            host = host or "artineo.local"
+            port = port or "8000"
             self.module_id = module_id
             self.base_url  = f"http://{host}:{port}"
             self.ws_url    = f"ws://{host}:{port}/ws"
