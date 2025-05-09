@@ -35,14 +35,16 @@ if MICROPY:
         def __init__(self, module_id=None, host=None, port=None,
                      ssid=None, password=None):
             self.module_id = module_id
-            self.host      = host or "192.168.0.123"
+            self.host      = host or "artineo.local"
             self.port      = port or 8000
             self.base_url  = f"http://{self.host}:{self.port}"
             self.ws_url    = f"ws://{self.host}:{self.port}/ws"
             self.ws        = None
             self._handler  = None
+            self.ssid      = ssid or "Bob_bricolo"
+            self.password  = password or "bobbricolo"
             # connexion Wi‑Fi si cred fournies
-            if ssid and password:
+            if self.ssid and self.password:
                 self.connect_wifi(ssid, password)
 
         def connect_wifi(self, ssid, password, timeout=15):

@@ -1,13 +1,12 @@
 # main.py
 
+import mfrc522
 import neopixel
 import uasyncio as asyncio
 import ujson
+from ArtineoClient import ArtineoClient
 from machine import SPI, Pin
 from utime import ticks_diff, ticks_ms
-
-import mfrc522
-from ArtineoClient import ArtineoClient
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Constantes
@@ -150,11 +149,7 @@ async def async_main():
     setup_hardware()
 
     # 2) Create ArtineoClient & WebSocket
-    client = ArtineoClient(
-        module_id=3,
-        host="192.168.0.123", port=8000,
-        ssid="Bob_bricolo", password="bobbricolo"
-    )
+    client = ArtineoClient(module_id=3)
     ws = await client.connect_ws()
     if ws:
         try:
