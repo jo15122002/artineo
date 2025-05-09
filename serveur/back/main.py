@@ -268,7 +268,7 @@ html = """
   <h2>Buffers reçus</h2>
   <ul id="bufferList"></ul>
   <script>
-    const ws = new WebSocket("ws://192.168.0.175:8000/ws");
+    const ws = new WebSocket("ws://artineo.local:8000/ws");
     ws.onmessage = e => {
       const data = e.data;
       try {
