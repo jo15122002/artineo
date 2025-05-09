@@ -183,8 +183,8 @@ else:
 
     class ArtineoClient:
         def __init__(self, module_id=None, host=None, port=None):
-            host = host or os.getenv("ARTINEO_HOST","artineo.local")
-            port = port or os.getenv("ARTINEO_PORT","8000")
+            host = host or "artineo.local"
+            port = port or "8000"
             self.module_id = module_id
             self.base_url  = f"http://{host}:{port}"
             self.ws_url    = f"ws://{host}:{port}/ws"
