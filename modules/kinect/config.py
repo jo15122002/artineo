@@ -62,7 +62,7 @@ class Config(BaseModel):
 
     # Network / WebSocket client settings
     host: str = Field(
-        "192.168.0.175", description="Artineo server host"
+        "artineo.local", description="Artineo server host"
     )
     port: int = Field(
         8000, ge=0, description="Artineo server port"
@@ -77,6 +77,10 @@ class Config(BaseModel):
     )
     roi_height: int | None = Field(
         None, description="Computed height of ROI"
+    )
+
+    debug_mode: bool = Field(
+        True, description="Enable debug mode for displaying windows and detailed logs"
     )
 
     @model_validator(mode='before')
@@ -94,7 +98,7 @@ class Config(BaseModel):
 
 # Example usage:
 # from ArtineoClient import ArtineoClient
-# client = ArtineoClient(module_id=4, host="192.168.0.175", port=8000)
+# client = ArtineoClient(module_id=4, host="artineo.local", port=8000)
 # raw_conf = client.fetch_config()
 # config = Config(**raw_conf)
 # print(config.roi_width, config.roi_height)
