@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Variables
-WORKDIR="${HOME}/Desktop/artineo/POCs/IR"
+WORKDIR="${HOME}/Desktop/artineo/modules/IR"
 SCRIPT="${WORKDIR}/start.bash"  # (votre propre script)
 FIFO="/tmp/ir_video_fifo"
 
