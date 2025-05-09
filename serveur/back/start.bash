@@ -1,11 +1,15 @@
-# Setup du nom d'hôte
-sudo scutil --set LocalHostName "artineo"
+#!/usr/bin/env bash
+set -e
 
-sudo launchctl list | grep mDNSResponder
+# 1) Crée l'envvirtual si nécessaire
+[ ! -d env ] && python3 -m venv env
 
-python3 -m venv env
-source env/bin/activate   # Sur macOS/Linux
+# 2) Active-le
+source env/bin/activate
 
-pip install fastapi uvicorn
+# 3) Installe (ou met à jour) les dépendances
+pip install --upgrade pip
+pip install "uvicorn[standard]" fastapi
 
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
+# 4) Démarre le serveur
+exec uvicorn main:app --reload --host 0.0.0.0 --port 8000
