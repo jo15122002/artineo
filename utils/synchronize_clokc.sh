@@ -1,27 +1,20 @@
 #!/bin/bash
 
-echo "📦 Installation de chrony (alternative à timesyncd)..."
-sudo apt update -y
-sudo apt install -y chrony
+echo "🌐 Récupération de l'heure via HTTPS (Cloudflare)..."
+http_date=$(curl -sI https://cloudflare.com | grep '^Date:' | cut -d' ' -f2-)
 
-echo "🛠️ Configuration personnalisée de chrony..."
-sudo tee /etc/chrony/chrony.conf > /dev/null <<EOF
-pool pool.ntp.org iburst
-driftfile /var/lib/chrony/chrony.drift
-makestep 1.0 3
-rtcsync
-logdir /var/log/chrony
-EOF
+if [ -z "$http_date" ]; then
+  echo "❌ Impossible de récupérer l'heure via HTTPS."
+  exit 1
+fi
 
-echo "🔄 Redémarrage du service chrony..."
-sudo systemctl restart chrony
-sudo systemctl enable chrony
+echo "🕒 Heure récupérée : $http_date"
 
-echo "⏱️ Forçage de la mise à l'heure immédiate..."
-sudo chronyc -a makestep
+# Convertir en format utilisable par la commande date
+date_cmd=$(date -d "$http_date" "+%Y-%m-%d %H:%M:%S")
 
-echo "✅ État de la synchronisation :"
-chronyc tracking
+echo "⏱️ Mise à jour de l'heure système : $date_cmd"
+sudo date -s "$date_cmd"
 
-echo "✅ Vérification finale :"
+echo "✅ Heure mise à jour manuellement."
 timedatectl status
