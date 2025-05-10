@@ -3,8 +3,7 @@ import { useRuntimeConfig } from '#app'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
 export default function use1ir() {
-    const { public: { apiUrl } } = useRuntimeConfig()
-    const serverUrl = apiUrl
+    const { public: { apiUrl, wsUrl } } = useRuntimeConfig()
     const backgroundPath = ref('tableau.png')
 
     // calibration
@@ -33,7 +32,7 @@ export default function use1ir() {
     let ws, timerId
 
     function fetchConfig() {
-        return fetch(`http://${serverUrl}/config?module=1`)
+        return fetch(`${apiUrl}/config?module=1`)
             .then(r => r.json())
             .then(json => {
                 const cfg = json.config
@@ -44,7 +43,7 @@ export default function use1ir() {
     }
 
     function setupWebSocket() {
-        ws = new WebSocket(`ws://${serverUrl}/ws`)
+        ws = new WebSocket(`${wsUrl}/ws`)
         ws.onopen = () => console.log('IR module WS ouvert')
         ws.onmessage = e => {
             const msg = JSON.parse(e.data)
