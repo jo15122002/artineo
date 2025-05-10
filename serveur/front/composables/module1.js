@@ -5,6 +5,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 export default function use1ir() {
     const { public: { apiUrl } } = useRuntimeConfig()
     const serverUrl = apiUrl
+    const backgroundPath = ref('tableau.png')
 
     // calibration
     const realDiameter = ref(6)    // cm
