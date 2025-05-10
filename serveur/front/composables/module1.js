@@ -33,7 +33,7 @@ export default function use1ir() {
     let ws, timerId
 
     function fetchConfig() {
-        return fetch(`${serverUrl}/config?module=1`)
+        return fetch(`http://${serverUrl}/config?module=1`)
             .then(r => r.json())
             .then(json => {
                 const cfg = json.config
@@ -44,7 +44,7 @@ export default function use1ir() {
     }
 
     function setupWebSocket() {
-        ws = new WebSocket(`ws://${serverUrl.replace(/^https?:\/\//, '')}/ws`)
+        ws = new WebSocket(`ws://${serverUrl}/ws`)
         ws.onopen = () => console.log('IR module WS ouvert')
         ws.onmessage = e => {
             const msg = JSON.parse(e.data)
