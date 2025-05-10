@@ -18,7 +18,7 @@
 <script setup>
 import { useRuntimeConfig } from '#app'
 import { computed } from 'vue'
-import use1ir from '~/composables/use1ir'
+import use1ir from '~/composables/module1'
 
 definePageMeta({ layout: 'module' })
 
