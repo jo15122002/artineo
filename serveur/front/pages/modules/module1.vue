@@ -23,7 +23,7 @@ import use1ir from '~/composables/module1'
 definePageMeta({ layout: 'module' })
 
 const { public: { apiBase } } = useRuntimeConfig()
-const { filterStyle, showDebug, x, y, diamPx } = use1ir()
+const { filterStyle, showDebug, x, y, diamPx, backgroundPath } = use1ir()
 
 // Calcul du style de position/taille du cercle de debug
 const circleStyle = computed(() => ({

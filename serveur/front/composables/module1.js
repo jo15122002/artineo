@@ -84,6 +84,7 @@ export default function use1ir() {
     return {
         filterStyle,
         showDebug,
-        x, y, diamPx
+        x, y, diamPx,
+        backgroundPath
     }
 }
