@@ -60,8 +60,11 @@ launchctl unload "$PLIST_PATH" 2>/dev/null || true
 launchctl load -w "$PLIST_PATH"
 echo "✅ LaunchDaemon chargé : $PLIST_PATH"
 
-# 6) Ouvre la fenêtre "Accès complet au disque" pour autoriser launchd
-echo "🔐 Ouverture des Préférences Système pour accorder l'accès complet au disque à launchd..."
-open "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"
+# 6) Ouvre le volet Full Disk Access dans System Preferences
+echo "🔐 Ouverture du volet Full Disk Access…"
+osascript -e 'tell application "System Preferences"' \
+          -e '  reveal anchor "Privacy_AllFiles" of pane id "com.apple.preference.security"' \
+          -e '  activate' \
+          -e 'end tell'
 
-echo "✅ Configuration terminée. Redémarrez le Mac pour tester le lancement avant déverrouillage."
+echo "✅ Veuillez ajouter “launchd” à la liste Full Disk Access, puis redémarrer."
