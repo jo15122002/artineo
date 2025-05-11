@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -e
 
+# 1) Ajout des répertoires usuels à PATH pour npm/Homebrew
+export PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:$PATH"
+
 BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # fonction pour trouver un port libre à partir d’une base
@@ -34,14 +37,16 @@ PORT=$(find_free_port $FRONT_START_PORT)
 
 (
   cd "$BASE_DIR/front"
+  # npm devrait maintenant être trouvé
   exec npm run dev -- --host 0.0.0.0 --port $PORT
 ) &
 frontendPID=$!
 
 ### 3) Affichage des URLs
 sleep 1
-# récupération de l'IP (Linux ou Mac)
-IP=$(hostname -I 2>/dev/null | awk '{print $1}' || ipconfig getifaddr en0 2>/dev/null || echo "localhost")
+IP=$(hostname -I 2>/dev/null | awk '{print $1}' \
+     || ipconfig getifaddr en0 2>/dev/null \
+     || echo "localhost")
 
 echo
 echo "✅ Backend accessible sur : http://${IP}:8000"
@@ -50,3 +55,4 @@ echo
 
 ### 4) On attend la fin (CTRL+C déclenchera cleanup)
 wait
+echo "✅ Tous les services sont arrêtés."
