@@ -61,8 +61,8 @@ launchctl load -w "$PLIST_PATH"
 echo "✅ LaunchDaemon chargé : $PLIST_PATH"
 
 # 6) Ouvrir le panneau Sécurité pour que vous naviguiez vers Full Disk Access
-echo "🔐 Ouverture du panneau Sécurité dans les Préférences Système…"
-open "/System/Library/PreferencePanes/Security.prefPane"
+# echo "🔐 Ouverture du panneau Sécurité dans les Préférences Système…"
+# open "/System/Library/PreferencePanes/Security.prefPane"
 
 cat <<EOF
 
