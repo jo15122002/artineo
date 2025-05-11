@@ -13,17 +13,17 @@ LOG_DIR="/var/log/artineo"
 
 echo "🔧 Mise en place de l’auto-démarrage via LaunchDaemon…"
 
-# 1) Rendre start.sh exécutable si nécessaire
+# 1) Rendre start.sh exécutable si besoin
 if [ ! -x "$START_SCRIPT" ]; then
   chmod +x "$START_SCRIPT"
   echo "✅ Rendu $START_SCRIPT exécutable."
 fi
 
-# 2) Crée le dossier de logs
+# 2) Créer le dossier de logs
 mkdir -p "$LOG_DIR"
 chmod 755 "$LOG_DIR"
 
-# 3) Génération du plist
+# 3) Génération du LaunchDaemon plist
 cat > "$PLIST_PATH" <<EOF
 <?xml version="1.0" encoding="UTF-8"?> 
 <!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" 
@@ -51,20 +51,27 @@ cat > "$PLIST_PATH" <<EOF
 </plist>
 EOF
 
-# 4) Permissions du plist
+# 4) Appliquer les permissions
 chown root:wheel "$PLIST_PATH"
 chmod 644 "$PLIST_PATH"
 
-# 5) (Re)charge le daemon
+# 5) (Re)charger le daemon
 launchctl unload "$PLIST_PATH" 2>/dev/null || true
 launchctl load -w "$PLIST_PATH"
 echo "✅ LaunchDaemon chargé : $PLIST_PATH"
 
-# 6) Ouvre le volet Full Disk Access dans System Preferences
-echo "🔐 Ouverture du volet Full Disk Access…"
-osascript -e 'tell application "System Preferences"' \
-          -e '  reveal anchor "Privacy_AllFiles" of pane id "com.apple.preference.security"' \
-          -e '  activate' \
-          -e 'end tell'
+# 6) Ouvrir le panneau Sécurité pour que vous naviguiez vers Full Disk Access
+echo "🔐 Ouverture du panneau Sécurité dans les Préférences Système…"
+open "/System/Library/PreferencePanes/Security.prefPane"
 
-echo "✅ Veuillez ajouter “launchd” à la liste Full Disk Access, puis redémarrer."
+cat <<EOF
+
+👉 Dans la barre latérale de "Privacy & Security", sélectionnez "Full Disk Access",  
+puis ajoutez le processus "launchd" (généralement situé dans /usr/libexec/launchd).
+
+🚨 Note : sur macOS Ventura+, le panneau System Settings n'accepte pas les URL AppleScript.  
+Vous devrez naviguer manuellement dans la liste.
+
+🛑 Redémarrez ensuite votre Mac pour que le daemon démarre avant toute connexion.
+
+EOF
