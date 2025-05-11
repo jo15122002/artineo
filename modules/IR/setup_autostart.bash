@@ -81,16 +81,13 @@ echo "🖥️  Création du script wrapper $WRAPPER_SCRIPT…"
 cat > "$WRAPPER_SCRIPT" <<EOF
 #!/usr/bin/env bash
 LOGFILE="$LOGFILE"
-echo "=== Lancement Chromium à \$(date) ===" >> "\$LOGFILE"
+echo "=== Lancement Chromium à \$(date) ==="
 export DISPLAY=:0
-xset s off        >> "\$LOGFILE" 2>&1
-xset -dpms        >> "\$LOGFILE" 2>&1
-xset s noblank    >> "\$LOGFILE" 2>&1
-/usr/bin/chromium-browser \\
-  --noerrdialogs --disable-infobars --enable-logging --v=1 \\
-  --kiosk http://artineo.local:3000/modules/module1 \\
-  >> "\$LOGFILE" 2>&1
-echo "Chromium terminé (\$?) à \$(date)" >> "\$LOGFILE"
+xset s off
+xset -dpms
+xset s noblank
+/usr/bin/chromium-browser --noerrdialogs --disable-infobars --kiosk http://artineo.local:3000/modules/module1
+echo "Chromium terminé (\$?) à \$(date)"
 EOF
 chown "${OWNER}:${OWNER}" "$WRAPPER_SCRIPT"
 chmod +x "$WRAPPER_SCRIPT"
