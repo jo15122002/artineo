@@ -53,55 +53,64 @@ def find_brightest_circle(gray, clean):
 
     return best
 
-
 def main():
-    W, H = 320, 240
-    frame_size = W * H * 3  # BGR24
+    width, height = 640, 480
+    frame_size = width * height * 3  # bgr24
 
+    # Initialisation WebSocket
     client = ArtineoClient(module_id=1)
-    config = client.fetch_config()
-    print("Config reçue :", config)
-
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
+    loop = asyncio.get_event_loop()
     loop.run_until_complete(client.connect_ws())
     print("WebSocket connectée.")
 
-    # cv2.namedWindow("Flux de la caméra", cv2.WINDOW_NORMAL)
-    frame_idx = 0
+    # Envoi non-bloquant/résilient
+    async def safe_send(action, data):
+        try:
+            await client.send_ws(action, data)
+        except Exception as e:
+            print(f"[WARN] Échec envoi WS : {e}")
 
-    try:
-        while True:
-            raw = sys.stdin.buffer.read(frame_size)
-            if len(raw) < frame_size:
-                break
-            frame = np.frombuffer(raw, dtype=np.uint8).reshape((H, W, 3))
+    # Capture et traitement
+    while True:
+        raw = sys.stdin.buffer.read(frame_size)
+        if len(raw) < frame_size:
+            break
+        frame = np.frombuffer(raw, dtype=np.uint8).reshape((height, width, 3))
 
-            frame_idx += 1
-            if frame_idx % 3 == 0:
-                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                clean = preprocess(gray)
-                circ = find_brightest_circle(gray, clean)
-                if circ:
-                    x, y, r = circ
-                    diameter = int(2 * r)
-                    # Dessin
-                    cv2.circle(frame, (x, y), r, (0, 255, 0), 2)
-                    cv2.circle(frame, (x, y), 2, (0, 0, 255), 3)
-                    # Envoi en convertissant en int Python
-                    data = {"x": x, "y": y, "diameter": diameter}
-                    loop.run_until_complete(
-                        client.send_ws(ArtineoAction.SET, data)
-                    )
+        gray    = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        blurred = cv2.GaussianBlur(gray, (9, 9), 2)
+        circles = cv2.HoughCircles(
+            blurred, cv2.HOUGH_GRADIENT, dp=1.2, minDist=50,
+            param1=50, param2=30, minRadius=10, maxRadius=100
+        )
 
-            # cv2.imshow("Flux de la caméra", frame)
-            if cv2.waitKey(1) & 0xFF == ord("q"):
-                break
-    finally:
-        loop.run_until_complete(client.close_ws())
-        loop.close()
-        cv2.destroyAllWindows()
+        if circles is not None:
+            circles = np.uint16(np.around(circles))[0]
+            # Trier par intensité (au lieu de taille), puis prendre le premier
+            # On calcule la « luminosité » moyenne du pourtour
+            best = None; bestScore = -1
+            for (x, y, r) in circles:
+                mask = np.zeros_like(gray)
+                cv2.circle(mask, (x, y), r, 255, 2)
+                score = cv2.mean(gray, mask=mask)[0]
+                if score > bestScore:
+                    bestScore = score
+                    best = (x, y, r)
+            if best:
+                x, y, r = best
+                cv2.circle(frame, (x, y), r, (0, 255, 0), 2)
+                # Envoi des coordonnées
+                loop.run_until_complete(
+                    safe_send(ArtineoAction.SET, {
+                        "x": int(x), "y": int(y), "diameter": int(r * 2)
+                    })
+                )
 
+        # cv2.imshow("Flux caméra", frame)
+        if cv2.waitKey(1) & 0xFF == ord("q"):
+            break
+
+    cv2.destroyAllWindows()
 
 if __name__ == "__main__":
     main()

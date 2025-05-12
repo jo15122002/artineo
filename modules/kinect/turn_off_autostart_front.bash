@@ -6,7 +6,7 @@
 
 set -e
 
-SERVICE_NAME="artineo-module3"
+SERVICE_NAME="artineo-module4"
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
 
 echo "🛑 Arrêt et désactivation du service ${SERVICE_NAME}.service..."
