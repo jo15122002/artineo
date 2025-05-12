@@ -16,15 +16,29 @@ export default function use1ir() {
     const diamPx = ref(1)
     const z = ref(0)
 
-    // param debug via URL
+    // debug URL
     const showDebug = ref(false)
 
-    // CSS filter
+    // --- NOUVEAU : paramètres pour le brightness vertical ---
+    const frameHeight = 240   // px, ajustez si votre hauteur change
+    const minBrightPct = 50    // brightness() en bas de l'écran
+    const maxBrightPct = 150   // brightness() en haut de l'écran
+
+    // calcul de la luminosité pivotée au milieu :
+    const bright = computed(() => {
+        // ratio de 0 (top) → 1 (bottom)
+        const r = y.value / frameHeight
+        // on veut : at r=0.5 → 100%, at r=0 → maxBrightPct, at r=1 → minBrightPct
+        const v = (1 - r) * (maxBrightPct - minBrightPct) + minBrightPct
+        // clamp entre min et max
+        return Math.max(minBrightPct, Math.min(maxBrightPct, v))
+    })
+
+    // couleur & saturation inchangées
     const hue = computed(() => (x.value / 320) * 360)
     const sat = computed(() => (y.value / 240) * 200 + 50)
-    const bright = computed(() =>
-        Math.min(200, 100 * (focalLength.value * realDiameter.value) / (diamPx.value || 1))
-    )
+
+    // filtre CSS final
     const filterStyle = computed(() =>
         `hue-rotate(${hue.value}deg) saturate(${sat.value}%) brightness(${bright.value}%)`
     )
@@ -65,11 +79,9 @@ export default function use1ir() {
     }
 
     onMounted(async () => {
-        // 1) detect debug=1 dans l'URL
-        const params = new URLSearchParams(window.location.search)
-        showDebug.value = params.get('debug') === '1'
+        // détection ?debug=1
+        showDebug.value = new URLSearchParams(window.location.search).get('debug') === '1'
 
-        // 2) lancement WebSocket + config
         await fetchConfig()
         setupWebSocket()
         requestBuffer()
@@ -82,9 +94,9 @@ export default function use1ir() {
     })
 
     return {
+        backgroundPath,
         filterStyle,
         showDebug,
-        x, y, diamPx,
-        backgroundPath
+        x, y, diamPx
     }
 }
