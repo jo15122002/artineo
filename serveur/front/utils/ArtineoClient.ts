@@ -53,16 +53,19 @@ export class ArtineoClient {
 
   /** (Re)ouvre la connexion WS si besoin */
   private ensureWs(): Promise<WebSocket> {
-    return new Promise((resolve, reject) => {
-      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-        return resolve(this.ws)
-      }
-      this.ws = new WebSocket(`${this.wsUrl}/ws`)
-      this.ws.onopen  = () => resolve(this.ws!)
-      this.ws.onerror = e => reject(e)
-      this.ws.onmessage = e => this.handleRawMessage(e.data)
-    })
-  }
+  return new Promise((resolve, reject) => {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      return resolve(this.ws)
+    }
+    this.ws = new WebSocket(`${this.wsUrl}/ws`)
+    this.ws.onopen = () => {
+      console.log(`[ArtineoClient] WebSocket connected to ${this.wsUrl}`)  // ← nouveau log
+      resolve(this.ws!)
+    }
+    this.ws.onerror = e => reject(e)
+    this.ws.onmessage = e => this.handleRawMessage(e.data)
+  })
+}
 
   /** Envoie un message JSON et attend une réponse */
   private async sendRaw(msg: object): Promise<any> {
