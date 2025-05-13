@@ -1,60 +1,66 @@
 <template>
-    <div class="page-3rfid">
-      <div id="background"></div>
+  <div class="page-3rfid">
+    <!-- fond dynamique -->
+    <div
+      id="background"
+      class="background"
+      :style="{ backgroundImage: `url(${backgroundUrl})` }"
+    ></div>
 
-      <video
-        ref="videoRef"
-        class="overlay-video"
-        src="/AnimCadre.webm"
-        muted
-        playsinline
-        webkit-playsinline
-        preload="auto"
-        @ended="onVideoEnded"
-      ></video>
+    <!-- vidéo -->
+    <video
+      ref="videoRef"
+      class="overlay-video"
+      src="/AnimCadre.webm"
+      muted
+      playsinline
+      webkit-playsinline
+      preload="auto"
+      @ended="onVideoEnded"
+    ></video>
 
-      <div id="blob1" class="blob"/>
-      <div id="blob2" class="blob"/>
-      <div id="blob3" class="blob"/>
+    <!-- 3 blobs générés dynamiquement -->
+    <div
+      v-for="i in 3"
+      :key="i"
+      :id="`blob${i}`"
+      class="blob"
+      :style="{ backgroundColor: blobColors[i-1] }"
+    >
+      <span>{{ blobTexts[i-1] }}</span>
     </div>
-  </template>
-  
-  <script setup>
-  import { onMounted, ref } from 'vue'
-import use3rfid from '~/composables/module3'
+  </div>
+</template>
 
-  const videoRef = ref(null)
-  
-  definePageMeta({
-    layout: 'module'
-  })
+<script setup lang="ts">
+import { computed, ref, onMounted } from 'vue'
+import { useRuntimeConfig } from '#app'
+import useModule3 from '~/composables/module3.ts'
 
-  function onVideoEnded() {
-    console.log('Vidéo terminée')
-    if (videoRef.value) {
-      const blobs = document.querySelectorAll('.blob')
-      blobs.forEach((blob) => {
-        blob.classList.add('fade-out')
-      })
-      videoRef.value.classList.add('fade-out')
-    }
+definePageMeta({ layout: 'module' })
+
+const { public: { apiUrl } } = useRuntimeConfig()
+const { backgroundSet, blobTexts, blobColors } = useModule3()
+const videoRef = ref<HTMLVideoElement|null>(null)
+
+// URL du fond
+const backgroundUrl = computed(
+  () => `${apiUrl}/getAsset?module=3&path=tableau${backgroundSet.value}.png`
+)
+
+function onVideoEnded() {
+  const blobs = document.querySelectorAll('.blob')
+  blobs.forEach(el => el.classList.add('fade-out'))
+  videoRef.value?.classList.add('fade-out')
+}
+
+onMounted(async () => {
+  try {
+    await videoRef.value?.play()
+  } catch {
+    console.warn('Lecture automatique impossible')
   }
-  
-  // Démarre la logique du module au montage
-  onMounted(async () => {
-    console.log('Module 3 démarré')
-    use3rfid()
+})
+</script>
 
-    if (videoRef.value) {
-      try {
-        await videoRef.value.play()
-        console.log('Vidéo lancée automatiquement 🎥')
-      } catch (err) {
-        console.warn('Impossible de lancer la vidéo automatique :', err)
-      }
-    }
-  })
-  </script>
-  
-  <style scoped src="~/assets/modules/3/style.css"></style>
-  
+<style scoped src="~/assets/modules/3/style.css"></style>
