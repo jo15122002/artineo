@@ -1,4 +1,5 @@
 import asyncio
+import json
 import sys
 from pathlib import Path
 
@@ -53,64 +54,59 @@ def find_brightest_circle(gray, clean):
 
     return best
 
+
 def main():
     width, height = 640, 480
     frame_size = width * height * 3  # bgr24
 
-    # Initialisation WebSocket
+    # Initialisation du client WS
     client = ArtineoClient(module_id=1)
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(client.connect_ws())
-    print("WebSocket connectée.")
+    client.start()  # lance la boucle WS en tâche de fond
+    print("WebSocket démarrée en arrière-plan.")
 
-    # Envoi non-bloquant/résilient
-    async def safe_send(action, data):
+    # Envoi non-bloquant et résilient
+    def safe_send(action, data):
         try:
-            await client.send_ws(action, data)
+            # Construire le message JSON attendu par le serveur
+            msg = json.dumps({
+                "module": client.module_id,
+                "action": action,
+                "data": data
+            })
+            client.send_ws(msg)
         except Exception as e:
             print(f"[WARN] Échec envoi WS : {e}")
 
-    # Capture et traitement
+    # Boucle de lecture du flux caméra
     while True:
         raw = sys.stdin.buffer.read(frame_size)
         if len(raw) < frame_size:
             break
         frame = np.frombuffer(raw, dtype=np.uint8).reshape((height, width, 3))
 
-        gray    = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        blurred = cv2.GaussianBlur(gray, (9, 9), 2)
-        circles = cv2.HoughCircles(
-            blurred, cv2.HOUGH_GRADIENT, dp=1.2, minDist=50,
-            param1=50, param2=30, minRadius=10, maxRadius=100
-        )
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        clean = preprocess(gray)
 
-        if circles is not None:
-            circles = np.uint16(np.around(circles))[0]
-            # Trier par intensité (au lieu de taille), puis prendre le premier
-            # On calcule la « luminosité » moyenne du pourtour
-            best = None; bestScore = -1
-            for (x, y, r) in circles:
-                mask = np.zeros_like(gray)
-                cv2.circle(mask, (x, y), r, 255, 2)
-                score = cv2.mean(gray, mask=mask)[0]
-                if score > bestScore:
-                    bestScore = score
-                    best = (x, y, r)
-            if best:
-                x, y, r = best
-                cv2.circle(frame, (x, y), r, (0, 255, 0), 2)
-                # Envoi des coordonnées
-                loop.run_until_complete(
-                    safe_send(ArtineoAction.SET, {
-                        "x": int(x), "y": int(y), "diameter": int(r * 2)
-                    })
-                )
+        best = find_brightest_circle(gray, clean)
+        if best:
+            x, y, r = best
+            cv2.circle(frame, (x, y), r, (0, 255, 0), 2)
+            # On envoie directement sans async/await
+            safe_send(ArtineoAction.SET, {
+                "x": x,
+                "y": y,
+                "diameter": r * 2
+            })
 
-        # cv2.imshow("Flux caméra", frame)
         if cv2.waitKey(1) & 0xFF == ord("q"):
             break
 
     cv2.destroyAllWindows()
+
+    # On peut arrêter proprement la WS si besoin
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(client.stop())
+
 
 if __name__ == "__main__":
     main()
