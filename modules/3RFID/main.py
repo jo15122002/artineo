@@ -103,7 +103,7 @@ async def async_main():
     print("[main] Init ArtineoClient")
     client = ArtineoClient(
         module_id=3,
-        host="192.168.0.166",   # ← IP de votre serveur
+        host="artineo.local",   # ← IP de votre serveur
         port=8000,
         ssid="Bob_bricolo",
         password="bobbricolo"
