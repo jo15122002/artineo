@@ -15,6 +15,10 @@ except ImportError:
     import websocket_client as ws_client
     ASYNC_WS = False
 
+class ArtineoAction:
+    SET = "set"
+    GET = "get"
+
 class ArtineoClient:
     def __init__(
         self,
