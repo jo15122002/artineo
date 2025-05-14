@@ -124,7 +124,7 @@ class PN532:
             return
         except (BusyError, RuntimeError):
             pass
-        # self.get_firmware_version()
+        self.get_firmware_version()
 
     def _wakeup(self):
         """Send any special commands/data to wake up PN532"""
@@ -303,6 +303,8 @@ class PN532:
             _COMMAND_GETFIRMWAREVERSION, 4, timeout=500)
         if response is None:
             raise RuntimeError('Failed to detect the PN532')
+        else:
+            print('DEBUG: get_firmware_version:', [hex(i) for i in response])
         return tuple(response)
 
     def SAM_configuration(self):   # pylint: disable=invalid-name
