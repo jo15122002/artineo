@@ -1,3 +1,4 @@
 {
-    "background": "tableau.png"
+    "background": "tableau.png",
+    "fps": 24
 }

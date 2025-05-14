@@ -1,4 +1,6 @@
 // front/utils/ArtineoClient.ts
+import { EventEmitter } from 'eventemitter3'
+
 export type BufferPayload = {
   current_set: number
   uid1: string | null
@@ -9,8 +11,8 @@ export type BufferPayload = {
 }
 
 export enum ArtineoAction {
-  SET    = "set",
-  GET    = "get",
+  SET = 'set',
+  GET = 'get',
 }
 
 export interface ArtineoConfigResponse {
@@ -18,109 +20,189 @@ export interface ArtineoConfigResponse {
   configurations?: Record<string, any>
 }
 
-export class ArtineoClient {
+export interface ArtineoClientOptions {
+  httpRetries?: number
+  httpBackoff?: number
+  httpTimeout?: number
+  wsRetries?: number
+  wsBackoff?: number
+  wsPingInterval?: number
+}
+
+export class ArtineoClient extends EventEmitter {
   private ws?: WebSocket
-  private handler?: (msg: any) => void
+  private stopping = false
+  private reconnectAttempts = 0
+  private backoff = 0
+  private pingTimer?: number
 
   constructor(
     public moduleId: number,
     private apiUrl: string,
     private wsUrl: string,
-  ) {}
+    private opts: ArtineoClientOptions = {}
+  ) {
+    super()
+    this.opts = {
+      httpRetries: 3,
+      httpBackoff: 500,
+      httpTimeout: 5000,
+      wsRetries: 5,
+      wsBackoff: 1000,
+      wsPingInterval: 20000,
+      ...opts
+    }
+  }
 
-  /** Récupère la config via GET /config?module=… */
+  // —— HTTP with retry, timeout, backoff ——
+  private async _fetch<T>(
+    path: string,
+    options: { method?: string; body?: any; params?: Record<string, any> } = {}
+  ): Promise<T> {
+    const { httpRetries, httpBackoff, httpTimeout } = this.opts
+    const url = new URL(this.apiUrl + path)
+    url.searchParams.set('module', this.moduleId.toString())
+    Object.entries(options.params || {}).forEach(([k, v]) => url.searchParams.set(k, v.toString()))
+
+    let attempt = 0, delay = httpBackoff!
+    while (true) {
+      attempt++
+      const ctrl = new AbortController()
+      const timer = setTimeout(() => ctrl.abort(), httpTimeout)
+      try {
+        const res = await fetch(url.toString(), {
+          method: options.method || 'GET',
+          headers: { 'Content-Type': 'application/json' },
+          signal: ctrl.signal,
+          body: options.body != null ? JSON.stringify(options.body) : undefined
+        })
+        clearTimeout(timer)
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        return res.json()
+      } catch (err) {
+        clearTimeout(timer)
+        if (attempt >= httpRetries!) throw err
+        await new Promise(r => setTimeout(r, delay))
+        delay *= 2
+      }
+    }
+  }
+
   async fetchConfig(): Promise<any> {
-    const url = new URL(`${this.apiUrl}/config`)
-    url.searchParams.set("module", this.moduleId.toString())
-    const res = await fetch(url.toString())
-    if (!res.ok) throw new Error(`Config fetch failed: ${res.status}`)
-    const json = await res.json() as ArtineoConfigResponse
+    const json = await this._fetch<ArtineoConfigResponse>('/config')
     return json.config ?? json.configurations
   }
 
-  /** Poste une mise à jour partielle de config sur POST /config */
   async setConfig(patch: Record<string, any>): Promise<any> {
-    const url = new URL(`${this.apiUrl}/config`)
-    url.searchParams.set("module", this.moduleId.toString())
-    const res = await fetch(url.toString(), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(patch),
+    const json = await this._fetch<ArtineoConfigResponse>('/config', {
+      method: 'POST',
+      body: patch
     })
-    if (!res.ok) throw new Error(`Config update failed: ${res.status}`)
-    return (await res.json()).config
+    return json.config ?? json.configurations
   }
 
-  /** (Re)ouvre la connexion WS si besoin */
-  private ensureWs(): Promise<WebSocket> {
-  return new Promise((resolve, reject) => {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      return resolve(this.ws)
-    }
-    this.ws = new WebSocket(`${this.wsUrl}/ws`)
+  // —— WebSocket with auto-reconnect and ping ——
+  private connectWebSocket() {
+    if (this.stopping) return
+    const { wsBackoff, wsRetries, wsPingInterval } = this.opts
+    this.ws = new WebSocket(this.wsUrl + '/ws')
+
     this.ws.onopen = () => {
-      console.log(`[ArtineoClient] WebSocket connected to ${this.wsUrl}`)  // ← nouveau log
-      resolve(this.ws!)
+      this.reconnectAttempts = 0
+      this.backoff = wsBackoff!
+      console.log(`[ArtineoClient] WS connected to ${this.wsUrl}/ws`)  // ← log connection
+      this.emit('open')
+      this.pingTimer = window.setInterval(() => {
+        try { this.ws!.send('ping') } catch {}
+      }, wsPingInterval)
     }
-    this.ws.onerror = e => reject(e)
-    this.ws.onmessage = e => this.handleRawMessage(e.data)
-  })
-}
 
-  /** Envoie un message JSON et attend une réponse */
-  private async sendRaw(msg: object): Promise<any> {
-    const ws = await this.ensureWs()
-    ws.send(JSON.stringify(msg))
-    return new Promise(resolve => {
-      const listener = (e: MessageEvent) => {
-        ws.removeEventListener("message", listener)
-        try { resolve(JSON.parse(e.data)) }
-        catch { resolve(e.data) }
-      }
-      ws.addEventListener("message", listener)
-    })
-  }
-
-  /** Récupère le buffer via WS */
-  async getBuffer(): Promise<BufferPayload> {
-    return this.sendRaw({ module: this.moduleId, action: ArtineoAction.GET })
-  }
-
-  /** Envoie un buffer via WS */
-  async setBuffer(buf: any): Promise<any> {
-    return this.sendRaw({ module: this.moduleId, action: ArtineoAction.SET, data: buf })
-  }
-
-  /** Enregistre un callback pour tous les messages non-ping */
-  onMessage(fn: (msg: any) => void) {
-    this.handler = fn
-    // démarre l’écoute si ws déjà ouvert
-    this.ensureWs().catch(() => {})
-  }
-
-  /** Interne : distribue le message brut */
-  private handleRawMessage(raw: string) {
-    if (raw === "ping") {
-      this.ws!.send("pong")
-      return
+    this.ws.onmessage = e => {
+      console.log('[ArtineoClient] WS message received:', e.data)   // ← log raw message
+      this.handleRawMessage(e.data)
     }
-    try {
-      const msg = JSON.parse(raw)
-      if (msg.action === "get_buffer" || msg.action === "set_buffer" || msg.action === "ack") {
-        this.handler?.(msg)
+
+    this.ws.onerror = err => {
+      this.emit('error', err)
+      this.ws!.close()
+    }
+
+    this.ws.onclose = () => {
+      clearInterval(this.pingTimer)
+      if (this.stopping) return
+      if (this.reconnectAttempts >= wsRetries!) {
+        this.emit('error', new Error('Max WS reconnect attempts reached'))
         return
       }
-    } catch {
-      // non-JSON, ignore ou forward
+      this.reconnectAttempts++
+      const jitter = (Math.random() * 0.2 + 0.9)
+      const to = this.backoff * jitter
+      setTimeout(() => this.connectWebSocket(), to)
+      this.backoff *= 2
     }
-    this.handler?.(raw)
   }
 
-  /** Ferme proprement la connexion WebSocket */
-  close() {
-    if (this.ws) {
-      this.ws.close()
-      this.ws = undefined
+  private ensureWs(): Promise<WebSocket> {
+    return new Promise((resolve, reject) => {
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        return resolve(this.ws)
+      }
+      this.stopping = false
+      this.connectWebSocket()
+      const onOpen = () => {
+        this.off('error', onErr)
+        resolve(this.ws!)
+      }
+      const onErr = (e: any) => {
+        this.off('open', onOpen)
+        reject(e)
+      }
+      this.once('open', onOpen)
+      this.once('error', onErr)
+    })
+  }
+
+  private async sendRaw(msg: object): Promise<any> {
+    const ws = await this.ensureWs()
+    ws.send(JSON.stringify({ module: this.moduleId, ...msg }))
+    return new Promise(resolve => {
+      const handler = (dataEvent: MessageEvent) => {
+        ws.removeEventListener('message', handler)
+        try { resolve(JSON.parse(dataEvent.data)) }
+        catch { resolve(dataEvent.data) }
+      }
+      ws.addEventListener('message', handler)
+    })
+  }
+
+  async getBuffer(): Promise<BufferPayload> {
+    const res = await this.sendRaw({ action: ArtineoAction.GET })
+    return res.buffer
+  }
+
+  async setBuffer(buf: any): Promise<any> {
+    return this.sendRaw({ action: ArtineoAction.SET, data: buf })
+  }
+
+  onMessage(fn: (msg: any) => void) {
+    this.on('message', fn)
+    this.ensureWs().catch(err => this.emit('error', err))
+  }
+
+  private handleRawMessage(raw: string) {
+    if (raw === 'ping') {
+      this.ws!.send('pong')
+      return
     }
+    let msg: any = raw
+    try { msg = JSON.parse(raw) } catch {}
+    this.emit('message', msg)
+  }
+
+  close() {
+    this.stopping = true
+    clearInterval(this.pingTimer)
+    this.ws?.close()
+    this.removeAllListeners()
   }
 }

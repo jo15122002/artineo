@@ -1,91 +1,101 @@
-// front/composables/useModule3.ts
+// front/composables/module3.ts
+import { useNuxtApp } from '#app'
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import type { BufferPayload } from '~/utils/ArtineoClient'
-import { useArtineo } from './useArtineo'
 
 export default function useModule3() {
-  const moduleId = 3
-  const { fetchConfig, getBuffer, onMessage, close } = useArtineo(moduleId)
-
-  // config
-  const assignments = ref<Record<string, Record<string, string>>>({})
-  const answers     = ref<Array<Record<string, string>>>([])
-
-  // listes de mots par catégorie (uniquement pour le cas où on en aurait besoin)
-  const wanted = {
-    lieux:   ref<string[]>([]),
-    couleurs:ref<string[]>([]),
-    emotions:ref<string[]>([])
+  // 1️⃣ Stub SSR : rien à faire côté serveur
+  if (!process.client) {
+    const empty = ref<any>(null)
+    return {
+      backgroundSet: empty,
+      blobTexts: empty,
+      blobColors: empty
+    }
   }
 
-  // UI
-  const backgroundSet = ref(1)           // numéro de la feuille en cours
-  const blobTexts     = ref(['','',''])  // textes à afficher dans les 3 blobs
-  const blobColors    = ref(['','',''])  // couleurs de fond des 3 blobs
+  const moduleId = 3
+  const { $artineo } = useNuxtApp()
+  if (typeof $artineo !== 'function') {
+    throw new Error('Plugin $artineo non injecté — vérifie plugins/artineo.ts')
+  }
+  const client = $artineo(moduleId)
 
-  let intervalId: number
+  // 2️⃣ États
+  const assignments = ref<Record<string, Record<string, string>>>({})
+  const answers     = ref<Array<Record<string, string>>>([])
+  const backgroundSet = ref<number>(1)
+  const blobTexts     = ref<string[]>(['', '', ''])
+  const blobColors    = ref<string[]>(['', '', ''])
 
+  let pollTimer: number
+
+  // Met à jour les blobs depuis le buffer
   function updateFromBuffer(buf: BufferPayload) {
-    // 1) mise à jour du background
+    // 1) background
     if (buf.current_set && buf.current_set !== backgroundSet.value) {
       backgroundSet.value = buf.current_set
     }
-
-    // 2) textes et couleurs des blobs
+    // 2) textes & couleurs
     const keys = ['lieu','couleur','emotion'] as const
-    const idx  = (buf.current_set || 1) - 1
-
+    const idx  = (backgroundSet.value || 1) - 1
     blobTexts.value = keys.map((key, i) => {
       const uid = buf[`uid${i+1}` as keyof BufferPayload]
       if (!uid) return 'Aucun'
-      // on cherche dans assignments[key+'s']
-      const mapping = assignments.value[`${key}s`] || {}
-      const found = Object.entries(mapping).find(([,u]) => u === uid)
+      const map = assignments.value[`${key}s`] || {}
+      const found = Object.entries(map).find(([, u]) => u === uid)
       return found ? found[0] : 'Inconnu'
     })
-
     blobColors.value = keys.map((key, i) => {
       const uid = buf[`uid${i+1}` as keyof BufferPayload]
       if (!uid) return '#FFA500'
-      const correctUid = answers.value[idx]?.[key]
-      return uid.toLowerCase() === correctUid?.toLowerCase()
-        ? '#00FF00'
-        : '#FF0000'
+      const correct = answers.value[idx]?.[key]
+      return uid.toLowerCase() === correct?.toLowerCase() ? '#00FF00' : '#FF0000'
     })
   }
 
   onMounted(async () => {
-    // 1) fetchConfig
-    const cfg = await fetchConfig()
-    assignments.value = cfg.assignments || {}
-    answers.value     = cfg.answers     || []
+    // a) fetchConfig (assignments + answers + éventuellement fps si tu veux)
+    try {
+      const cfg = await client.fetchConfig()
+      assignments.value = cfg.assignments || {}
+      answers.value     = cfg.answers     || []
+    } catch (e) {
+      console.error('[Module3] fetchConfig error', e)
+    }
 
-    wanted.lieux.value    = Object.keys(assignments.value.lieux    || {})
-    wanted.couleurs.value = Object.keys(assignments.value.couleurs || {})
-    wanted.emotions.value = Object.keys(assignments.value.emotions || {})
-
-    // 2) WS realtime
-    onMessage(msg => {
-      if (msg.action === 'get_buffer') updateFromBuffer(msg.buffer)
+    // b) WS push
+    client.onMessage(msg => {
+      if (msg.action === 'get_buffer') {
+        updateFromBuffer(msg.buffer as BufferPayload)
+      }
     })
 
-    // 3) initial + polling
-    const buf0 = await getBuffer()
-    updateFromBuffer(buf0)
-    intervalId = window.setInterval(async () => {
-      const buf = await getBuffer()
-      updateFromBuffer(buf)
+    // c) initial + polling HTTP fallback
+    try {
+      const buf0 = await client.getBuffer()
+      updateFromBuffer(buf0)
+    } catch {
+      // ignore
+    }
+    pollTimer = window.setInterval(async () => {
+      try {
+        const buf = await client.getBuffer()
+        updateFromBuffer(buf)
+      } catch {
+        // silent
+      }
     }, 1000)
   })
 
   onBeforeUnmount(() => {
-    clearInterval(intervalId)
-    close()
+    clearInterval(pollTimer)
+    client.close()
   })
 
   return {
     backgroundSet,
     blobTexts,
-    blobColors,
+    blobColors
   }
 }

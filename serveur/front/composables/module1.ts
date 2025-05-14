@@ -1,31 +1,43 @@
-// front/composables/useModule1.ts
+// front/composables/module1.ts
+import { useNuxtApp } from '#app'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import type { BufferPayload } from '~/utils/ArtineoClient'
-import { useArtineo } from './useArtineo'; // notre composable générique
 
 export default function useModule1() {
-  const moduleId     = 1
-  const { fetchConfig, getBuffer, onMessage, close } = useArtineo(moduleId)
+  // 1) Stub en SSR
+  if (!process.client) {
+    const stub = ref<any>(null)
+    return {
+      backgroundPath: stub,
+      filterStyle: stub,
+      x: stub,
+      y: stub,
+      diamPx: stub,
+    }
+  }
 
-  const cfg = ref<{ realDiameter?: number; focalLength?: number; background?: string }>({})
+  const moduleId = 1
+  const { $artineo } = useNuxtApp()
+  if (typeof $artineo !== 'function') {
+    throw new Error('Plugin $artineo non injecté — vérifie plugins/artineo.ts')
+  }
+  const client = $artineo(moduleId)
+
+  // 2) refs
   const backgroundPath = ref<string>('')
-  const realDiameter   = ref(6)
-  const focalLength    = ref(400)
+  const x              = ref(0)
+  const y              = ref(0)
+  const diamPx         = ref(1)
 
-  // données IR
-  const x      = ref(0)
-  const y      = ref(0)
-  const diamPx = ref(1)
+  // 3) fps & interval dynamique
+  const fps      = ref(10)           // valeur par défaut
+  let pollTimer: number | undefined
 
-  // brightness pivotée
-  const frameHeight  = 240
-  const minBrightPct = 50
-  const maxBrightPct = 150
-
+  // 4) style calculé
+  const frameH = 240, minB = 50, maxB = 150
   const bright = computed(() => {
-    const r = y.value / frameHeight
-    const v = (1 - r) * (maxBrightPct - minBrightPct) + minBrightPct
-    return Math.max(minBrightPct, Math.min(maxBrightPct, v))
+    const pct = (1 - y.value / frameH) * (maxB - minB) + minB
+    return Math.min(Math.max(pct, minB), maxB)
   })
   const hue = computed(() => (x.value / 320) * 360)
   const sat = computed(() => (y.value / 240) * 200 + 50)
@@ -33,17 +45,21 @@ export default function useModule1() {
     () => `hue-rotate(${hue.value}deg) saturate(${sat.value}%) brightness(${bright.value}%)`
   )
 
-  let intervalId: number
-
+  // 5) setup
   onMounted(async () => {
-    // 1) config
-    const c = await fetchConfig()
-    if (c.realDiameter)   realDiameter.value  = c.realDiameter
-    if (c.focalLength)    focalLength.value   = c.focalLength
-    if (c.background)     backgroundPath.value = c.background
+    // a) fetchConfig incluant fps
+    try {
+      const cfg = await client.fetchConfig()
+      if (cfg.background)      backgroundPath.value = cfg.background
+      if (typeof cfg.fps === 'number' && cfg.fps > 0) {
+        fps.value = cfg.fps
+      }
+    } catch (e) {
+      console.error('[Module1] fetchConfig error', e)
+    }
 
-    // 2) WS temps réel
-    onMessage((msg: any) => {
+    // b) gestion WebSocket push
+    client.onMessage((msg: any) => {
       if (msg.action === 'get_buffer') {
         const buf = msg.buffer as BufferPayload
         x.value      = buf.x      ?? x.value
@@ -52,26 +68,41 @@ export default function useModule1() {
       }
     })
 
-    // 3) requête initiale + polling
-    const applyBuf = (buf: BufferPayload) => {
+    // c) polling dynamique selon fps
+    const pollIntervalMs = () => Math.round(1000 / fps.value)
+    const apply = (buf: BufferPayload) => {
       x.value      = buf.x
       y.value      = buf.y
       diamPx.value = buf.diameter
     }
-    applyBuf(await getBuffer())
-    intervalId = window.setInterval(() => {
-      getBuffer().then(applyBuf)
-    }, 100)
+
+    // initial + fallback HTTP
+    try {
+      const buf0 = await client.getBuffer()
+      apply(buf0)
+    } catch {}
+
+    // lance le polling
+    pollTimer = window.setInterval(async () => {
+      try {
+        const buf = await client.getBuffer()
+        apply(buf)
+      } catch {
+        // ignore
+      }
+    }, pollIntervalMs())
   })
 
   onBeforeUnmount(() => {
-    clearInterval(intervalId)
-    close()
+    if (pollTimer) clearInterval(pollTimer)
+    client.close()
   })
 
+  // 6) expose fps si besoin
   return {
     backgroundPath,
     filterStyle,
     x, y, diamPx,
+    fps,              // optionnel, pour debug ou UI
   }
 }
