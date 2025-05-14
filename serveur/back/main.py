@@ -124,6 +124,18 @@ async def get_history():
         media_type="application/json; charset=utf-8"
     )
     
+@app.get("/buffer")
+async def get_buffer(module: int = Query(..., description="ID du module")):
+    """
+    Renvoie la dernière donnée du buffer pour le module donné.
+    """
+    if module not in buffer:
+        raise HTTPException(status_code=404, detail=f"Module {module} introuvable")
+    return JSONResponse(
+        content={"buffer": buffer[module]},
+        media_type="application/json; charset=utf-8"
+    )
+    
 @app.get("/getAsset")
 async def get_asset(
     module: int = Query(..., description="Numéro du module"),
