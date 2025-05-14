@@ -1,6 +1,7 @@
 import asyncio
 import json
 import sys
+import threading
 from pathlib import Path
 
 import cv2
@@ -59,15 +60,21 @@ def main():
     width, height = 640, 480
     frame_size = width * height * 3  # bgr24
 
-    # Initialisation du client WS
+    # 1) Initialisation du client WS
     client = ArtineoClient(module_id=1)
-    client.start()  # lance la boucle WS en tâche de fond
-    print("WebSocket démarrée en arrière-plan.")
 
-    # Envoi non-bloquant et résilient
+    # 2) Fonction pour lancer le handler WS dans sa propre boucle
+    def run_ws_loop():
+        asyncio.run(client._ws_handler())
+
+    # 3) Démarrage du thread WebSocket (daemon pour qu'il se termine avec le process)
+    ws_thread = threading.Thread(target=run_ws_loop, daemon=True)
+    ws_thread.start()
+    print("WebSocket handler démarré dans un thread dédié.")
+
+    # 4) Envoi non-bloquant et résilient
     def safe_send(action, data):
         try:
-            # Construire le message JSON attendu par le serveur
             msg = json.dumps({
                 "module": client.module_id,
                 "action": action,
@@ -77,7 +84,7 @@ def main():
         except Exception as e:
             print(f"[WARN] Échec envoi WS : {e}")
 
-    # Boucle de lecture du flux caméra
+    # 5) Boucle de lecture du flux caméra
     while True:
         raw = sys.stdin.buffer.read(frame_size)
         if len(raw) < frame_size:
@@ -91,7 +98,6 @@ def main():
         if best:
             x, y, r = best
             cv2.circle(frame, (x, y), r, (0, 255, 0), 2)
-            # On envoie directement sans async/await
             safe_send(ArtineoAction.SET, {
                 "x": x,
                 "y": y,
@@ -103,10 +109,10 @@ def main():
 
     cv2.destroyAllWindows()
 
-    # On peut arrêter proprement la WS si besoin
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(client.stop())
-
+    # 6) Arrêt propre du handler WS
+    # On ne peut pas facilement arrêter asyncio.run(), mais comme le thread est daemon,
+    # il s’arrêtera à la fin du programme.
+    print("Fin du module 1, le thread WebSocket sera tué automatiquement.")
 
 if __name__ == "__main__":
     main()
