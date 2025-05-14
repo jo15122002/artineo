@@ -255,7 +255,7 @@ async def health_check():
     Renvoie pour chaque module un statut 'alive' ou 'dead'
     selon la fraîcheur du dernier 'pong' reçu (<5s).
     """
-    THRESHOLD = 5.0  # secondes
+    THRESHOLD = 9.0  # secondes
     now = time.time()
     statuses: Dict[int, str] = {}
 
