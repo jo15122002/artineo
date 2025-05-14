@@ -2,6 +2,8 @@ import asyncio
 import json
 import mimetypes
 import os
+import time
+from contextlib import suppress
 from typing import Dict
 
 from fastapi import (Body, FastAPI, HTTPException, Query, WebSocket,
@@ -167,34 +169,32 @@ async def get_asset(
 class ConnectionManager:
     def __init__(self):
         self.active: Dict[int, WebSocket] = {}
-        self._last_pong: Dict[int, bool] = {}
+        # on stocke pour chaque module le timestamp du dernier 'pong'
+        self._last_pong_time: Dict[int, float] = {}
 
     async def connect(self, ws: WebSocket):
         await ws.accept()
 
     def register(self, module_id: int, ws: WebSocket):
         self.active[module_id] = ws
+        # initialiser le timestamp dès la connexion
+        self._last_pong_time[module_id] = time.time()
 
     def disconnect(self, ws: WebSocket):
         to_remove = [mid for mid, socket in self.active.items() if socket is ws]
         for mid in to_remove:
             del self.active[mid]
-
-    def clear_pongs(self):
-        for mid in self.active.keys():
-            self._last_pong[mid] = False
-
-    def record_pong(self, module_id: int):
-        self._last_pong[module_id] = True
+            del self._last_pong_time[mid]
 
     async def broadcast_ping(self):
-        print(f"[ping] Envoi de ping à {len(self.active)} modules")
-        print(f"[ping] Modules actifs: {list(self.active)}")
+        """Envoie un 'ping' à tous les clients enregistrés."""
         for ws in list(self.active.values()):
-            try:
+            with suppress(Exception):
                 await ws.send_text("ping")
-            except:
-                pass
+
+    def record_pong(self, module_id: int):
+        """Appelé sur réception d'un 'pong' pour mettre à jour le timestamp."""
+        self._last_pong_time[module_id] = time.time()
 
 manager = ConnectionManager()
 
@@ -251,13 +251,20 @@ async def websocket_endpoint(ws: WebSocket):
 
 @app.get("/hc")
 async def health_check():
-    manager.clear_pongs()
-    await manager.broadcast_ping()
-    await asyncio.sleep(1)
-    statuses = {
-        mid: ("alive" if manager._last_pong.get(mid) else "dead")
-        for mid in manager.active.keys()
-    }
+    """
+    Renvoie pour chaque module un statut 'alive' ou 'dead'
+    selon la fraîcheur du dernier 'pong' reçu (<5s).
+    """
+    THRESHOLD = 5.0  # secondes
+    now = time.time()
+    statuses: Dict[int, str] = {}
+
+    # Inspecter chaque module encore connecté
+    for module_id in manager.active.keys():
+        last = manager._last_pong_time.get(module_id, 0)
+        delta = now - last
+        statuses[module_id] = "alive" if delta <= THRESHOLD else "dead"
+
     return JSONResponse(
         content={"modules": statuses},
         media_type="application/json; charset=utf-8"
