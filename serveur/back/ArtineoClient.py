@@ -13,6 +13,10 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+class ArtineoAction:
+    SET = "set"
+    GET = "get"
+
 class ArtineoClient:
     def __init__(
         self,

@@ -4,7 +4,7 @@ import mfrc522
 import neopixel
 import uasyncio as asyncio
 import ujson
-from ArtineoClient import ArtineoClient
+from ArtineoClientMicro import ArtineoClient
 from machine import SPI, Pin
 from utime import ticks_diff, ticks_ms
 
