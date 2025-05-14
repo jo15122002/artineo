@@ -17,6 +17,7 @@ async function fetchHealth() {
   try {
     const res = await fetch(`${apiUrl}/hc`)
     const json = await res.json() as { modules: Record<string, string> }
+    console.log('[Dashboard] fetchHealth', json)
     // met à jour ou crée chaque module
     for (const [id, status] of Object.entries(json.modules)) {
       if (!modules[id]) modules[id] = { status: 'unknown', buffer: null }
