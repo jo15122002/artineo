@@ -1,49 +1,56 @@
-// front/composables/useModule1.ts
+import { useNuxtApp } from '#app'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import type { BufferPayload } from '~/utils/ArtineoClient'
-import { useArtineo } from './useArtineo'; // notre composable générique
 
 export default function useModule1() {
-  const moduleId     = 1
-  const { fetchConfig, getBuffer, onMessage, close } = useArtineo(moduleId)
+  // ⚠️ Cette ligne ne s’exécute qu’en client
+  if (!process.client) {
+    // retourne des refs vides / stubs en SSR
+    const empty = ref<any>(null)
+    return { backgroundPath: empty, filterStyle: empty, x: empty, y: empty, diamPx: empty }
+  }
 
-  const cfg = ref<{ realDiameter?: number; focalLength?: number; background?: string }>({})
+  const moduleId = 1
+  const { $artineo } = useNuxtApp()
+
+  if (typeof $artineo !== 'function') {
+    throw new Error('Plugin $artineo non injecté — voir plugins/artineo.ts')
+  }
+
+  const client = $artineo(moduleId)
+
+  // tes refs
   const backgroundPath = ref<string>('')
-  const realDiameter   = ref(6)
-  const focalLength    = ref(400)
-
-  // données IR
-  const x      = ref(0)
-  const y      = ref(0)
+  const x  = ref(0)
+  const y  = ref(0)
   const diamPx = ref(1)
 
-  // brightness pivotée
-  const frameHeight  = 240
-  const minBrightPct = 50
-  const maxBrightPct = 150
-
+  // ton calcul de filterStyle…
+  const frameH = 240, minB = 50, maxB = 150
   const bright = computed(() => {
-    const r = y.value / frameHeight
-    const v = (1 - r) * (maxBrightPct - minBrightPct) + minBrightPct
-    return Math.max(minBrightPct, Math.min(maxBrightPct, v))
+    const pct = (1 - y.value / frameH) * (maxB - minB) + minB
+    return Math.min(Math.max(pct, minB), maxB)
   })
   const hue = computed(() => (x.value / 320) * 360)
   const sat = computed(() => (y.value / 240) * 200 + 50)
-  const filterStyle = computed(
-    () => `hue-rotate(${hue.value}deg) saturate(${sat.value}%) brightness(${bright.value}%)`
+  const filterStyle = computed(() =>
+    `hue-rotate(${hue.value}deg) saturate(${sat.value}%) brightness(${bright.value}%)`
   )
 
-  let intervalId: number
+  let pollId: number
 
   onMounted(async () => {
-    // 1) config
-    const c = await fetchConfig()
-    if (c.realDiameter)   realDiameter.value  = c.realDiameter
-    if (c.focalLength)    focalLength.value   = c.focalLength
-    if (c.background)     backgroundPath.value = c.background
+    // 1️⃣ config initiale
+    try {
+      const cfg = await client.fetchConfig()
+      if (cfg.background) backgroundPath.value = cfg.background
+      // … realDiameter, focalLength si besoin
+    } catch (e) {
+      console.error('[Module1] fetchConfig', e)
+    }
 
-    // 2) WS temps réel
-    onMessage((msg: any) => {
+    // 2️⃣ écoute WS
+    client.onMessage((msg: any) => {
       if (msg.action === 'get_buffer') {
         const buf = msg.buffer as BufferPayload
         x.value      = buf.x      ?? x.value
@@ -52,26 +59,26 @@ export default function useModule1() {
       }
     })
 
-    // 3) requête initiale + polling
-    const applyBuf = (buf: BufferPayload) => {
-      x.value      = buf.x
-      y.value      = buf.y
-      diamPx.value = buf.diameter
+    // 3️⃣ fallback polling HTTP
+    const apply = (buf: BufferPayload) => {
+      x.value = buf.x; y.value = buf.y; diamPx.value = buf.diameter
     }
-    applyBuf(await getBuffer())
-    intervalId = window.setInterval(() => {
-      getBuffer().then(applyBuf)
+    try {
+      const init = await client.getBuffer()
+      apply(init)
+    } catch {}
+    pollId = window.setInterval(async () => {
+      try {
+        const buf = await client.getBuffer()
+        apply(buf)
+      } catch {}
     }, 100)
   })
 
   onBeforeUnmount(() => {
-    clearInterval(intervalId)
-    close()
+    clearInterval(pollId)
+    client.close()
   })
 
-  return {
-    backgroundPath,
-    filterStyle,
-    x, y, diamPx,
-  }
+  return { backgroundPath, filterStyle, x, y, diamPx }
 }
