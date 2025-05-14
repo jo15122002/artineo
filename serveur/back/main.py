@@ -188,6 +188,8 @@ class ConnectionManager:
         self._last_pong[module_id] = True
 
     async def broadcast_ping(self):
+        print(f"[ping] Envoi de ping à {len(self.active)} modules")
+        print(f"[ping] Modules actifs: {list(self.active)}")
         for ws in list(self.active.values()):
             try:
                 await ws.send_text("ping")
