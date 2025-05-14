@@ -1,0 +1,19 @@
+{
+    "1": {
+        "x": null,
+        "y": null,
+        "diameter": null
+    },
+    "3": {
+        "uid1": null,
+        "uid2": null,
+        "uid3": null,
+        "current_set": 1,
+        "button_pressed": false
+    },
+    "4": {
+        "tool": "1",
+        "strokes": [],
+        "objects": []
+    }
+}
