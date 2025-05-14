@@ -30,8 +30,31 @@ app.mount(
 # --------------------------------------------------
 
 CONFIG_DIR = "configs"
+DEFAULT_BUFFER_FILE = "assets/default_buffer.json"
+
 # buffer global (un dict par module_id)
 buffer: Dict[int, dict] = {1: {}, 2: {}, 3: {}, 4: {}}
+
+
+@app.on_event("startup")
+async def load_default_buffer():
+    """
+    Charge au démarrage le default_buffer.json dans la variable `buffer`.
+    Si le fichier n'existe pas ou est invalide, on conserve le buffer vide par défaut.
+    """
+    global buffer
+    if os.path.exists(DEFAULT_BUFFER_FILE):
+        try:
+            with open(DEFAULT_BUFFER_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            # convertir les clés en int si besoin
+            buffer = {int(k): v for k, v in data.items()}
+            print(f"[startup] default buffer chargé pour modules: {list(buffer.keys())}")
+        except Exception as e:
+            print(f"[startup] Erreur en chargeant {DEFAULT_BUFFER_FILE}: {e}")
+    else:
+        print(f"[startup] Aucun default buffer ({DEFAULT_BUFFER_FILE}) trouvé, buffer vide.")
+
 
 @app.get("/config")
 async def get_config(module: int = None):
@@ -40,7 +63,6 @@ async def get_config(module: int = None):
         if not os.path.exists(file_path):
             raise HTTPException(status_code=404, detail="Fichier de config introuvable")
         try:
-            # Lecture en UTF-8
             with open(file_path, "r", encoding="utf-8") as f:
                 cfg = json.load(f)
             return JSONResponse(
@@ -49,7 +71,6 @@ async def get_config(module: int = None):
             )
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Erreur lecture fichier: {e}")
-    # aucun module → toutes les configs
     all_configs = {}
     try:
         for name in os.listdir(CONFIG_DIR):
@@ -63,6 +84,7 @@ async def get_config(module: int = None):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur lecture configurations: {e}")
 
+
 @app.post("/config")
 async def update_config(
     module: int = Query(..., description="ID du module à configurer"),
@@ -71,7 +93,6 @@ async def update_config(
     file_path = os.path.join(CONFIG_DIR, f"module{module}.json")
     os.makedirs(CONFIG_DIR, exist_ok=True)
 
-    # Charge la config existante
     if os.path.exists(file_path):
         try:
             with open(file_path, "r", encoding="utf-8") as f:
@@ -81,10 +102,8 @@ async def update_config(
     else:
         config = {}
 
-    # Fusion partielle
     config.update(payload)
 
-    # Sauvegarde en UTF-8 sans échappement ascii
     try:
         with open(file_path, "w", encoding="utf-8") as f:
             json.dump(config, f, ensure_ascii=False, indent=2)
@@ -96,6 +115,7 @@ async def update_config(
         content={"config": config},
         media_type="application/json; charset=utf-8"
     )
+
 
 @app.get("/history")
 async def get_history():
@@ -115,24 +135,18 @@ async def get_asset(
       GET /getAsset?module=3&path=1.png
       GET /getAsset?module=3&path=blob1.svg
     """
-    # 1. On définit le répertoire de base pour ce module
     base_dir = os.path.abspath(os.path.join("assets", f"module{module}"))
-    # 2. On normalise le chemin fourni
     normalized = os.path.normpath(path)
     full_path = os.path.abspath(os.path.join(base_dir, normalized))
 
-    # 3. Sécurité : on vérifie que full_path est bien dans base_dir
     if not full_path.startswith(base_dir + os.sep):
         raise HTTPException(400, "Chemin invalide")
-
-    # 4. Vérifie que le fichier existe
     if not os.path.isfile(full_path):
         raise HTTPException(404, "Asset non trouvé")
 
-    # 5. Détermine le media_type automatiquement
     media_type, _ = mimetypes.guess_type(full_path)
-
     return FileResponse(full_path, media_type=media_type)
+
 
 # --------------------------------------------------
 # Gestion des connexions WebSocket
@@ -178,7 +192,6 @@ async def websocket_endpoint(ws: WebSocket):
             raw = await ws.receive_text()
             print(f"Message reçu : {raw}")
 
-            # JSON ?
             try:
                 msg = json.loads(raw)
                 module_id = msg.get("module")
@@ -186,21 +199,18 @@ async def websocket_endpoint(ws: WebSocket):
                 if isinstance(module_id, int):
                     manager.register(module_id, ws)
 
-                # set_buffer
                 if action == "set" and "data" in msg:
                     buffer[module_id] = msg["data"]
                     resp = {"status": "ok", "action": "set_buffer", "module": module_id}
                     await ws.send_text(json.dumps(resp, ensure_ascii=False))
                     continue
 
-                # get_buffer
                 if action == "get":
                     buf = buffer[module_id]
                     resp = {"action": "get_buffer", "module": module_id, "buffer": buf}
                     await ws.send_text(json.dumps(resp, ensure_ascii=False))
                     continue
 
-                # ack générique
                 ack = {"action": "ack", "data": msg}
                 await ws.send_text(json.dumps(ack, ensure_ascii=False))
                 continue
@@ -208,7 +218,6 @@ async def websocket_endpoint(ws: WebSocket):
             except json.JSONDecodeError:
                 pass
 
-            # brut
             if raw == "ping":
                 await ws.send_text("pong")
             elif raw == "pong":
@@ -221,6 +230,7 @@ async def websocket_endpoint(ws: WebSocket):
 
     except WebSocketDisconnect:
         manager.disconnect(ws)
+
 # --------------------------------------------------
 # Health check étendu
 # --------------------------------------------------
