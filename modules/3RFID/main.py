@@ -19,8 +19,8 @@ BUTTON_PIN = 14
 
 INTENSITY     = 0.1
 COOLDOWN      = 2
-MAX_ATTEMPTS  = 3
-READ_TRIES    = 15
+MAX_ATTEMPTS  = 2
+READ_TRIES    = 2
 READ_DELAY_MS = 50
 
 # —————————————————————————————————————————————————————————————————————————————

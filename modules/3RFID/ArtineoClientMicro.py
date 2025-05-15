@@ -39,19 +39,21 @@ class ArtineoClient:
         self.http_backoff     = http_backoff
         self.http_timeout     = http_timeout
         self.ws_ping_interval = ws_ping_interval
+        self.ssid             = ssid
+        self.password         = password
 
         self.ws = None
 
-        if ssid and password:
+        if self.ssid and self.password:
             print(f"[ArtineoClient] connect_wifi to: {ssid}")
-            self.connect_wifi(ssid, password)
+            self.connect_wifi()
 
-    def connect_wifi(self, ssid, password, timeout=15):
+    def connect_wifi(self, timeout=15):
         print("[ArtineoClient] connect_wifi()")
         sta = network.WLAN(network.STA_IF)
         sta.active(True)
         if not sta.isconnected():
-            sta.connect(ssid, password)
+            sta.connect(self.ssid, self.password)
             start = ticks_ms()
             while not sta.isconnected() and ticks_diff(ticks_ms(), start) < timeout * 1000:
                 sleep(0.5)
@@ -116,3 +118,5 @@ class ArtineoClient:
                 self.ws.send(msg)
         except Exception as e:
             print("[ArtineoClient] set_buffer error:", e)
+            self.connect_wifi()  # Reconnecte si la connexion a échoué
+            self.connect_ws()  # Reconnecte si la connexion a échoué
