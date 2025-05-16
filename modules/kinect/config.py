@@ -65,6 +65,9 @@ class Config(BaseModel):
     stroke_radius_tol: int = Field(
         100, gt=0, description="Tolerance for stroke radius"
     )
+    stroke_radius_min: int = Field(
+        5, gt=0, description="Minimum stroke radius for detection"
+    )
 
     # Network / WebSocket client settings
     host: str = Field(

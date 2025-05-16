@@ -178,10 +178,10 @@ class MainController:
                 composite = cv2.convertScaleAbs(self.final_drawings[self.current_tool])
 
                 # 6) Debug display
-                if self.display:
-                    self.display.show("Composite", composite)
-                    if self.display.process_events() == ord('q'):
-                        break
+                # if self.display:
+                #     self.display.show("Composite", composite)
+                #     if self.display.process_events() == ord('q'):
+                #         break
 
                 # 7) Détection
                 if self.current_tool != '4':
