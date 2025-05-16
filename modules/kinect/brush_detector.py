@@ -64,7 +64,7 @@ class BrushStrokeDetector:
             disp = cv2.normalize(raw_dist, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
             for name, img in (("mask", mask), ("dist", disp), ("skel", skel)):
                 big = cv2.resize(img,
-                                 (img.shape[1]*3, img.shape[0]*3),
+                                 (img.shape[1]*2, img.shape[0]*2),
                                  interpolation=cv2.INTER_NEAREST)
                 cv2.imshow(name, big)
             cv2.waitKey(1)
