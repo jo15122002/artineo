@@ -89,5 +89,5 @@ class KinectInterface:
         cropped = blurred[y0 : y0 + h, x0 : x0 + w]
 
         # Flip horizontally for mirror view
-        flipped = np.fliplr(cropped)
+        flipped = cv2.flip(cropped, 1)
         return flipped

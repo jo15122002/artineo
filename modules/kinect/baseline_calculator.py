@@ -2,8 +2,6 @@ import numpy as np
 import logging
 from config import Config
 
-logger = logging.getLogger(__name__)
-
 class BaselineCalculator:
     """
     Accumulates depth frames to compute and provide a baseline (background reference).
@@ -14,12 +12,16 @@ class BaselineCalculator:
     - `baseline` property returns the current baseline or raises if not ready.
     """
 
-    def __init__(self, config: Config):
+    def __init__(self, config: Config, logger=None):
         self.config = config
         self._frames_sum = None  # sum of frames
         self._count = 0          # number of frames accumulated
         self._baseline = None    # computed baseline
-        logger.debug("BaselineCalculator created with n_profile=%d", config.n_profile)
+        self.logger = logger or logging.getLogger(__name__)
+
+        if self.config.debug_mode:
+            self.logger.setLevel(logging.DEBUG)
+            logger.debug("BaselineCalculator created with n_profile=%d", config.n_profile)
 
     def update(self, frame: np.ndarray) -> None:
         """
@@ -33,11 +35,11 @@ class BaselineCalculator:
             self._frames_sum = np.zeros_like(frame, dtype=np.float64)
         self._frames_sum += frame.astype(np.float64)
         self._count += 1
-        logger.debug("Accumulating frame %d/%d", self._count, self.config.n_profile)
+        self.logger.debug("Accumulating frame %d/%d", self._count, self.config.n_profile)
         if self._count >= self.config.n_profile:
             # Compute mean baseline
             self._baseline = (self._frames_sum / self._count).astype(frame.dtype)
-            logger.info("Baseline computed after %d frames", self._count)
+            self.logger.info("Baseline computed after %d frames", self._count)
             # Optionally free sum to save memory
             self._frames_sum = None
 
@@ -57,7 +59,7 @@ class BaselineCalculator:
         Reset the accumulator and clear any existing baseline.
         Useful when tool or context changes.
         """
-        logger.info("Resetting baseline calculator")
+        self.logger.info("Resetting baseline calculator")
         self._frames_sum = None
         self._count = 0
         self._baseline = None

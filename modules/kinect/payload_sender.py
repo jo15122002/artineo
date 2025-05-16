@@ -49,14 +49,14 @@ class PayloadSender:
 
     async def send(
         self,
-        tool: str,
+        tool_id: str,
         strokes: List[Dict[str, Any]],
         objects: List[Dict[str, Any]],
     ) -> None:
         """
         Send the payload, reconnecting on failure.
         """
-        payload = {"module": self.client.module_id, "action": ArtineoAction.SET, "data": {"tool": tool, "strokes": strokes, "objects": objects}}
+        payload = {"module": self.client.module_id, "action": ArtineoAction.SET, "data": {"tool": tool_id, "strokes": strokes, "objects": objects}}
         async with self._lock:
             try:
                 ws = await self.client.connect_ws()

@@ -19,8 +19,24 @@ class BrushStrokeDetector:
                  stroke_area_thresh: float = 100.0):
         # brush: image grayscale float [0,1]
         self.brush = brush.astype(np.float32) / 255.0
+        self.config = config
         self.brush_scale = config.brush_scale
         self.stroke_area_thresh = stroke_area_thresh
+        self.kern = np.ones((3, 3), np.uint8)
+
+        # position du curseur dans la fenêtre dist (en pixels de carte)
+        self.mouse_x = 0
+        self.mouse_y = 0
+        # initialisation de la fenêtre dist en DEBUG
+        cv2.namedWindow('dist', cv2.WINDOW_NORMAL)
+        cv2.setMouseCallback('dist', self._mouse_cb)
+
+    def _mouse_cb(self, event, x, y, flags, param):
+        # callback pour capturer la position du curseur
+        if event == cv2.EVENT_MOUSEMOVE:
+            # dividé par 3 pour obtenir coords sur carte originale
+            self.mouse_x = x // 3
+            self.mouse_y = y // 3
 
     def _resize_brush(self, size: float) -> np.ndarray:
         """Redimensionne le brush selon la taille détectée et le facteur brush_scale"""
@@ -28,81 +44,85 @@ class BrushStrokeDetector:
         return cv2.resize(self.brush, (s, s), interpolation=cv2.INTER_AREA)
 
     def detect(self, composite: np.ndarray, tool: str) -> List[Dict]:
-        """
-        Extrait les événements de brush strokes depuis l'image composite.
-
-        Args:
-            composite: image BGR uint8 (H x W x 3) représentant l'accumulation couleur.
-            tool: identifiant de l'outil courant (string).
-
-        Returns:
-            List de dicts: {'tool': tool, 'x': int, 'y': int, 'size': float, 'color': [B,G,R]}
-        """
-
-        if composite.ndim == 2 or composite.shape[2] == 1:
-            composite = cv2.cvtColor(composite, cv2.COLOR_GRAY2BGR)
-
-        strokes_events: List[Dict] = []
-        # Passage en niveaux de gris et lissage
-        gray = cv2.GaussianBlur(
-            cv2.cvtColor(composite, cv2.COLOR_BGR2GRAY), (3, 3), 0
+        strokes = []
+        # on travaille sur la composite déjà colorée
+        gray = (
+            cv2.cvtColor(composite, cv2.COLOR_BGR2GRAY)
+            if composite.ndim == 3 else composite
         )
-        # Seuil binaire
-        _, bin_img = cv2.threshold(gray, 3, 255, cv2.THRESH_BINARY)
-        # Ouverture/Fermeture pour nettoyer le masque
-        kern = np.ones((3, 3), np.uint8)
-        bin_img = cv2.morphologyEx(bin_img, cv2.MORPH_OPEN, kern, iterations=3)
-        bin_img = cv2.morphologyEx(bin_img, cv2.MORPH_CLOSE, kern, iterations=3)
-        # Transformée de distance
-        dist_map = cv2.distanceTransform(bin_img, cv2.DIST_L2, 5)
 
-        # Extraction des contours de régions valides
-        contours, _ = cv2.findContours(
-            bin_img, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-        )
-        for cnt in contours:
-            # Filtre par aire minimale
+        gray = cv2.GaussianBlur(gray, (3, 3), 0)
+        _, mask = cv2.threshold(gray, 10, 255, cv2.THRESH_BINARY)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, self.kern, iterations=3)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, self.kern, iterations=3)
+
+        raw_dist = cv2.distanceTransform(mask, cv2.DIST_L2, 5)
+        dist_map = cv2.normalize(raw_dist, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+
+        disp_big = cv2.resize(dist_map, (dist_map.shape[1]*3, dist_map.shape[0]*3),
+                      interpolation=cv2.INTER_NEAREST)
+
+        h, w = dist_map.shape
+        if 0 <= self.mouse_x < w and 0 <= self.mouse_y < h:
+            dist_val = dist_map[self.mouse_y, self.mouse_x]
+            text = f"Dist: {dist_val:.2f}@({self.mouse_x},{self.mouse_y})"
+            cv2.putText(disp_big, text, (5, 20), cv2.FONT_HERSHEY_SIMPLEX,
+                        0.4, (255, 255, 255), 1, cv2.LINE_AA)
+        
+        cv2.resizeWindow('dist', dist_map.shape[1] * 3, dist_map.shape[0] * 3)
+        cv2.imshow('mask', mask)
+        cv2.imshow('dist', disp_big)
+
+        tol = self.config.stroke_radius_tol
+
+        cnts, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        for cnt in cnts:
             if cv2.contourArea(cnt) < self.stroke_area_thresh:
                 continue
-            # Moment pour extraire le centre
-            M = cv2.moments(cnt)
-            if M['m00'] == 0:
-                continue
-            cx = int(M['m10'] / M['m00'])
-            cy = int(M['m01'] / M['m00'])
-            # Recherche du maximum local sur la distance transform
-            mask_region = np.zeros_like(bin_img)
-            cv2.drawContours(mask_region, [cnt], -1, 255, cv2.FILLED)
-            region = dist_map.copy()
-            region[mask_region == 0] = 0
-            rm = region.max()
-            if rm < 1:
-                continue
-            # Localisation des pics (dist >= rm - tol)
-            dilated = cv2.dilate(dist_map, kern)
-            local_max = (dist_map == dilated) & (mask_region == 255) & (dist_map >= rm - 7)
-            ys, xs = np.where(local_max)
+
+            # Masque du contour
+            region = np.zeros(mask.shape, dtype=np.uint8)
+            cv2.drawContours(region, [cnt], -1, 255, cv2.FILLED)
+
+            # Distance map restreinte au contour
+            local = dist_map.copy()
+            local[region==0]=0
+
+            level = int(local.max())
+
+            dil = cv2.dilate(dist_map, self.kern)
+
+            peaks = (
+                (dist_map == dil) &
+                (region == 255) &
+                (dist_map.astype(int) >= int(level - tol))
+            )
+
+            ys, xs = np.where(peaks)
             for y, x in zip(ys, xs):
-                val = dist_map[y, x]
-                if val < 1 or val > 150:
-                    continue
-                # Redimensionnement du brush
-                b = self._resize_brush(val)
-                bh, bw = b.shape
-                # Couleur en fonction de l'outil (BGR)
-                color_map = {
-                    '1': [0, 0, 255],
-                    '2': [255, 0, 0],
-                    '3': [0, 255, 0],
-                    '4': [0, 0, 0],
-                }
-                color = color_map.get(tool, [0, 0, 0])
-                # Enregistrement de l'événement
-                strokes_events.append({
-                    'tool': tool,
+                radius = float(raw_dist[y, x])
+                diameter = radius * 2.0
+                strokes.append({
+                    'tool_id': tool,
                     'x': int(x),
                     'y': int(y),
-                    'size': float(val),
-                    'color': color,
+                    'size': diameter
                 })
-        return strokes_events
+
+            # if rm < 1: continue
+            # dil = cv2.dilate(dist_map, self.kern)
+            # peaks = np.logical_and(dist_map==dil, dist_map>=rm-7)
+            # ys, xs = np.where(peaks)
+            # for y, x in zip(ys, xs):
+            #     x_py = int(x)
+            #     y_py = int(y)
+            #     v    = int(dist_map[y, x])
+            #     if not (1 <= v <= 150):
+            #         continue
+            #     strokes.append({
+            #         'tool_id': tool,   # au lieu de color
+            #         'x': x_py,
+            #         'y': y_py,
+            #         'size': v
+            #     })
+        return strokes

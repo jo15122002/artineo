@@ -38,7 +38,7 @@ class Config(BaseModel):
 
     # Background profile computation
     n_profile: int = Field(
-        100, gt=0, description="Number of samples for profile computation"
+        10, gt=0, description="Number of samples for profile computation"
     )
 
     # Display parameters (for debug)
@@ -54,15 +54,21 @@ class Config(BaseModel):
         738.0 / 30.0, description="Computed scale factor: 738/delta"
     )
     alpha: float = Field(
-        0.3, ge=0.0, le=1.0, description="Exponential smoothing factor for brush accumulation"
+        0.1, ge=0.0, le=1.0, description="Exponential smoothing factor for brush accumulation"
     )
     brush_scale: float = Field(
         1.2, gt=0, description="Scale multiplier for brush stroke size"
     )
+    stroke_intensity_thresh: int = Field(
+        30, gt=0, description="Threshold for stroke intensity"
+    )
+    stroke_radius_tol: int = Field(
+        100, gt=0, description="Tolerance for stroke radius"
+    )
 
     # Network / WebSocket client settings
     host: str = Field(
-        "artineo.local", description="Artineo server host"
+        "localhost", description="Artineo server host"
     )
     port: int = Field(
         8000, ge=0, description="Artineo server port"
@@ -81,6 +87,10 @@ class Config(BaseModel):
 
     debug_mode: bool = Field(
         True, description="Enable debug mode for displaying windows and detailed logs"
+    )
+
+    bypass_ws: bool = Field(
+        False, description="Bypass WebSocket connection for debugging"
     )
 
     @model_validator(mode='before')

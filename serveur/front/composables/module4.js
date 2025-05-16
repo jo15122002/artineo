@@ -68,7 +68,9 @@ export default function use4kinect(canvasRef) {
         ws.onmessage = msg => {
             const data = JSON.parse(msg.data)
             if (data.action === 'get_buffer' && data.buffer.tool) {
-                console.log('buffer', data.buffer)
+                const canvas = canvasRef.value
+                console.log(data.buffer);
+                // console.log('buffer', data.buffer)
                 drawBuffer(data.buffer)
             }
         }
@@ -87,14 +89,13 @@ export default function use4kinect(canvasRef) {
         const canvas = canvasRef.value
         if (!canvas) return
         const ctx = canvas.getContext('2d')
-        const scale = 3 // même zoom que dans le Python
+        const scale = 3;
         const W = canvas.width, H = canvas.height
 
         // Fond blanc
         ctx.fillStyle = '#ffffff'
         ctx.fillRect(0, 0, W, H)
 
-        // Pour chaque stroke : un cercle (approx brush)
         if (brushCanvases.length) {
             buf.strokes.forEach(s => {
               const bc = brushCanvases[
@@ -113,7 +114,6 @@ export default function use4kinect(canvasRef) {
             })
           }
 
-        // (optionnel) superposer objets
         buf.objects.forEach(o => {
         const img = objectImages[o.shape]
         if (img && img.complete) {

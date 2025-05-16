@@ -21,7 +21,7 @@ sys.path.insert(
 )
 from ArtineoClient import ArtineoAction, ArtineoClient  # type: ignore
 
-client = ArtineoClient(module_id=4, host="artineo.local", port=8000)
+client = ArtineoClient(module_id=4, host="localhost", port=8000)
 config = client.fetch_config()
 print("Configuration récupérée : ", config)
 
