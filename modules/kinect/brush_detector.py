@@ -19,6 +19,7 @@ class BrushStrokeDetector:
                  stroke_area_thresh: float = 100.0):
         # brush: image grayscale float [0,1]
         self.brush = brush.astype(np.float32) / 255.0
+        self.tool_channel = {'1': 0, '2': 1, '3': 2}
         self.config = config
         self.brush_scale = config.brush_scale
         self.stroke_area_thresh = stroke_area_thresh
@@ -46,13 +47,14 @@ class BrushStrokeDetector:
     def detect(self, composite: np.ndarray, tool: str) -> List[Dict]:
         strokes = []
         # on travaille sur la composite déjà colorée
-        gray = (
-            cv2.cvtColor(composite, cv2.COLOR_BGR2GRAY)
-            if composite.ndim == 3 else composite
-        )
+        if composite.ndim == 3:
+            ch = self.tool_channel.get(tool, 0)
+            gray = composite[:, :, ch]
+        else:
+            gray = composite
 
         gray = cv2.GaussianBlur(gray, (3, 3), 0)
-        _, mask = cv2.threshold(gray, 10, 255, cv2.THRESH_BINARY)
+        _, mask = cv2.threshold(gray, self.config.stroke_intensity_thresh, 255, cv2.THRESH_BINARY)
         mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, self.kern, iterations=3)
         mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, self.kern, iterations=3)
 

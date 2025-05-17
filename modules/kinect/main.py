@@ -16,6 +16,8 @@ from payload_sender import PayloadSender
 from frame_smoother import FrameSmoother
 from stroke_accumulator import StrokeAccumulator
 from stroke_tracker import StrokeTracker
+from channel_selector import ChannelSelector
+from keyboard_selector import KeyboardChannelSelector
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +47,7 @@ class MainController:
     def __init__(
         self,
         raw_config: dict,
+        channel_selector: ChannelSelector = KeyboardChannelSelector(),
     ):
         
         logger.info("Initializing MainController...")
@@ -116,6 +119,8 @@ class MainController:
 
         self.current_tool: str = '1'  # default tool
         self.tool_channel = {'1':0, '2':1, '3':2, '4':3}
+        self.channel_selector: ChannelSelector = channel_selector
+
         h, w = self.config.roi_height, self.config.roi_width
 
         self.final_drawings = {
@@ -150,6 +155,17 @@ class MainController:
 
         try:
             while True:
+
+                new_tool = await self.channel_selector.get_next_channel()
+                if new_tool and new_tool != self.current_tool:
+                    logger.info(f"Changement d'outil : {new_tool}")
+                    self.current_tool = new_tool
+                    # Réinitialisation de la baseline, des buffers et historique
+                    self.baseline_calc.reset()
+                    for buf in self.final_drawings.values():
+                        buf.fill(0)
+                    # self.all_strokes.clear()
+
                 # 2) Acquire & check new frame
                 if not self.kinect.has_new_depth_frame():
                     await asyncio.sleep(0.01)
@@ -167,15 +183,18 @@ class MainController:
                 result = self.depth_processor.process(frame, baseline)
 
                 # 5) Mise à jour du composite (bosses)
-                ch        = self.tool_channel[self.current_tool]
-                diff_raw = (result.mapped.astype(int) - 128).clip(min=0).astype(float)
+                if self.current_tool in ('1', '2', '3'):
+                    ch        = self.tool_channel[self.current_tool]
+                    diff_raw = (result.mapped.astype(int) - 128).clip(min=0).astype(float)
 
-                mask_sig = diff_raw > self.config.stroke_intensity_thresh
-                buf = self.final_drawings[self.current_tool][:,:,ch]
-                buf[mask_sig] = (1 - self.config.alpha) * buf[mask_sig] + self.config.alpha * diff_raw[mask_sig]
-                buf[~mask_sig] *= (1 - alfa_decay)
+                    mask_sig = diff_raw > self.config.stroke_intensity_thresh
+                    buf = self.final_drawings[self.current_tool][:,:,ch]
+                    buf[mask_sig] = (1 - self.config.alpha) * buf[mask_sig] + self.config.alpha * diff_raw[mask_sig]
+                    buf[~mask_sig] *= (1 - alfa_decay)
 
-                composite = cv2.convertScaleAbs(self.final_drawings[self.current_tool])
+                    composite = cv2.convertScaleAbs(self.final_drawings[self.current_tool])
+                else:
+                    composite = None
 
                 # 6) Debug display
                 # if self.display:
