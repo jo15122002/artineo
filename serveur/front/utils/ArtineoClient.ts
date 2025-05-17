@@ -2,11 +2,6 @@
 import { EventEmitter } from 'eventemitter3'
 
 export type BufferPayload = {
-  current_set: number
-  uid1: string | null
-  uid2: string | null
-  uid3: string | null
-  button_pressed?: boolean
   [key: string]: any
 }
 
