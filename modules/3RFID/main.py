@@ -185,7 +185,7 @@ async def next_set(timeout=False):
     reset_timer()
 
 async def async_main():
-    global config, total_sets, _client
+    global config, total_sets, _client, current_set, attempt_count, button_pressed
 
     log("[main] async_main start")
     setup_hardware()
