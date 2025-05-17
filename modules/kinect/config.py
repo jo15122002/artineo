@@ -68,6 +68,12 @@ class Config(BaseModel):
     stroke_radius_min: int = Field(
         5, gt=0, description="Minimum stroke radius for detection"
     )
+    stroke_size_max : int = Field(
+        100, gt=0, description="Maximum stroke size for detection"
+    )
+    stroke_confirmation_frames: int = Field(
+        5, gt=0, description="Number of frames for stroke confirmation"
+    )
 
     # Network / WebSocket client settings
     host: str = Field(

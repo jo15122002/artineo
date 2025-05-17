@@ -1,5 +1,7 @@
 import asyncio
 import logging
+from typing import Dict
+import uuid
 import cv2
 import numpy as np
 
@@ -18,6 +20,8 @@ from stroke_accumulator import StrokeAccumulator
 from stroke_tracker import StrokeTracker
 from channel_selector import ChannelSelector
 from keyboard_selector import KeyboardChannelSelector
+from stroke_lifetimer import StrokeLifeTimer
+from stroke_confirm_tracker import StrokeConfirmTracker
 
 logger = logging.getLogger(__name__)
 
@@ -93,7 +97,20 @@ class MainController:
             alpha=self.config.alpha,
             abs_mode=True   # True = bosses & creux
         )
+        
+        self.current_tool: str = '1'  # default tool
+        self.tool_channel = {'1':0, '2':1, '3':2, '4':3}
+        self.channel_selector: ChannelSelector = channel_selector
+        
         self.stroke_tracker = StrokeTracker(proximity_threshold=5.0)
+        self.stroke_lifetimers = {
+            tool: StrokeLifeTimer(max_age=5)
+            for tool in self.tool_channel
+        }
+        self.stroke_confirm = StrokeConfirmTracker(
+            proximity_threshold=5.0,
+            min_confirm= self.config.stroke_confirmation_frames
+        )
 
         # Load brush image for stroke detection
         brush_path = Path(self.config.template_dir).parent.joinpath(
@@ -117,10 +134,6 @@ class MainController:
         if not self.config.bypass_ws:
             self.payload_sender = PayloadSender(self.client, logger=logger)
 
-        self.current_tool: str = '1'  # default tool
-        self.tool_channel = {'1':0, '2':1, '3':2, '4':3}
-        self.channel_selector: ChannelSelector = channel_selector
-
         h, w = self.config.roi_height, self.config.roi_width
 
         self.final_drawings = {
@@ -128,7 +141,8 @@ class MainController:
             for t in self.tool_channel
         }
 
-        self.all_strokes: list = []  # all strokes detected
+        self.all_strokes: Dict[str, Dict] = {}
+        self.all_objects: Dict[str, Dict] = {}
 
         if self.config.debug_mode:
             self.display = DisplayManager([])
@@ -138,111 +152,131 @@ class MainController:
         logger.info("MainController initialized.")
 
     async def run(self) -> None:
-        """
-        Main async loop:
-        - Connect WS
-        - Continuously capture depth frames
-        - Update baseline, map depth, accumulate composite
-        - Detect strokes (ou objects) et filtrer temporellement
-        - Send payload
-        """
-        # 1) Initialisation
         self.kinect.open()
         if not self.config.bypass_ws:
             await self.payload_sender.connect()
 
         alfa_decay = 0.05
+        prox = self.stroke_tracker.proximity_threshold
 
         try:
             while True:
-
+                # 1) changement d’outil sans effacer les strokes
                 new_tool = await self.channel_selector.get_next_channel()
+                removed_ids = []
                 if new_tool and new_tool != self.current_tool:
-                    logger.info(f"Changement d'outil : {new_tool}")
                     self.current_tool = new_tool
-                    # Réinitialisation de la baseline, des buffers et historique
+                    logger.info(f"Tool changed to {self.current_tool}")
+                    # Réinitialisation du baseline et des buffers uniquement
                     self.baseline_calc.reset()
                     for buf in self.final_drawings.values():
                         buf.fill(0)
-                    # self.all_strokes.clear()
 
-                # 2) Acquire & check new frame
+                # 2) acquérir frame
                 if not self.kinect.has_new_depth_frame():
                     await asyncio.sleep(0.01)
                     continue
                 frame = self.kinect.get_depth_frame()
 
-                # 3) Baseline
+                # 3) baseline
                 try:
                     baseline = self.baseline_calc.baseline
                 except RuntimeError:
                     self.baseline_calc.update(frame)
                     continue
 
-                # 4) Depth → mapped
+                # 4) depth → mapped + contours
                 result = self.depth_processor.process(frame, baseline)
 
-                # 5) Mise à jour du composite (bosses)
-                if self.current_tool in ('1', '2', '3'):
-                    ch        = self.tool_channel[self.current_tool]
-                    diff_raw = (result.mapped.astype(int) - 128).clip(min=0).astype(float)
-
-                    mask_sig = diff_raw > self.config.stroke_intensity_thresh
+                # 5) accumulation composite
+                if self.current_tool in ('1','2','3'):
+                    ch   = self.tool_channel[self.current_tool]
+                    diff = (result.mapped.astype(int)-128).clip(min=0).astype(float)
+                    mask_sig = diff > self.config.stroke_intensity_thresh
                     buf = self.final_drawings[self.current_tool][:,:,ch]
-                    buf[mask_sig] = (1 - self.config.alpha) * buf[mask_sig] + self.config.alpha * diff_raw[mask_sig]
-                    buf[~mask_sig] *= (1 - alfa_decay)
-
+                    buf[mask_sig] = (1-self.config.alpha)*buf[mask_sig] + self.config.alpha*diff[mask_sig]
+                    buf[~mask_sig] *= (1-alfa_decay)
                     composite = cv2.convertScaleAbs(self.final_drawings[self.current_tool])
                 else:
                     composite = None
 
-                # 6) Debug display
-                # if self.display:
-                #     self.display.show("Composite", composite)
-                #     if self.display.process_events() == ord('q'):
-                #         break
+                # 6) détection strokes OU objets
+                new_strokes = []
+                new_objects = []
+                remove_objects = []
 
-                # 7) Détection
                 if self.current_tool != '4':
-                    # strokes + filtrage temporel
-                    raw     = self.brush_detector.detect(composite, self.current_tool)
-                    new     = self.stroke_tracker.update(raw, self.all_strokes)
-                    self.all_strokes.extend(new)
-                    strokes = self.all_strokes
-                    objects = []
+                    # a) raw strokes
+                    raw = self.brush_detector.detect(composite, self.current_tool)
+                    # b) ne garder que les nouveaux pour envoyer
+                    unique = self.stroke_tracker.update(raw, list(self.all_strokes.values()))
+                    confirmed = self.stroke_confirm.update(unique)
+                    for ev in confirmed:
+                        if ev['size'] > self.config.stroke_size_max:
+                            continue
+                        sid = str(uuid.uuid4())
+                        ev['id'] = sid
+                        self.all_strokes[sid] = ev
+                        new_strokes.append(ev)
+
+                    # c) calcul des active_ids : ceux dont la position est redétectée cette frame
+                    active_ids = []
+                    for sid, ev in self.all_strokes.items():
+                        for r in raw:
+                            if (r['tool_id']==ev['tool_id']
+                                and abs(r['x']-ev['x'])<=prox
+                                and abs(r['y']-ev['y'])<=prox):
+                                active_ids.append(sid)
+                                break
+
+                    # d) purge des strokes dont l'âge arrive à 0
+                    lifetimer = self.stroke_lifetimers[self.current_tool]
+                    stale = lifetimer.update(active_ids)
+                    removed_ids.extend(stale)
+
                 else:
                     # clustering + objets
-                    detections = []
+                    dets = []
                     for cnt in result.contours:
                         shape = self.shape_classifier.classify(cnt)
                         M = cv2.moments(cnt)
-                        if M['m00'] == 0:
-                            continue
-                        cx = M['m10'] / M['m00']
-                        cy = M['m01'] / M['m00']
+                        if M['m00']==0: continue
+                        cx = M['m10']/M['m00']; cy = M['m01']/M['m00']
                         area = float(cv2.contourArea(cnt))
                         x,y,w,h = cv2.boundingRect(cnt)
-                        detections.append((shape, cx, cy, area, 0.0, float(w), float(h)))
-                    self.cluster_tracker.update(detections)
-                    strokes = []
-                    objects = self.object_detector.detect()
+                        dets.append((shape,cx,cy,area,0.0,float(w),float(h)))
+                    self.cluster_tracker.update(dets)
+                    valid = self.object_detector.detect()
+                    for obj in valid:
+                        oid = str(uuid.uuid4())
+                        obj['id'] = oid
+                        self.all_objects[oid] = obj
+                        new_objects.append(obj)
 
-                # 8) Envoi WS
+                # 7) envoi WS en diffs
                 if not self.config.bypass_ws:
-                    await self.payload_sender.send(
-                        tool_id=self.current_tool,
-                        strokes=strokes,
-                        objects=objects,
-                    )
+                    if new_strokes or removed_ids or new_objects or remove_objects:
+                        await self.payload_sender.send_update(
+                            new_strokes=new_strokes,
+                            remove_strokes=removed_ids,
+                            new_objects=new_objects,
+                            remove_objects=remove_objects,
+                        )
 
-                # 9) Lâcher le thread
                 await asyncio.sleep(0)
 
         except asyncio.CancelledError:
             logger.info("Main loop cancelled, shutting down.")
         finally:
+            # cleanup…
             self.kinect.close()
             if not self.config.bypass_ws:
+                await self.payload_sender.send_update(
+                    new_strokes=[],
+                    remove_strokes=list(self.all_strokes.keys()),
+                    new_objects=[],
+                    remove_objects=list(self.all_objects.keys()),
+                )
                 await self.payload_sender.close()
             if self.display:
                 cv2.destroyAllWindows()

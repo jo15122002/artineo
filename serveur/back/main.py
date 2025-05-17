@@ -3,6 +3,7 @@ import json
 import mimetypes
 import os
 from typing import Dict
+from collections import deque
 
 from fastapi import (Body, FastAPI, HTTPException, Query, WebSocket,
                      WebSocketDisconnect)
@@ -170,6 +171,10 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
+diff_queues: Dict[int, deque] = {
+    1: deque(), 2: deque(), 3: deque(), 4: deque()
+}
+
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
     await manager.connect(ws)
@@ -188,15 +193,26 @@ async def websocket_endpoint(ws: WebSocket):
 
                 # set_buffer
                 if action == "set" and "data" in msg:
-                    buffer[module_id] = msg["data"]
+                    # stocke le diff reçu
+                    diff_queues[module_id].append(msg["data"])
+                    # conserve l'ancien buffer complet si besoin ailleurs
                     resp = {"status": "ok", "action": "set_buffer", "module": module_id}
                     await ws.send_text(json.dumps(resp, ensure_ascii=False))
                     continue
 
                 # get_buffer
                 if action == "get":
-                    buf = buffer[module_id]
-                    resp = {"action": "get_buffer", "module": module_id, "buffer": buf}
+                    # si on a des diffs en attente, on envoie le plus ancien
+                    if diff_queues[module_id]:
+                        payload = diff_queues[module_id].popleft()
+                    else:
+                        # aucune mise à jour : payload vide
+                        payload = {}
+                    resp = {
+                        "action": "get_buffer",
+                        "module": module_id,
+                        "buffer": payload
+                    }
                     await ws.send_text(json.dumps(resp, ensure_ascii=False))
                     continue
 

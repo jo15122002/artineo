@@ -1,9 +1,8 @@
+# backend/payload_sender.py
 import json
-import sys
-from pathlib import Path
 import asyncio
-import logging
-from typing import Any, Dict, List
+from pathlib import Path
+import sys
 
 sys.path.insert(
     0,
@@ -15,48 +14,51 @@ sys.path.insert(
         .resolve()
     )
 )
-from ArtineoClient import ArtineoClient, ArtineoAction
 
+from ArtineoClient import ArtineoAction
 
 class PayloadSender:
-    """
-    Manages WebSocket connection and sends payloads via ArtineoClient.
-    Simplified: handles reconnection and sending only.
-    """
-    def __init__(
-        self,
-        client: ArtineoClient,
-        reconnect_interval: float = 5.0,
-        logger: logging.Logger = None,
-    ):
+    def __init__(self, client, reconnect_interval=5.0, logger=None):
         self.client = client
         self.reconnect_interval = reconnect_interval
         self._lock = asyncio.Lock()
-        self.logger = logger or logging.getLogger(__name__)
+        self.logger = logger or __import__('logging').getLogger(__name__)
+        self._ws = None
 
-    async def connect(self) -> None:
-        """
-        Ensure WebSocket connection is open.
-        """
+    async def connect(self):
+        """ Ouvre et conserve la connexion WS. """
+        while True:
+            try:
+                await self.client.connect_ws()
+                self.client.start_listening()
+                self._ws = await self.client.connect_ws()
+                self.logger.info("WebSocket connected.")
+                return
+            except Exception as e:
+                self.logger.error("WS connect failed: %s. Retry in %.1fs", e, self.reconnect_interval)
+                await asyncio.sleep(self.reconnect_interval)
+
+    async def close(self):
         try:
-            await self.client.connect_ws()
-            self.client.start_listening()
-            self.logger.info("WebSocket connected.")
+            await self.client.close_ws()
+            self.logger.info("WebSocket closed.")
         except Exception as e:
-            self.logger.error("WebSocket connect failed: %s", e)
-            await asyncio.sleep(self.reconnect_interval)
-            await self.connect()
+            self.logger.error("Error closing WebSocket: %s", e)
 
-    async def send(
-        self,
-        tool_id: str,
-        strokes: List[Dict[str, Any]],
-        objects: List[Dict[str, Any]],
-    ) -> None:
+    async def send_update(self, *, new_strokes, remove_strokes, new_objects, remove_objects):
         """
-        Send the payload, reconnecting on failure.
+        Envoie uniquement les diffs au front.
         """
-        payload = {"module": self.client.module_id, "action": ArtineoAction.SET, "data": {"tool": tool_id, "strokes": strokes, "objects": objects}}
+        payload = {
+            "module": self.client.module_id,
+            "action": ArtineoAction.SET,
+            "data": {
+                "newStrokes":  new_strokes,
+                "removeStrokes": remove_strokes,
+                "newObjects":  new_objects,
+                "removeObjects": remove_objects,
+            }
+        }
         async with self._lock:
             try:
                 ws = await self.client.connect_ws()
@@ -71,13 +73,3 @@ class PayloadSender:
                     self.logger.debug("Payload resent: %s", payload)
                 except Exception as e2:
                     self.logger.error("Payload resend failed: %s", e2)
-
-    async def close(self) -> None:
-        """
-        Close WebSocket connection.
-        """
-        try:
-            await self.client.close_ws()
-            self.logger.info("WebSocket closed.")
-        except Exception as e:
-            self.logger.error("Error closing WebSocket: %s", e)
