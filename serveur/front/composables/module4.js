@@ -117,11 +117,13 @@ export default function use4kinect(canvasRef) {
         // Appliquer ajouts de strokes : assigner angle une seule fois
         if (buf.newStrokes) {
             buf.newStrokes.forEach(s => {
-                // donner un angle aléatoire à la première apparition
-                if (s.angle === undefined) {
-                    s.angle = Math.random() * Math.PI * 2
+                if (!strokes.value.some(old => old.id === s.id)) {
+                    // donner un angle aléatoire à la première apparition
+                    if (s.angle === undefined) {
+                        s.angle = Math.random() * Math.PI * 2
+                    }
+                    strokes.value.push(s)
                 }
-                strokes.value.push(s)
             })
         }
         // Appliquer suppressions de strokes
