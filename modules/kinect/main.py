@@ -15,8 +15,6 @@ from depth_processor import DepthProcessor
 from brush_detector import BrushStrokeDetector
 from object_detector import ObjectDetector
 from payload_sender import PayloadSender
-from frame_smoother import FrameSmoother
-from stroke_accumulator import StrokeAccumulator
 from stroke_tracker import StrokeTracker
 from channel_selector import ChannelSelector
 from keyboard_selector import KeyboardChannelSelector
@@ -89,14 +87,6 @@ class MainController:
             area_threshold=self.config.area_threshold,
         )
         self.depth_processor = DepthProcessor(self.config)
-        self.smoother = FrameSmoother(window_size=10)
-        h, w = self.config.roi_height, self.config.roi_width
-        self.acc = StrokeAccumulator(
-            tools=['1','2','3','4'],
-            height=h, width=w,
-            alpha=self.config.alpha,
-            abs_mode=True   # True = bosses & creux
-        )
         
         self.current_tool: str = '1'  # default tool
         self.tool_channel = {'1':0, '2':1, '3':2, '4':3}
@@ -147,7 +137,6 @@ class MainController:
             for t in self.tool_channel
         }
 
-        self.all_strokes: Dict[str, Dict] = {}
         self.all_objects: Dict[str, Dict] = {}
 
         if self.config.debug_mode:
