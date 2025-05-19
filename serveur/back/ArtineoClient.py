@@ -1,6 +1,7 @@
-# ArtineoClient.py
+# serveur/back/ArtineoClient.py
 
 import asyncio
+import json
 import os
 import random
 import time
@@ -10,6 +11,7 @@ from typing import Any, Callable
 import requests
 import websockets
 from dotenv import load_dotenv
+from websockets.exceptions import InvalidMessage  # <— ajouté
 
 load_dotenv()
 
@@ -102,7 +104,7 @@ class ArtineoClient:
 
                     async for raw in ws:
                         try:
-                            msg = ws.loads(raw)  # ou json.loads(raw)
+                            msg = json.loads(raw)
                         except Exception:
                             msg = raw
                         self.on_message(msg)
@@ -110,13 +112,16 @@ class ArtineoClient:
                     sender_task.cancel()
                     ping_task.cancel()
 
-            except (websockets.ConnectionClosed, OSError) as exc:
+            except (websockets.ConnectionClosed, OSError, InvalidMessage) as exc:
                 attempt += 1
+                print(f"[ArtineoClient] WS déconnecté ({exc}), essai {attempt}/{self.ws_retries}")
                 if attempt > self.ws_retries:
                     raise RuntimeError("Impossible de reconnecter le WebSocket") from exc
                 # backoff exponentiel + jitter
-                await asyncio.sleep(backoff + backoff * 0.1 * (2 * random.random() - 1))
+                jitter = 1 + 0.1 * (2 * random.random() - 1)
+                await asyncio.sleep(backoff * jitter)
                 backoff *= 2
+
             except asyncio.CancelledError:
                 break
 
@@ -131,7 +136,7 @@ class ArtineoClient:
                 raise
 
     async def _ws_heartbeat(self, ws):
-        """Envoie un ping périodique pour garder la connexion vivante."""
+        """Ping périodique pour maintenir la connexion."""
         while True:
             try:
                 await ws.ping()
