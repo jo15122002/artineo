@@ -4,9 +4,9 @@
     </div>
   </template>
   
-  <script setup>
+  <script setup lang="ts">
   import { onMounted, ref } from 'vue'
-import use4kinect from '~/composables/module4'
+import use4kinect from '~/composables/module4.ts'
   
   definePageMeta({ layout: 'module' })
   

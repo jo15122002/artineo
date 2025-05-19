@@ -64,7 +64,7 @@ class Config(BaseModel):
     )
 
     # ─── Network / WS client ───
-    host: str = Field("localhost", description="Artineo server host")
+    host: str = Field("artineo.local", description="Artineo server host")
     port: int = Field(8000, ge=0, description="Artineo server port")
     module_id: int = Field(4, ge=0, description="Unique module identifier for ArtineoClient")
 
