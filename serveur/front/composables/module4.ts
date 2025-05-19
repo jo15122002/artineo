@@ -60,7 +60,7 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
     '3': [0, 0, 255]
   }
   const brushModules = import.meta.glob<string>(
-    '~/assets/modules/4/images/brush/*.png',
+    '~/assets/modules/4/images/brushes/*.png',
     { eager: true, as: 'url' }
   )
   const rawBrushImages: HTMLImageElement[] = []
