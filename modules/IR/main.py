@@ -1,5 +1,7 @@
 import asyncio
+import json
 import sys
+import threading
 from pathlib import Path
 
 import cv2
@@ -55,53 +57,62 @@ def find_brightest_circle(gray, clean):
 
 
 def main():
-    W, H = 320, 240
-    frame_size = W * H * 3  # BGR24
+    width, height = 640, 480
+    frame_size = width * height * 3  # bgr24
 
-    client = ArtineoClient(module_id=1, host="192.168.0.175", port=8000)
-    config = client.fetch_config()
-    print("Config reçue :", config)
+    # 1) Initialisation du client WS
+    client = ArtineoClient(module_id=1)
 
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.run_until_complete(client.connect_ws())
-    print("WebSocket connectée.")
+    # 2) Fonction pour lancer le handler WS dans sa propre boucle
+    def run_ws_loop():
+        asyncio.run(client._ws_handler())
 
-    # cv2.namedWindow("Flux de la caméra", cv2.WINDOW_NORMAL)
-    frame_idx = 0
+    # 3) Démarrage du thread WebSocket (daemon pour qu'il se termine avec le process)
+    ws_thread = threading.Thread(target=run_ws_loop, daemon=True)
+    ws_thread.start()
+    print("WebSocket handler démarré dans un thread dédié.")
 
-    try:
-        while True:
-            raw = sys.stdin.buffer.read(frame_size)
-            if len(raw) < frame_size:
-                break
-            frame = np.frombuffer(raw, dtype=np.uint8).reshape((H, W, 3))
+    # 4) Envoi non-bloquant et résilient
+    def safe_send(action, data):
+        try:
+            msg = json.dumps({
+                "module": client.module_id,
+                "action": action,
+                "data": data
+            })
+            client.send_ws(msg)
+        except Exception as e:
+            print(f"[WARN] Échec envoi WS : {e}")
 
-            frame_idx += 1
-            if frame_idx % 3 == 0:
-                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                clean = preprocess(gray)
-                circ = find_brightest_circle(gray, clean)
-                if circ:
-                    x, y, r = circ
-                    diameter = int(2 * r)
-                    # Dessin
-                    cv2.circle(frame, (x, y), r, (0, 255, 0), 2)
-                    cv2.circle(frame, (x, y), 2, (0, 0, 255), 3)
-                    # Envoi en convertissant en int Python
-                    data = {"x": x, "y": y, "diameter": diameter}
-                    loop.run_until_complete(
-                        client.send_ws(ArtineoAction.SET, data)
-                    )
+    # 5) Boucle de lecture du flux caméra
+    while True:
+        raw = sys.stdin.buffer.read(frame_size)
+        if len(raw) < frame_size:
+            break
+        frame = np.frombuffer(raw, dtype=np.uint8).reshape((height, width, 3))
 
-            # cv2.imshow("Flux de la caméra", frame)
-            if cv2.waitKey(1) & 0xFF == ord("q"):
-                break
-    finally:
-        loop.run_until_complete(client.close_ws())
-        loop.close()
-        cv2.destroyAllWindows()
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        clean = preprocess(gray)
 
+        best = find_brightest_circle(gray, clean)
+        if best:
+            x, y, r = best
+            cv2.circle(frame, (x, y), r, (0, 255, 0), 2)
+            safe_send(ArtineoAction.SET, {
+                "x": x,
+                "y": y,
+                "diameter": r * 2
+            })
+
+        if cv2.waitKey(1) & 0xFF == ord("q"):
+            break
+
+    cv2.destroyAllWindows()
+
+    # 6) Arrêt propre du handler WS
+    # On ne peut pas facilement arrêter asyncio.run(), mais comme le thread est daemon,
+    # il s’arrêtera à la fin du programme.
+    print("Fin du module 1, le thread WebSocket sera tué automatiquement.")
 
 if __name__ == "__main__":
     main()

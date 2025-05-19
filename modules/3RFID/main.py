@@ -1,201 +1,236 @@
-# main.py
+# modules/3RFID/main.py
 
 import neopixel
 import uasyncio as asyncio
-import ujson
 from machine import SPI, Pin
 from utime import ticks_diff, ticks_ms
 
-import mfrc522
-from ArtineoClient import ArtineoClient
+import pn532  # driver PN532 SPI
+from ArtineoClientMicro import ArtineoClient
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Constantes
-# ──────────────────────────────────────────────────────────────────────────────
-INTENSITY     = 0.1      # LED brightness (0…1)
-COOLDOWN      = 2        # seconds between validations
-MAX_ATTEMPTS  = 3        # max tries per set
-READ_TRIES    = 15       # RFID read retries per cycle
-READ_DELAY_MS = 50       # ms between retries
-# ──────────────────────────────────────────────────────────────────────────────
+# —————————————————————————————————————————————————————————————————————————————
+# Brochages & constantes
+# —————————————————————————————————————————————————————————————————————————————
+SPI_ID, SPI_BAUD    = 2, 1_000_000
+CS_PINS             = [5, 17, 26]
+RST_PINS            = [4, 16, 25]
+LED_PINS            = [15, 18, 19]
+BUTTON_PIN          = 14
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Globals (hardware + state)
-# ──────────────────────────────────────────────────────────────────────────────
-rdr1 = rdr2 = rdr3 = None
-led1 = led2 = led3 = None
-button = None
+# Ruban timer et barre de progression
+TIMER_LED_PIN       = 21
+TIMER_LED_COUNT     = 10
+TIMER_COLOR         = (0, 0, 255)
+TIMER_DURATION      = 20
 
+# Couleur de la barre de progression de démarrage
+PROGRESS_COLOR      = (0, 255, 0)
+
+# Intensité des LEDs
+INTENSITY           = 0.1
+
+# Pause après validation
+COOLDOWN            = 2
+
+MAX_ATTEMPTS        = 2
+READ_TRIES          = 2
+READ_DELAY_MS       = 50
+
+DEBUG_LOGS          = False
+# —————————————————————————————————————————————————————————————————————————————
+
+# —————————————————————————————————————————————————————————————————————————————
+# État global
+# —————————————————————————————————————————————————————————————————————————————
+rdrs           = []
+leds           = []
+timer_strip    = None
 button_pressed = False
 current_set    = 1
 attempt_count  = 0
+total_sets     = 1       # sera initialisé avec len(config["answers"])
+config         = {}
+_client        = None
+_timer_task    = None
+# —————————————————————————————————————————————————————————————————————————————
 
-client = None
-config = {}
+def log(*args, **kwargs):
+    if DEBUG_LOGS:
+        print(*args, **kwargs)
 
-def scale_color(col):
+def scale_color(c):
     return (
-        int(col[0] * INTENSITY),
-        int(col[1] * INTENSITY),
-        int(col[2] * INTENSITY),
+        int(c[0] * INTENSITY),
+        int(c[1] * INTENSITY),
+        int(c[2] * INTENSITY),
     )
 
 def button_irq(pin):
     global button_pressed
     button_pressed = True
+    log("[main] button pressed")
 
-def setup_hardware():
-    """Initialise SPI, les 3 lecteurs RFID, LEDs et bouton (une fois)."""
-    global rdr1, rdr2, rdr3, led1, led2, led3, button
+async def read_uid(reader):
+    for _ in range(READ_TRIES):
+        uid = reader.read_passive_target(timeout=READ_DELAY_MS)
+        if uid:
+            val = "".join("{:02x}".format(b) for b in uid)
+            log(f"[main] read_uid → {val}")
+            return val
+        await asyncio.sleep_ms(READ_DELAY_MS)
+    log("[main] read_uid → None")
+    return None
 
-    spi = SPI(2, baudrate=2_500_000, polarity=0, phase=0,
-              sck=Pin(12), mosi=Pin(23), miso=Pin(13))
-    spi.init()
+def get_answers():
+    answers = config.get("answers", [])
+    idx = (current_set - 1) % len(answers) if answers else 0
+    return answers[idx] if answers else {}
 
-    rdr1 = mfrc522.MFRC522(spi=spi, gpioRst=4,  gpioCs=5)
-    rdr2 = mfrc522.MFRC522(spi=spi, gpioRst=16, gpioCs=17)
-    rdr3 = mfrc522.MFRC522(spi=spi, gpioRst=25, gpioCs=26)
-    for rdr in (rdr1, rdr2, rdr3):
-        rdr.init()
-        rdr.antenna_on()
-        rdr.set_gain(rdr.MAX_GAIN)
-
-    led1 = neopixel.NeoPixel(Pin(15), 1)
-    led2 = neopixel.NeoPixel(Pin(18), 1)
-    led3 = neopixel.NeoPixel(Pin(19), 1)
-    for led in (led1, led2, led3):
-        led[0] = (0, 0, 0)
-        led.write()
-
-    button = Pin(14, Pin.IN, Pin.PULL_UP)
-    button.irq(trigger=Pin.IRQ_FALLING, handler=button_irq)
-
-    print("✅ Hardware initialized.")
-
-async def read_uid(reader,
-                   attempts: int = READ_TRIES,
-                   delay_ms: int = READ_DELAY_MS) -> str:
-    """
-    Essaie jusqu'à 'attempts' fois :
-      - reader.init() + antenna_on()
-      - reader.request(REQLDL) (on ignore son statut)
-      - reader.anticoll(); si statut OK et raw len>=4, on lève l'uid
-      - sinon on attend delay_ms et on recommence
-    """
-    uid = None
-    for i in range(attempts):
-        reader.init()
-        reader.antenna_on()
-        
-        await asyncio.sleep_ms(50)  # Delay to avoid reader interference
-
-        # On lance la requête mais on ne dépend plus de bits==16
-        _stat_req, _bits = reader.request(reader.REQIDL)
-        # On fait l'anticollision quoi qu'il arrive
-        stat_ac, raw = reader.anticoll()
-        print(f"[RFID] try {i+1}/{attempts} anticoll status={stat_ac} raw={bytes(raw)}")
-        # raw est un bytearray de longueur 5 : UID[0..3] + bcc
-        if stat_ac == reader.OK and len(raw) >= 4:
-            uid = "".join("{:02x}".format(x) for x in raw[:4])
-            print(f"[RFID] → UID read: {uid}")
-            break
-
-        # On laisse un petit temps
-        await asyncio.sleep_ms(delay_ms)
-
-    return uid
-
-def get_answers() -> dict:
-    arr = config.get("answers", [])
-    if not arr:
-        return {}
-    return arr[(current_set - 1) % len(arr)]
-
-def check_answers(u1, u2, u3) -> bool:
+def check_answers(uids):
     correct = get_answers()
+    keys = ("lieu", "couleur", "emotion")
     ok = True
-
-    # lieu
-    if u1 is None:
-        led1[0] = scale_color((255,165,0)); ok = False
-    elif u1 == correct.get("lieu"):
-        led1[0] = scale_color((0,255,0))
-    else:
-        led1[0] = scale_color((255,0,0)); ok = False
-    led1.write()
-
-    # couleur
-    if u2 is None:
-        led2[0] = scale_color((255,165,0)); ok = False
-    elif u2 == correct.get("couleur"):
-        led2[0] = scale_color((0,255,0))
-    else:
-        led2[0] = scale_color((255,0,0)); ok = False
-    led2.write()
-
-    # emotion
-    if u3 is None:
-        led3[0] = scale_color((255,165,0)); ok = False
-    elif u3 == correct.get("emotion"):
-        led3[0] = scale_color((0,255,0))
-    else:
-        led3[0] = scale_color((255,0,0)); ok = False
-    led3.write()
-
+    for i, uid in enumerate(uids):
+        if uid is None:
+            color = (255,165,0); ok = False
+        elif uid.lower() == correct.get(keys[i], "").lower():
+            color = (0,255,0)
+        else:
+            color = (255,0,0); ok = False
+        leds[i][0] = scale_color(color)
+        leds[i].write()
+        log(f"[main] led {i+1} → {color}")
     return ok
 
-async def async_main():
-    global client, config, current_set, attempt_count, button_pressed
+def setup_hardware():
+    global timer_strip
+    log("[main] setup_hardware()")
+    # strip
+    timer_strip = neopixel.NeoPixel(Pin(TIMER_LED_PIN), TIMER_LED_COUNT)
+    for i in range(TIMER_LED_COUNT):
+        timer_strip[i] = (0,0,0)
+    timer_strip.write()
+    # SPI et PN532
+    spi = SPI(SPI_ID, baudrate=SPI_BAUD, polarity=0, phase=0,
+              sck=Pin(12), mosi=Pin(23), miso=Pin(13))
+    spi.init()
+    for cs_pin, rst_pin, led_pin in zip(CS_PINS, RST_PINS, LED_PINS):
+        cs = Pin(cs_pin, Pin.OUT); cs.on()
+        rst = Pin(rst_pin, Pin.OUT)
+        rdr = pn532.PN532(spi, cs, irq=None, reset=rst, debug=False)
+        rdr.SAM_configuration()
+        rdrs.append(rdr)
+        led = neopixel.NeoPixel(Pin(led_pin), 1)
+        # allume LED validation dès init
+        led[0] = scale_color((0,255,0))
+        led.write()
+        leds.append(led)
+    # bouton
+    btn = Pin(BUTTON_PIN, Pin.IN, Pin.PULL_UP)
+    btn.irq(handler=button_irq, trigger=Pin.IRQ_FALLING)
+    log("[main] hardware initialized")
 
+def setProgressBar(percentage):
+    pct = max(0, min(percentage, 100))
+    lit = int((pct / 100) * TIMER_LED_COUNT)
+    for i in range(TIMER_LED_COUNT):
+        timer_strip[i] = scale_color(PROGRESS_COLOR) if i < lit else (0,0,0)
+    timer_strip.write()
+    log(f"[main] progress {pct}%")
+
+def endStartAnimation():
+    for led in leds:
+        led[0] = (0,0,0); led.write()
+    for i in range(TIMER_LED_COUNT):
+        timer_strip[i] = (0,0,0)
+    timer_strip.write()
+    log("[main] start animation ended")
+
+async def timer_coroutine():
+    log("[main] timer start")
+    step = TIMER_DURATION / TIMER_LED_COUNT
+    for i in range(TIMER_LED_COUNT):
+        timer_strip[i] = scale_color(TIMER_COLOR)
+    timer_strip.write()
+    for j in range(TIMER_LED_COUNT):
+        idx = TIMER_LED_COUNT - 1 - j
+        timer_strip[idx] = (0,0,0)
+        timer_strip.write()
+        await asyncio.sleep(step)
+    log("[main] timer expired")
+    await next_set(timeout=True)
+
+def reset_timer():
+    global _timer_task
+    if _timer_task:
+        try: _timer_task.cancel()
+        except: pass
+    _timer_task = asyncio.create_task(timer_coroutine())
+    log("[main] timer reset")
+
+async def next_set(timeout=False):
+    global current_set, attempt_count, button_pressed
+    attempt_count = 0
+    button_pressed = False
+    # incrément ou wrap
+    current_set += 1
+    if current_set > total_sets:
+        current_set = 1
+    log(f"[main] next_set → {current_set} (by {'timeout' if timeout else 'manual'})")
+    await _client.set_buffer({
+        "uid1": None, "uid2": None, "uid3": None,
+        "current_set": current_set,
+        "button_pressed": False
+    })
+    reset_timer()
+
+async def async_main():
+    global config, total_sets, _client, current_set, attempt_count, button_pressed
+
+    log("[main] async_main start")
     setup_hardware()
 
-    # 2) Create ArtineoClient & WebSocket
-    client = ArtineoClient(
+    # startup animation example
+    setProgressBar(25)
+
+    # websocket
+    _client = ArtineoClient(
         module_id=3,
-        host="192.168.0.175", port=8000,
-        ssid="Bob_bricolo", password="bobbricolo"
+        host="artineo.local",
+        port=8000,
+        ssid="Bob_bricolo",
+        password="bobbricolo"
     )
-    ws = await client.connect_ws()
-    if ws:
-        try:
-            config = client.fetch_config()
-        except Exception as e:
-            print("⚠️ fetch_config failed:", e)
-            config = {}
-    else:
-        print("⚠️ No WS, fallback to local config.")
-        config = {}
+    await _client.connect_ws()
+    setProgressBar(50)
 
-    # Buffer initial
-    await client.set_buffer({
+    # fetch config
+    config = await _client.fetch_config()
+    total_sets = len(config.get("answers", [])) or 1
+    log(f"[main] total_sets = {total_sets}")
+    setProgressBar(75)
+
+    # initial buffer
+    await _client.set_buffer({
         "uid1": None, "uid2": None, "uid3": None,
-        "current_set": current_set, "button_pressed": False
+        "current_set": current_set,
+        "button_pressed": False
     })
-
-    # Éteindre LEDs, petit délai
-    for led in (led1, led2, led3):
-        led[0] = (0,0,0); led.write()
+    setProgressBar(100)
     await asyncio.sleep(1)
 
-    print("▶️ Entering main loop.")
-    while True:
-        rdr1.init()
-        rdr2.init()
-        rdr3.init()
-        
-        await asyncio.sleep_ms(50)  # Delay to avoid reader interference
-        
-        # Lecture des UIDs (en série pour éviter les interférences)
-        u1 = await read_uid(rdr1)
-        u2 = await read_uid(rdr2)
-        u3 = await read_uid(rdr3)
-        print("Read UIDs:", u1, u2, u3)
+    endStartAnimation()
+    reset_timer()
 
-        # Envoi systématique
-        await client.set_buffer({
-            "uid1": u1,
-            "uid2": u2,
-            "uid3": u3,
+    log("[main] entering loop")
+    while True:
+        u1 = await read_uid(rdrs[0])
+        u2 = await read_uid(rdrs[1])
+        u3 = await read_uid(rdrs[2])
+        log(f"[main] UIDs: {u1}, {u2}, {u3}")
+
+        await _client.set_buffer({
+            "uid1": u1, "uid2": u2, "uid3": u3,
             "current_set": current_set,
             "button_pressed": button_pressed
         })
@@ -203,23 +238,11 @@ async def async_main():
         if button_pressed:
             button_pressed = False
             start = ticks_ms()
-            correct = check_answers(u1, u2, u3)
+            correct = check_answers([u1, u2, u3])
             attempt_count += 1
-
             if correct or attempt_count >= MAX_ATTEMPTS:
-                current_set += 1
-                attempt_count = 0
-                print("→ Moving to set", current_set)
-
+                await next_set(timeout=False)
             await asyncio.sleep(COOLDOWN)
-            await client.set_buffer({
-                "uid1": u1,
-                "uid2": u2,
-                "uid3": u3,
-                "current_set": current_set,
-                "button_pressed": False
-            })
-            print("⏱ Validation took", ticks_diff(ticks_ms(), start), "ms")
 
         await asyncio.sleep_ms(50)
 
@@ -227,4 +250,4 @@ if __name__ == "__main__":
     try:
         asyncio.run(async_main())
     except KeyboardInterrupt:
-        print("🛑 Program stopped by user")
+        print("stopped by user")

@@ -1,34 +1,65 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
-# Pull dernier code
-echo "Récupération des dernières modifications..."
-git pull
+# ====================================================
+# start.bash — lance la pipeline IR en tentant l’install
+# ====================================================
 
-# Mise à jour du système
-echo "Mise à jour du système..."
-sudo apt update && sudo apt upgrade -y
+# Variables
+WORKDIR="${HOME}/Desktop/artineo/modules/IR"
+FIFO="/tmp/ir_video_fifo"
+VID_PID=""
 
-# Installation des paquets essentiels
-echo "Installation des paquets essentiels..."
-sudo apt-get install -y \
-    python3 python3-pip python3-opencv \
-    libcamera-apps ffmpeg \
-    python3-requests python3-websockets python3-dotenv
+cleanup() {
+  echo "Arrêt de la pipeline vidéo…"
+  [ -n "$VID_PID" ] && kill "$VID_PID" 2>/dev/null || true
+  rm -f "$FIFO"
+  exit 0
+}
+# Intercepte Ctrl-C / kill
+trap cleanup SIGINT SIGTERM
+# Ignore SIGPIPE sur broken‐pipe (ffmpeg/python)
+trap '' PIPE
 
-# Test de la caméra (2 secondes sans preview)
-echo "Test de la caméra avec libcamera-hello..."
-libcamera-hello -t 2000 --nopreview
-if [ $? -ne 0 ]; then
-    echo "Erreur : libcamera-hello a échoué. Vérifiez votre installation."
-    exit 1
+# 1️⃣ Prépare le FIFO
+rm -f "$FIFO"
+mkfifo "$FIFO"
+
+# 2️⃣ Met à jour et installe les paquets (sans planter)
+echo "🔄 Mise à jour APT…"
+sudo apt update
+sudo apt upgrade -y || echo "⚠️  apt upgrade a échoué, on continue…"
+
+echo "📦 Installation des dépendances requises…"
+sudo apt install -y --no-install-recommends \
+    python3 python3-opencv libcamera-apps ffmpeg \
+    python3-requests python3-websockets python3-dotenv \
+  || echo "⚠️  apt install a échoué, on continue…"
+
+# 3️⃣ Récupère le code & test caméra
+if [ -d "$WORKDIR/.git" ]; then
+  echo "🔄 Git pull…"
+  cd "$WORKDIR" && git pull || true
 fi
 
-# Lancement du pipeline : capture 640×480 → ffmpeg scale 320×240@15FPS → main.py
-echo "Lancement du pipeline (320×240 @15FPS)..."
-libcamera-vid -t 0 --nopreview --width 640 --height 480 --inline --codec yuv420 --output - | \
-ffmpeg -loglevel error \
-       -f rawvideo -pix_fmt yuv420p -s 640x480 -r 30 -i - \
-       -f rawvideo -vf "scale=320:240" -pix_fmt bgr24 -r 15 - | \
-python3 main.py
+echo "🎥 Test caméra (libcamera-hello)…"
+libcamera-hello -t 2000 --nopreview || echo "⚠️  libcamera-hello a échoué"
 
-echo "Script terminé."
+# 4️⃣ Lance libcamera-vid → FIFO
+echo "🚀 Démarrage de libcamera-vid → FIFO"
+libcamera-vid \
+  -t 0 --nopreview \
+  --width 640 --height 480 \
+  --inline --codec yuv420 --output - \
+  > "$FIFO" 2>/dev/null &
+VID_PID=$!
+
+# 5️⃣ Lance ffmpeg → main.py
+echo "🔄 Démarrage de ffmpeg → main.py"
+ffmpeg -loglevel error \
+       -f rawvideo -pix_fmt yuv420p -s 640x480 -r 30 -i "$FIFO" \
+       -f rawvideo -vf "scale=320:240" -pix_fmt bgr24 -r 15 - \
+  | python3 "$WORKDIR/main.py"
+
+# 6️⃣ Nettoyage si ever main.py termine
+cleanup

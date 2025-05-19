@@ -2,6 +2,8 @@ import asyncio
 import json
 import mimetypes
 import os
+import time
+from contextlib import suppress
 from typing import Dict
 from collections import deque
 
@@ -31,8 +33,31 @@ app.mount(
 # --------------------------------------------------
 
 CONFIG_DIR = "configs"
+DEFAULT_BUFFER_FILE = "assets/default_buffer.json"
+
 # buffer global (un dict par module_id)
 buffer: Dict[int, dict] = {1: {}, 2: {}, 3: {}, 4: {}}
+
+
+@app.on_event("startup")
+async def load_default_buffer():
+    """
+    Charge au démarrage le default_buffer.json dans la variable `buffer`.
+    Si le fichier n'existe pas ou est invalide, on conserve le buffer vide par défaut.
+    """
+    global buffer
+    if os.path.exists(DEFAULT_BUFFER_FILE):
+        try:
+            with open(DEFAULT_BUFFER_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            # convertir les clés en int si besoin
+            buffer = {int(k): v for k, v in data.items()}
+            print(f"[startup] default buffer chargé pour modules: {list(buffer.keys())}")
+        except Exception as e:
+            print(f"[startup] Erreur en chargeant {DEFAULT_BUFFER_FILE}: {e}")
+    else:
+        print(f"[startup] Aucun default buffer ({DEFAULT_BUFFER_FILE}) trouvé, buffer vide.")
+
 
 @app.get("/config")
 async def get_config(module: int = None):
@@ -41,7 +66,6 @@ async def get_config(module: int = None):
         if not os.path.exists(file_path):
             raise HTTPException(status_code=404, detail="Fichier de config introuvable")
         try:
-            # Lecture en UTF-8
             with open(file_path, "r", encoding="utf-8") as f:
                 cfg = json.load(f)
             return JSONResponse(
@@ -50,7 +74,6 @@ async def get_config(module: int = None):
             )
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Erreur lecture fichier: {e}")
-    # aucun module → toutes les configs
     all_configs = {}
     try:
         for name in os.listdir(CONFIG_DIR):
@@ -64,6 +87,7 @@ async def get_config(module: int = None):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur lecture configurations: {e}")
 
+
 @app.post("/config")
 async def update_config(
     module: int = Query(..., description="ID du module à configurer"),
@@ -72,7 +96,6 @@ async def update_config(
     file_path = os.path.join(CONFIG_DIR, f"module{module}.json")
     os.makedirs(CONFIG_DIR, exist_ok=True)
 
-    # Charge la config existante
     if os.path.exists(file_path):
         try:
             with open(file_path, "r", encoding="utf-8") as f:
@@ -82,10 +105,8 @@ async def update_config(
     else:
         config = {}
 
-    # Fusion partielle
     config.update(payload)
 
-    # Sauvegarde en UTF-8 sans échappement ascii
     try:
         with open(file_path, "w", encoding="utf-8") as f:
             json.dump(config, f, ensure_ascii=False, indent=2)
@@ -98,10 +119,23 @@ async def update_config(
         media_type="application/json; charset=utf-8"
     )
 
+
 @app.get("/history")
 async def get_history():
     return JSONResponse(
         content={"historique": []},
+        media_type="application/json; charset=utf-8"
+    )
+    
+@app.get("/buffer")
+async def get_buffer(module: int = Query(..., description="ID du module")):
+    """
+    Renvoie la dernière donnée du buffer pour le module donné.
+    """
+    if module not in buffer:
+        raise HTTPException(status_code=404, detail=f"Module {module} introuvable")
+    return JSONResponse(
+        content={"buffer": buffer[module]},
         media_type="application/json; charset=utf-8"
     )
     
@@ -116,24 +150,18 @@ async def get_asset(
       GET /getAsset?module=3&path=1.png
       GET /getAsset?module=3&path=blob1.svg
     """
-    # 1. On définit le répertoire de base pour ce module
     base_dir = os.path.abspath(os.path.join("assets", f"module{module}"))
-    # 2. On normalise le chemin fourni
     normalized = os.path.normpath(path)
     full_path = os.path.abspath(os.path.join(base_dir, normalized))
 
-    # 3. Sécurité : on vérifie que full_path est bien dans base_dir
     if not full_path.startswith(base_dir + os.sep):
         raise HTTPException(400, "Chemin invalide")
-
-    # 4. Vérifie que le fichier existe
     if not os.path.isfile(full_path):
         raise HTTPException(404, "Asset non trouvé")
 
-    # 5. Détermine le media_type automatiquement
     media_type, _ = mimetypes.guess_type(full_path)
-
     return FileResponse(full_path, media_type=media_type)
+
 
 # --------------------------------------------------
 # Gestion des connexions WebSocket
@@ -142,32 +170,32 @@ async def get_asset(
 class ConnectionManager:
     def __init__(self):
         self.active: Dict[int, WebSocket] = {}
-        self._last_pong: Dict[int, bool] = {}
+        # on stocke pour chaque module le timestamp du dernier 'pong'
+        self._last_pong_time: Dict[int, float] = {}
 
     async def connect(self, ws: WebSocket):
         await ws.accept()
 
     def register(self, module_id: int, ws: WebSocket):
         self.active[module_id] = ws
+        # initialiser le timestamp dès la connexion
+        self._last_pong_time[module_id] = time.time()
 
     def disconnect(self, ws: WebSocket):
         to_remove = [mid for mid, socket in self.active.items() if socket is ws]
         for mid in to_remove:
             del self.active[mid]
-
-    def clear_pongs(self):
-        for mid in self.active.keys():
-            self._last_pong[mid] = False
-
-    def record_pong(self, module_id: int):
-        self._last_pong[module_id] = True
+            del self._last_pong_time[mid]
 
     async def broadcast_ping(self):
+        """Envoie un 'ping' à tous les clients enregistrés."""
         for ws in list(self.active.values()):
-            try:
+            with suppress(Exception):
                 await ws.send_text("ping")
-            except:
-                pass
+
+    def record_pong(self, module_id: int):
+        """Appelé sur réception d'un 'pong' pour mettre à jour le timestamp."""
+        self._last_pong_time[module_id] = time.time()
 
 manager = ConnectionManager()
 
@@ -183,7 +211,6 @@ async def websocket_endpoint(ws: WebSocket):
             raw = await ws.receive_text()
             print(f"Message reçu : {raw}")
 
-            # JSON ?
             try:
                 msg = json.loads(raw)
                 module_id = msg.get("module")
@@ -191,7 +218,6 @@ async def websocket_endpoint(ws: WebSocket):
                 if isinstance(module_id, int):
                     manager.register(module_id, ws)
 
-                # set_buffer
                 if action == "set" and "data" in msg:
                     # stocke le diff reçu
                     diff_queues[module_id].append(msg["data"])
@@ -200,7 +226,6 @@ async def websocket_endpoint(ws: WebSocket):
                     await ws.send_text(json.dumps(resp, ensure_ascii=False))
                     continue
 
-                # get_buffer
                 if action == "get":
                     # si on a des diffs en attente, on envoie le plus ancien
                     if diff_queues[module_id]:
@@ -216,7 +241,6 @@ async def websocket_endpoint(ws: WebSocket):
                     await ws.send_text(json.dumps(resp, ensure_ascii=False))
                     continue
 
-                # ack générique
                 ack = {"action": "ack", "data": msg}
                 await ws.send_text(json.dumps(ack, ensure_ascii=False))
                 continue
@@ -224,7 +248,6 @@ async def websocket_endpoint(ws: WebSocket):
             except json.JSONDecodeError:
                 pass
 
-            # brut
             if raw == "ping":
                 await ws.send_text("pong")
             elif raw == "pong":
@@ -237,19 +260,27 @@ async def websocket_endpoint(ws: WebSocket):
 
     except WebSocketDisconnect:
         manager.disconnect(ws)
+
 # --------------------------------------------------
 # Health check étendu
 # --------------------------------------------------
 
 @app.get("/hc")
 async def health_check():
-    manager.clear_pongs()
-    await manager.broadcast_ping()
-    await asyncio.sleep(1)
-    statuses = {
-        mid: ("alive" if manager._last_pong.get(mid) else "dead")
-        for mid in manager.active.keys()
-    }
+    """
+    Renvoie pour chaque module un statut 'alive' ou 'dead'
+    selon la fraîcheur du dernier 'pong' reçu (<5s).
+    """
+    THRESHOLD = 9.0  # secondes
+    now = time.time()
+    statuses: Dict[int, str] = {}
+
+    # Inspecter chaque module encore connecté
+    for module_id in manager.active.keys():
+        last = manager._last_pong_time.get(module_id, 0)
+        delta = now - last
+        statuses[module_id] = "alive" if delta <= THRESHOLD else "dead"
+
     return JSONResponse(
         content={"modules": statuses},
         media_type="application/json; charset=utf-8"
@@ -284,7 +315,7 @@ html = """
   <h2>Buffers reçus</h2>
   <ul id="bufferList"></ul>
   <script>
-    const ws = new WebSocket("ws://192.168.0.175:8000/ws");
+    const ws = new WebSocket("ws://artineo.local:8000/ws");
     ws.onmessage = e => {
       const data = e.data;
       try {

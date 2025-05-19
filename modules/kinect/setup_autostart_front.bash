@@ -6,7 +6,7 @@
 
 set -e
 
-SERVICE_NAME="artineo-module3"
+SERVICE_NAME="artineo-module4"
 SERVICE_PATH="/etc/systemd/system/${SERVICE_NAME}.service"
 
 # Détecte l'utilisateur propriétaire (pour trouver correctement son HOME)
@@ -33,7 +33,7 @@ ExecStart=/usr/bin/chromium-browser \\
     --noerrdialogs \\
     --disable-infobars \\
     --incognito \\
-    --kiosk http://artineo.local/modules/module3
+    --kiosk http://artineo.local/modules/module4
 Restart=on-failure
 RestartSec=5
 
