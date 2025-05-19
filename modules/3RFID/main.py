@@ -19,9 +19,9 @@ BUTTON_PIN          = 14
 
 # Ruban timer et barre de progression
 TIMER_LED_PIN       = 21
-TIMER_LED_COUNT     = 10
+TIMER_LED_COUNT     = 22
 TIMER_COLOR         = (0, 0, 255)
-TIMER_DURATION      = 20
+TIMER_DURATION      = 60
 
 # Couleur de la barre de progression de démarrage
 PROGRESS_COLOR      = (0, 255, 0)
