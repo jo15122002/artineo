@@ -5,21 +5,21 @@ import uuid
 import cv2
 import numpy as np
 
-from config import Config
-from kinect_interface import KinectInterface
 from baseline_calculator import BaselineCalculator
-from template_manager import TemplateManager
-from shape_classifier import ShapeClassifier
-from cluster_tracker import ClusterTracker
-from depth_processor import DepthProcessor
 from brush_detector import BrushStrokeDetector
+from channel_selector import ChannelSelector
+from cluster_tracker import ClusterTracker
+from config import Config
+from depth_processor import DepthProcessor
+from keyboard_selector import KeyboardChannelSelector
+from kinect_interface import KinectInterface
 from object_detector import ObjectDetector
 from payload_sender import PayloadSender
-from stroke_tracker import StrokeTracker
-from channel_selector import ChannelSelector
-from keyboard_selector import KeyboardChannelSelector
-from stroke_lifetimer import StrokeLifeTimer
+from shape_classifier import ShapeClassifier
 from stroke_confirm_tracker import StrokeConfirmTracker
+from stroke_lifetimer import StrokeLifeTimer
+from stroke_tracker import StrokeTracker
+from template_manager import TemplateManager
 
 logger = logging.getLogger(__name__)
 
