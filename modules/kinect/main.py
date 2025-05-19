@@ -4,7 +4,20 @@ from typing import Dict
 import uuid
 import cv2
 import numpy as np
+import sys
+from pathlib import Path
 
+sys.path.insert(
+    0,
+    str(
+        Path(__file__)
+        .resolve()
+        .parent
+        .joinpath("..", "..", "serveur", "back")
+        .resolve()
+    )
+)
+from ArtineoClient import ArtineoClient
 from baseline_calculator import BaselineCalculator
 from brush_detector import BrushStrokeDetector
 from channel_selector import ChannelSelector
@@ -50,6 +63,7 @@ class MainController:
         self,
         raw_config: dict,
         channel_selector: ChannelSelector = KeyboardChannelSelector(),
+        client: ArtineoClient = None,
     ):
         
         logger.info("Initializing MainController...")
@@ -58,11 +72,7 @@ class MainController:
         self.config = Config(**(raw_config or {}))
 
         # 2. ArtineoClient setup
-        self.client = ArtineoClient(
-            module_id=self.config.module_id,
-            host=self.config.host,
-            port=self.config.port,
-        )
+        self.client = client
 
         # 3. Initialize components
         self.kinect = KinectInterface(self.config, logger=logger)
@@ -150,7 +160,7 @@ class MainController:
         # --- init Kinect & WS ---
         self.kinect.open()
         if not self.config.bypass_ws:
-            await self.payload_sender.connect()
+            self.payload_sender.start()
 
         alfa_decay = 0.05
         prox = self.stroke_tracker.proximity_threshold
@@ -316,7 +326,7 @@ class MainController:
                     new_objects=[],
                     remove_objects=list(self.all_objects.keys()),
                 )
-                await self.payload_sender.close()
+                await self.payload_sender.stop()
 
             if self.display:
                 cv2.destroyAllWindows()
@@ -325,20 +335,6 @@ class MainController:
 
 
 if __name__ == '__main__':
-    import sys
-    from pathlib import Path
-
-    sys.path.insert(
-        0,
-        str(
-            Path(__file__)
-            .resolve()
-            .parent
-            .joinpath("..", "..", "serveur", "back")
-            .resolve()
-        )
-    )
-    from ArtineoClient import ArtineoClient
 
     logger.setLevel(logging.DEBUG)
     handler = logging.StreamHandler()
@@ -348,15 +344,14 @@ if __name__ == '__main__':
     logger.info("Starting Artineo Kinect module...")
 
     # Fetch config from remote
-    client = ArtineoClient(module_id=4, host="localhost", port=8000)
+    client = ArtineoClient(module_id=4)
     raw_conf = client.fetch_config()
     # raw_conf = {}
 
     controller = MainController(
-        raw_config=raw_conf
+        raw_config=raw_conf,
+        client=client,
     )
-
-    del client
 
     try:
         asyncio.run(controller.run())
