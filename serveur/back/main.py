@@ -219,8 +219,12 @@ async def websocket_endpoint(ws: WebSocket):
                     manager.register(module_id, ws)
 
                 if action == "set" and "data" in msg:
-                    # stocke le diff reçu
-                    diff_queues[module_id].append(msg["data"])
+                    if module_id is 4:
+                        # stocke le diff reçu
+                        diff_queues[module_id].append(msg["data"])
+                    else:
+                        # on stocke le buffer complet
+                        buffer[module_id] = msg["data"]
                     # conserve l'ancien buffer complet si besoin ailleurs
                     resp = {"status": "ok", "action": "set_buffer", "module": module_id}
                     await ws.send_text(json.dumps(resp, ensure_ascii=False))
@@ -228,11 +232,15 @@ async def websocket_endpoint(ws: WebSocket):
 
                 if action == "get":
                     # si on a des diffs en attente, on envoie le plus ancien
-                    if diff_queues[module_id]:
-                        payload = diff_queues[module_id].popleft()
+                    if module_id == 4:
+                        if diff_queues[module_id]:
+                            payload = diff_queues[module_id].popleft()
+                        else:
+                            # aucune mise à jour : payload vide
+                            payload = {}
                     else:
                         # aucune mise à jour : payload vide
-                        payload = {}
+                        payload = buffer[module_id]
                     resp = {
                         "action": "get_buffer",
                         "module": module_id,
