@@ -117,7 +117,7 @@ def main():
         if best:
             x, y, r = best
             cv2.circle(frame, (x, y), r, (0, 255, 0), 2)
-            client.send_ws(ArtineoAction.SET, {
+            client.send_ws({
                 "x": x,
                 "y": y,
                 "diameter": r * 2
