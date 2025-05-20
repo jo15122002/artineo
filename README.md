@@ -199,7 +199,3 @@ npm run dev    # ou yarn dev
    * `/dashboard` pour un aperçu santé/modules
 
 ---
-
-## Licence
-
-Ce projet est distribué sous licence **MIT**. Voir le fichier [LICENSE](./LICENSE).
