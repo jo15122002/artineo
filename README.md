@@ -1,6 +1,6 @@
 # Artineo – Projet 2024–25
 
-Un framework modulaire pour piloter et visualiser des capteurs (RFID, IR, Kinect) via HTTP & WebSocket.
+Un projet de fin d'année de master Gobelins
 
 ---
 
