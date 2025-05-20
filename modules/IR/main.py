@@ -106,6 +106,9 @@ def main():
                 "y": y,
                 "diameter": r * 2
             })
+            print(f"Envoi : x={x}, y={y}, diameter={r * 2}")
+        else:
+            print("Aucun cercle détecté.")
 
         # --- affichage à l'écran ---
         cv2.imshow("Flux de la caméra", frame)
