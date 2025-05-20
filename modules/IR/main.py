@@ -57,7 +57,7 @@ def find_brightest_circle(gray, clean):
 
 
 def main():
-    width, height = 640, 480
+    width, height = 320, 240
     frame_size = width * height * 3  # bgr24
 
     # 1) Initialisation du client WS
