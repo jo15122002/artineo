@@ -161,4 +161,5 @@ class ArtineoClient:
 
     def send_ws(self, message: str):
         """Queue un message pour envoi via le WS (même si hors-ligne)."""
+        print(f"[ArtineoClient] Envoi WS : {message}")
         self._send_queue.put_nowait(message)

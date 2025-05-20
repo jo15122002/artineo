@@ -124,7 +124,7 @@ def main():
             })
             print(f"[SEND] x={x}, y={y}, diameter={r*2}")
         else:
-            print("[INFO] Aucun cercle détecté.")
+            # print("[INFO] Aucun cercle détecté.")
 
         cv2.imshow("Flux de la caméra", frame)
         if cv2.waitKey(1) & 0xFF == ord("q"):
