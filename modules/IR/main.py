@@ -2,12 +2,13 @@ import asyncio
 import json
 import sys
 import threading
+import time
 from pathlib import Path
 
 import cv2
 import numpy as np
 
-# On ajoute ../../serveur au path pour importer ArtineoClient
+# On ajoute ../../serveur/back au path pour importer ArtineoClient
 sys.path.insert(
     0,
     str(
@@ -60,20 +61,35 @@ def main():
     width, height = 320, 240
     frame_size = width * height * 3  # bgr24
 
-    # 1) Initialisation du client WS
+    # 1) Initialisation du client WS + fetch de la config
     client = ArtineoClient(module_id=1)
+    try:
+        cfg = client.fetch_config() or {}
+        fps = float(cfg.get("fps", 10))  # default 10 fps si absent
+    except Exception as e:
+        print(f"[WARN] Impossible de récupérer la config, on prend fps=10 : {e}")
+        fps = 10.0
 
-    # 2) Fonction pour lancer le handler WS dans sa propre boucle
+    interval = 1.0 / fps
+    print(f"[INFO] FPS configuré = {fps}  → intervalle minimal = {interval:.3f}s")
+
+    # 2) Lancement du handler WebSocket dans un thread séparé
     def run_ws_loop():
         asyncio.run(client._ws_handler())
 
-    # 3) Démarrage du thread WebSocket (daemon pour qu'il se termine avec le process)
     ws_thread = threading.Thread(target=run_ws_loop, daemon=True)
     ws_thread.start()
     print("WebSocket handler démarré dans un thread dédié.")
 
-    # 4) Envoi non-bloquant et résilient
+    # 3) Prépare le safe_send et le throttle
+    last_send = 0.0
+
     def safe_send(action, data):
+        nonlocal last_send
+        now = time.time()
+        if now - last_send < interval:
+            return  # trop tôt, on skip
+        last_send = now
         try:
             msg = json.dumps({
                 "module": client.module_id,
@@ -84,7 +100,7 @@ def main():
         except Exception as e:
             print(f"[WARN] Échec envoi WS : {e}")
 
-    # 4b) Prépare la fenêtre d'affichage
+    # 4) Prépare la fenêtre d’affichage
     cv2.namedWindow("Flux de la caméra", cv2.WINDOW_NORMAL)
 
     # 5) Boucle de lecture du flux caméra
@@ -106,13 +122,11 @@ def main():
                 "y": y,
                 "diameter": r * 2
             })
-            print(f"Envoi : x={x}, y={y}, diameter={r * 2}")
+            print(f"[SEND] x={x}, y={y}, diameter={r*2}")
         else:
-            print("Aucun cercle détecté.")
+            print("[INFO] Aucun cercle détecté.")
 
-        # --- affichage à l'écran ---
         cv2.imshow("Flux de la caméra", frame)
-
         if cv2.waitKey(1) & 0xFF == ord("q"):
             break
 
