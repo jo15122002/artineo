@@ -132,6 +132,7 @@ class ArtineoClient:
             try:
                 await ws.send(msg)
             except Exception:
+                print(f"[ArtineoClient] Erreur d'envoi WS : {msg}")
                 await self._send_queue.put(msg)
                 raise
 
