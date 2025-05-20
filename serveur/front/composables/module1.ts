@@ -30,7 +30,7 @@ export default function useModule1() {
   const diamPx         = ref(1)
 
   // 3) fps & interval dynamique
-  const fps      = ref(10)           // valeur par défaut
+  const fps      = ref(1)           // valeur par défaut
   let pollTimer: number | undefined
 
   // 4) style calculé
