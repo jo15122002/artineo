@@ -11,7 +11,7 @@ from typing import Any, Callable
 import requests
 import websockets
 from dotenv import load_dotenv
-from websockets.exceptions import InvalidMessage  # <— ajouté
+from websockets.exceptions import InvalidMessage
 
 load_dotenv()
 
@@ -160,6 +160,21 @@ class ArtineoClient:
                 await self._ws_task
 
     def send_ws(self, message: str):
-        """Queue un message pour envoi via le WS (même si hors-ligne)."""
+        """Queue un message pour envoi via le WS."""
         print(f"[ArtineoClient] Envoi WS : {message}")
         self._send_queue.put_nowait(message)
+
+    def send_json(self, data: dict):
+        """
+        Envoie un buffer via WebSocket en mode 'set'.
+        Automatiquement :
+         • ajoute 'module': self.module_id
+         • action 'set'
+         • place vos données dans 'data'
+        """
+        payload = json.dumps({
+            "module": self.module_id,
+            "action": ArtineoAction.SET,
+            "data": data
+        }, ensure_ascii=False)
+        self.send_ws(payload)
