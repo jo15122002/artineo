@@ -96,7 +96,7 @@ class ArtineoClient:
 
         while not self._stop_event.is_set():
             try:
-                async with websockets.connect(self.ws_url, ping_interval=None) as ws:
+                async with websockets.connect(self.ws_url, compression=None, ping_interval=None) as ws:
                     # Désactiver Nagle (TCP_NODELAY) sur la socket sous-jacente
                     sock = ws.transport.get_extra_info('socket')
                     if sock:
