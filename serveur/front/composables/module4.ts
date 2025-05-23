@@ -50,52 +50,29 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
     objectImages[name] = img
   }
 
-  // 2️⃣ Brushes niveaux de gris
-  const brushCanvases: Record<string, HTMLCanvasElement[]> = {
-    '1': [], '2': [], '3': []
-  }
-  const colorMap: Record<string, [number, number, number]> = {
-    '1': [255, 0, 0],
-    '2': [0, 255, 0],
-    '3': [0, 0, 255]
-  }
+  // 2️⃣ Brushes par canal (brush1.png → canal 1, brush2.png → canal 2, brush3.png → canal 3)
   const brushModules = import.meta.glob<string>(
-    '~/assets/modules/4/images/brushes/*.png',
+    '~/assets/modules/4/images/brushes/brush*.png',
     { eager: true, as: 'url' }
   )
-  const rawBrushImages: HTMLImageElement[] = []
-  for (const url of Object.values(brushModules)) {
-    const img = new Image()
-    img.src = url
-    rawBrushImages.push(img)
+
+  const brushCanvases: Record<string, HTMLImageElement[]> = {
+    '1': [],
+    '2': [],
+    '3': []
   }
 
-  function prepareBrushes() {
-    rawBrushImages.forEach(img => {
-      const cw = img.width, ch = img.height
-      for (const [toolId, [r, g, b]] of Object.entries(colorMap)) {
-        const c = document.createElement('canvas')
-        c.width = cw; c.height = ch
-        const ctx = c.getContext('2d')!
-        ctx.drawImage(img, 0, 0)
-        const idata = ctx.getImageData(0, 0, cw, ch)
-        const d = idata.data
-        for (let i = 0; i < d.length; i += 4) {
-          const lum = d[i]
-          d[i]     = r
-          d[i + 1] = g
-          d[i + 2] = b
-          d[i + 3] = lum
-        }
-        ctx.putImageData(idata, 0, 0)
-        brushCanvases[toolId].push(c)
-      }
-    })
-    console.log('✅ Brushes prêts:',
-      Object.entries(brushCanvases)
-        .map(([t, arr]) => `${t}→${arr.length}`)
-        .join(', ')
-    )
+  for (const [path, url] of Object.entries(brushModules)) {
+    const fileName = path.split('/').pop()!
+    const img = new Image()
+    img.src = url
+    if (fileName === 'brush1.png') {
+      brushCanvases['1'].push(img)
+    } else if (fileName === 'brush2.png') {
+      brushCanvases['2'].push(img)
+    } else if (fileName === 'brush3.png') {
+      brushCanvases['3'].push(img)
+    }
   }
 
   // 3️⃣ Stockage local
@@ -105,9 +82,9 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
   // 4️⃣ Dessin
   const scale = 3
   function drawStroke(ctx: CanvasRenderingContext2D, s: Stroke) {
-    const canvases = brushCanvases[s.tool_id] || []
-    if (!canvases.length) return
-    const bc = canvases[Math.floor(Math.random() * canvases.length)]
+    const imgs = brushCanvases[s.tool_id] || []
+    if (!imgs.length) return
+    const img = imgs[0]  // un seul brush par canal
     const px = s.x * scale
     const py = s.y * scale
     const size = (s.size || 5) * scale
@@ -116,7 +93,7 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
     ctx.save()
     ctx.translate(px, py)
     ctx.rotate(ang)
-    ctx.drawImage(bc, -size / 2, -size / 2, size, size)
+    ctx.drawImage(img, -size / 2, -size / 2, size, size)
     ctx.restore()
   }
 
@@ -176,22 +153,17 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
 
   onMounted(() => {
     console.log('Module 4: Kinect')
-    // préparer brushes une fois images chargées
+
+    // attendre que tous les brushes soient chargés
+    const allBrushImages = Object.values(brushCanvases).flat()
     Promise.all(
-      rawBrushImages.map(img => {
-        console.log('Préchargement brush', img.src)
-        return img.complete
+      allBrushImages.map(img =>
+        img.complete
           ? Promise.resolve()
-          : new Promise<void>(res => {
-              img.onload = () => {
-                console.log('Image chargée', img.src)
-                res()
-              }
-            })
-      })
+          : new Promise<void>(res => { img.onload = () => res() })
+      )
     ).then(() => {
-      console.log('✅ Tous les brushes chargés, préparation…')
-      prepareBrushes()
+      console.log('✅ Brushes chargés par canal')
     })
 
     artClient.onMessage(msg => {
@@ -202,11 +174,12 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
 
     artClient.getBuffer()
       .then(buf => drawBuffer(buf))
-      .catch(() => {})
+      .catch(() => { })
+
     intervalId = setInterval(() => {
       artClient.getBuffer()
         .then(buf => drawBuffer(buf))
-        .catch(() => {})
+        .catch(() => { })
     }, 100)
   })
 
