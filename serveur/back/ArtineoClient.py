@@ -5,13 +5,14 @@ import json
 import os
 import random
 import time
+import socket
 from contextlib import suppress
 from typing import Any, Callable
 
 import requests
 import websockets
 from dotenv import load_dotenv
-from websockets.exceptions import InvalidMessage  # <— ajouté
+from websockets.exceptions import InvalidMessage
 
 load_dotenv()
 
@@ -96,6 +97,11 @@ class ArtineoClient:
         while not self._stop_event.is_set():
             try:
                 async with websockets.connect(self.ws_url, ping_interval=None) as ws:
+                    # Désactiver Nagle (TCP_NODELAY) sur la socket sous-jacente
+                    sock = ws.transport.get_extra_info('socket')
+                    if sock:
+                        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+
                     attempt = 0
                     backoff = self.ws_backoff
 
