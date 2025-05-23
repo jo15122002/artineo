@@ -31,20 +31,21 @@ class ObjectDetector:
         Parcourt les clusters validés et renvoie la liste des objets détectés.
         """
         events: List[Dict[str, Any]] = []
-        clusters = self._tracker.get_clusters()
+        # get_valid_clusters() renvoie des instances de Cluster
+        clusters = self._tracker.get_valid_clusters(min_confirmations=self._min_points)
 
         for cl in clusters:
-            # Nombre minimal de confirmations
-            if len(cl['points']) < self._min_points:
-                continue
-            # Filtre par surface maximale
-            if cl['avg_w'] * cl['avg_h'] > self._roi_area * self._max_area_ratio:
+            # Filtre par surface moyenne
+            avg_w = cl.avg_width
+            avg_h = cl.avg_height
+            if (avg_w * avg_h) > (self._roi_area * self._max_area_ratio):
                 continue
 
-            name: str = cl['shape']
-            cx, cy = cl['centroid']
-            avg_w, avg_h = cl['avg_w'], cl['avg_h']
-            angle = cl['avg_angle']
+            name = cl.shape
+            cx, cy = cl.centroid
+            angle = cl.avg_angle
+
+            print(name)
 
             # Taille du template de référence
             w_t, h_t = self._template_sizes[name]

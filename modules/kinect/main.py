@@ -162,7 +162,7 @@ class MainController:
         if not self.config.bypass_ws:
             self.payload_sender.start()
 
-        alfa_decay = 0.05
+        alfa_decay = 0.1
         prox = self.stroke_tracker.proximity_threshold
 
         try:
@@ -228,6 +228,7 @@ class MainController:
                     buf[mask]   = (1-self.config.alpha)*buf[mask] + self.config.alpha*diff[mask]
                     buf[~mask] *= (1-alfa_decay)
                     composite = cv2.convertScaleAbs(self.final_drawings[self.current_tool])
+                    alfa_decay = alfa_decay * 0.9 + 0.11
                 else:
                     composite = None
 

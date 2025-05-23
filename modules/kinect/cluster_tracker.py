@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 @dataclass
 class ClusterPoint:
     """Represents a single detection point in a cluster."""
+    shape: str
     cx: float
     cy: float
     area: float
@@ -72,7 +73,7 @@ class ClusterTracker:
         self.frame_idx += 1
         for det in detections:
             shape, cx, cy, area, angle, width, height = det
-            point = ClusterPoint(cx, cy, area, angle if area <= self.area_threshold else 0.0, width, height)
+            point = ClusterPoint(shape, cx, cy, area, angle if area <= self.area_threshold else 0.0, width, height)
 
             matched = False
             for cluster in self.clusters:
