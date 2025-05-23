@@ -56,41 +56,40 @@
     },
     "assignments": {
         "lieux": {
-            "Restaurant": "88047a8f79",
-            "Océan": "880449eb2e",
-            "Montagne": "880424973f",
-            "Rivière": "8804afffdc",
-            "Campagne": "8804f3abd4",
-            "Maison": "8804090b8e",
-            "Atelier": "8804dda2f3",
-            "Jardin": "8804eaa5c3",
-            "Marché": "880461a548",
-            "Ville": "880449a762",
-            "TestLieux": "533e9cd524"
+            "Restaurant": "04f11f63bf2a81",
+            "Océean": "04579963bf2a81",
+            "Montagne": "04532663bf2a81",
+            "Rivière": "049bb363bf2a81",
+            "Campagne": "042ffb62bf2a81",
+            "Maison": "044e8a63bf2a81",
+            "Atelier": "04439363bf2a81",
+            "Jardin": "04bac263bf2a81",
+            "Marché": "048ceb62bf2a81",
+            "Ville": "04b9ef62bf2a81"
         },
         "couleurs": {
-            "Jaune": "880416af35",
-            "Violet": "88048aa4a2",
-            "Vert": "8804d091cd",
-            "Beige": "880434843c",
-            "Gris": "880429d075",
-            "Bleu": "8804b099a5",
-            "Rose": "88040ce262",
-            "Rouge": "8804f78af1",
-            "Marron": "880480f4f8",
-            "Orange": "8804198f1a"
+            "Jaune": "048deb62bf2a81",
+            "Violet": "04553663bf2a81",
+            "Vert": "048b1963bf2a81",
+            "Beige": "04b4ef62bf2a81",
+            "Gris": "0419d563bf2a81",
+            "Bleu": "0413e562bf2a81",
+            "Rose": "04413263bf2a81",
+            "Rouge": "04b51463bf2a81",
+            "Marron": "04a1b963bf2a81",
+            "Orange": "04218c63bf2a81"
         },
-        "emotions": {
-            "Dégoût": "880417b02b",
-            "colère": "8804dfd98a",
-            "fatigue": "88044e9250",
-            "amour": "88044bad6a",
-            "joie": "88043d8637",
-            "Curiosité": "880425b41d",
-            "Monotonie": "880453d50a",
-            "Calme": "8804fa8cfa",
-            "Motivation": "8804e49cf4",
-            "tristesse": "880444a46c"
+        "émotions": {
+            "Dégoût": "04729f63bf2a81",
+            "colère": "0446c463bf2a81",
+            "fatigue": "04c27963bf2a81",
+            "amour": "048c9763bf2a81",
+            "joie": "04388463bf2a81",
+            "Curiosité": "04c4aa63bf2a81",
+            "Monotonie": "044ece63bf2a81",
+            "Calme": "04b5a463bf2a81",
+            "Motivation": "04462a63bf2a81",
+            "tristesse": "04c6be63bf2a81"
         }
     }
 }
