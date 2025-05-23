@@ -58,6 +58,7 @@ export default function useModule3() {
     // a) fetchConfig (assignments + answers + éventuellement fps si tu veux)
     try {
       const cfg = await client.fetchConfig()
+      console.log('[Module3] fetchConfig', cfg)
       assignments.value = cfg.assignments || {}
       answers.value     = cfg.answers     || []
     } catch (e) {
