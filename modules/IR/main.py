@@ -84,11 +84,14 @@ def main():
         except Exception as e:
             print(f"[WARN] Échec envoi WS : {e}")
 
+    # 4b) Préparation de la fenêtre d'affichage
+    cv2.namedWindow("Flux de la caméra", cv2.WINDOW_NORMAL)
+
     # 5) Boucle de lecture du flux caméra
     while True:
         raw = sys.stdin.buffer.read(frame_size)
         if len(raw) < frame_size:
-            break
+            break  # fin du flux
         frame = np.frombuffer(raw, dtype=np.uint8).reshape((height, width, 3))
 
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -97,6 +100,7 @@ def main():
         best = find_brightest_circle(gray, clean)
         if best:
             x, y, r = best
+            # on dessine le cercle détecté
             cv2.circle(frame, (x, y), r, (0, 255, 0), 2)
             safe_send(ArtineoAction.SET, {
                 "x": x,
@@ -104,14 +108,12 @@ def main():
                 "diameter": r * 2
             })
 
+        # --- Affichage du flux vidéo avec les détections ---
+        cv2.imshow("Flux de la caméra", frame)
         if cv2.waitKey(1) & 0xFF == ord("q"):
             break
 
     cv2.destroyAllWindows()
-
-    # 6) Arrêt propre du handler WS
-    # On ne peut pas facilement arrêter asyncio.run(), mais comme le thread est daemon,
-    # il s’arrêtera à la fin du programme.
     print("Fin du module 1, le thread WebSocket sera tué automatiquement.")
 
 if __name__ == "__main__":
