@@ -64,21 +64,18 @@ def main():
     # 1) Initialisation du client WS
     client = ArtineoClient(module_id=1)
 
-    # 2) Callback pour afficher tout message reçu
-    client.on_message = lambda msg: print("Message reçu :", msg)
-
-    # 3) Démarrer le handler WebSocket en tâche de fond
-    client.start()
+    # 2) Démarrage du handler WS dans un thread avec sa propre boucle
+    def _ws_loop():
+        asyncio.run(client._ws_handler())
+    threading.Thread(target=_ws_loop, daemon=True).start()
     print("WebSocket handler démarré dans un thread dédié.")
 
-    # 4) (facultatif) Indiquer quand la connexion est effective
-    def wait_connected():
-        asyncio.run(client._connected.wait())
-        print("WebSocket connecté.")
-    threading.Thread(target=wait_connected, daemon=True).start()
+    # 3) (facultatif) callback sur messages reçus
+    client.on_message = lambda msg: print("Message reçu :", msg)
 
-    # 5) Fonction d'envoi non-bloquant
+    # 4) Fonction d'envoi + mesure de latence
     def safe_send(action, data):
+        # 4a) Préparation du message
         ts = time.time() * 1000
         payload = {
             "module": client.module_id,
@@ -86,12 +83,22 @@ def main():
             "data": data,
             "_ts_client": ts
         }
-        client.send_ws(json.dumps(payload))
+        msg = json.dumps(payload)
+        client.send_ws(msg)
 
-    # 6) Préparation de la fenêtre d'affichage
+        # 4b) Mesure de la latence en parallèle
+        def _measure():
+            try:
+                lat = asyncio.run(client.measure_latency())
+                print(f"⏱ latence WS RTT ~ {lat:.1f} ms")
+            except Exception as e:
+                print(f"[WARN] échec mesure latence : {e}")
+        threading.Thread(target=_measure, daemon=True).start()
+
+    # 5) Préparation de la fenêtre d'affichage
     cv2.namedWindow("Flux de la caméra", cv2.WINDOW_NORMAL)
 
-    # 7) Boucle de lecture du flux caméra
+    # 6) Boucle de lecture du flux caméra
     while True:
         raw = sys.stdin.buffer.read(frame_size)
         if len(raw) < frame_size:
@@ -104,7 +111,6 @@ def main():
         best = find_brightest_circle(gray, clean)
         if best:
             x, y, r = best
-            # on dessine le cercle détecté
             cv2.circle(frame, (x, y), r, (0, 255, 0), 2)
             safe_send(ArtineoAction.SET, {
                 "x": x,
@@ -112,7 +118,6 @@ def main():
                 "diameter": r * 2
             })
 
-        # Affichage du flux vidéo avec les détections
         cv2.imshow("Flux de la caméra", frame)
         if cv2.waitKey(1) & 0xFF == ord("q"):
             break
