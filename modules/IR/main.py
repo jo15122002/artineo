@@ -2,6 +2,7 @@ import asyncio
 import json
 import sys
 import threading
+import time
 from pathlib import Path
 
 import cv2
@@ -57,41 +58,49 @@ def find_brightest_circle(gray, clean):
 
 
 def main():
-    width, height = 640, 480
+    width, height = 320, 240
     frame_size = width * height * 3  # bgr24
 
     # 1) Initialisation du client WS
     client = ArtineoClient(module_id=1)
 
-    # 2) Fonction pour lancer le handler WS dans sa propre boucle
-    def run_ws_loop():
+    # 2) Démarrage du handler WS dans un thread dédié
+    def run_ws():
         asyncio.run(client._ws_handler())
-
-    # 3) Démarrage du thread WebSocket (daemon pour qu'il se termine avec le process)
-    ws_thread = threading.Thread(target=run_ws_loop, daemon=True)
-    ws_thread.start()
+    threading.Thread(target=run_ws, daemon=True).start()
     print("WebSocket handler démarré dans un thread dédié.")
 
-    # 4) Envoi non-bloquant et résilient
-    def safe_send(action, data):
-        try:
-            msg = json.dumps({
-                "module": client.module_id,
-                "action": action,
-                "data": data
-            })
-            client.send_ws(msg)
-        except Exception as e:
-            print(f"[WARN] Échec envoi WS : {e}")
+    # 3) (Optionnel) callback de réception
+    client.on_message = lambda msg: print("Message reçu :", msg)
 
-    # 5) Boucle de lecture du flux caméra
+    # 4) Envoi + mesure RTT
+    def safe_send(action, data):
+        ts = time.time() * 1000
+        payload = {
+            "module": client.module_id,
+            "action": action,
+            "data": data,
+            "_ts_client": ts
+        }
+        msg = json.dumps(payload)
+        client.send_ws(msg)
+
+        # → ici, juste après l'envoi, on récupère le RTT
+        try:
+            latency = client.get_latency(timeout=2.0)
+            print(f"⏱ RTT WS ~ {latency:.1f} ms")
+        except Exception as e:
+            print(f"[WARN] Impossible de mesurer le RTT : {e}")
+
+    cv2.namedWindow("Flux de la caméra", cv2.WINDOW_NORMAL)
+
     while True:
         raw = sys.stdin.buffer.read(frame_size)
         if len(raw) < frame_size:
             break
         frame = np.frombuffer(raw, dtype=np.uint8).reshape((height, width, 3))
 
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        gray  = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         clean = preprocess(gray)
 
         best = find_brightest_circle(gray, clean)
@@ -104,15 +113,12 @@ def main():
                 "diameter": r * 2
             })
 
+        cv2.imshow("Flux de la caméra", frame)
         if cv2.waitKey(1) & 0xFF == ord("q"):
             break
 
     cv2.destroyAllWindows()
-
-    # 6) Arrêt propre du handler WS
-    # On ne peut pas facilement arrêter asyncio.run(), mais comme le thread est daemon,
-    # il s’arrêtera à la fin du programme.
-    print("Fin du module 1, le thread WebSocket sera tué automatiquement.")
+    print("Fin du module, le thread WS s'arrêtera automatiquement.")
 
 if __name__ == "__main__":
     main()

@@ -213,6 +213,10 @@ async def websocket_endpoint(ws: WebSocket):
 
             try:
                 msg = json.loads(raw)
+                recv_ts = int(time.time() * 1000)
+                sent_ts = msg.get("_ts_client")
+                if sent_ts is not None:
+                    print(f"⏱ latence réseau ~ {recv_ts - sent_ts} ms", flush=True)
                 module_id = msg.get("module")
                 action = msg.get("action")
                 if isinstance(module_id, int):
