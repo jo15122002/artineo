@@ -2,8 +2,8 @@ import asyncio
 import json
 import sys
 import threading
-from pathlib import Path
 import time
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -63,38 +63,35 @@ def main():
 
     # 1) Initialisation du client WS
     client = ArtineoClient(module_id=1)
-    
-    latency = client.measure_latency()  # pour mesurer la latence des messages
-    if latency is not None:
-        print(f"Latence mesurée : {latency:.2f} ms")
 
-    # 2) Fonction pour lancer le handler WS dans sa propre boucle
-    def run_ws_loop():
-        asyncio.run(client._ws_handler())
+    # 2) Callback pour afficher tout message reçu
+    client.on_message = lambda msg: print("Message reçu :", msg)
 
-    # 3) Démarrage du thread WebSocket (daemon pour qu'il se termine avec le process)
-    ws_thread = threading.Thread(target=run_ws_loop, daemon=True)
-    ws_thread.start()
+    # 3) Démarrer le handler WebSocket en tâche de fond
+    client.start()
     print("WebSocket handler démarré dans un thread dédié.")
 
-    # 4) Envoi non-bloquant et résilient
-    def safe_send(action, data):
-        try:
-            ts = time.time() * 1000
-            msg = json.dumps({
-                "module": client.module_id,
-                "action": action,
-                "data": data,
-                "_ts_client": ts
-            })
-            client.send_ws(msg)
-        except Exception as e:
-            print(f"[WARN] Échec envoi WS : {e}")
+    # 4) (facultatif) Indiquer quand la connexion est effective
+    def wait_connected():
+        asyncio.run(client._connected.wait())
+        print("WebSocket connecté.")
+    threading.Thread(target=wait_connected, daemon=True).start()
 
-    # 4b) Préparation de la fenêtre d'affichage
+    # 5) Fonction d'envoi non-bloquant
+    def safe_send(action, data):
+        ts = time.time() * 1000
+        payload = {
+            "module": client.module_id,
+            "action": action,
+            "data": data,
+            "_ts_client": ts
+        }
+        client.send_ws(json.dumps(payload))
+
+    # 6) Préparation de la fenêtre d'affichage
     cv2.namedWindow("Flux de la caméra", cv2.WINDOW_NORMAL)
 
-    # 5) Boucle de lecture du flux caméra
+    # 7) Boucle de lecture du flux caméra
     while True:
         raw = sys.stdin.buffer.read(frame_size)
         if len(raw) < frame_size:
@@ -115,13 +112,14 @@ def main():
                 "diameter": r * 2
             })
 
-        # --- Affichage du flux vidéo avec les détections ---
+        # Affichage du flux vidéo avec les détections
         cv2.imshow("Flux de la caméra", frame)
         if cv2.waitKey(1) & 0xFF == ord("q"):
             break
 
     cv2.destroyAllWindows()
     print("Fin du module 1, le thread WebSocket sera tué automatiquement.")
+
 
 if __name__ == "__main__":
     main()
