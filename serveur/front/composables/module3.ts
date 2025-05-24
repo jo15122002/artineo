@@ -55,6 +55,7 @@ export default function useModule3() {
   }
 
   onMounted(async () => {
+    console.log('[Module3] Mounted, initializing Artineo client')
     // a) fetchConfig (assignments + answers + éventuellement fps si tu veux)
     try {
       const cfg = await client.fetchConfig()
