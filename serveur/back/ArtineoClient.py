@@ -50,6 +50,8 @@ class ArtineoClient:
 
         # queue pour messages sortants
         self._send_queue = asyncio.Queue()
+        # état de connexion WebSocket
+        self._connected = asyncio.Event()
         # gestion des tâches asyncio
         self._ws_task    = None
         self._stop_event = asyncio.Event()
@@ -95,12 +97,22 @@ class ArtineoClient:
         backoff = self.ws_backoff
 
         while not self._stop_event.is_set():
+            # on n'est plus connecté
+            self._connected.clear()
+
             try:
                 async with websockets.connect(self.ws_url, compression=None, ping_interval=None) as ws:
                     # Désactiver Nagle (TCP_NODELAY) sur la socket sous-jacente
                     sock = ws.transport.get_extra_info('socket')
                     if sock:
                         sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+
+                    # on est connecté
+                    self._connected.set()
+
+                    # vider tout backlog éventuel
+                    while not self._send_queue.empty():
+                        self._send_queue.get_nowait()
 
                     attempt = 0
                     backoff = self.ws_backoff
@@ -138,6 +150,7 @@ class ArtineoClient:
             try:
                 await ws.send(msg)
             except Exception:
+                # remet en queue en cas d'échec
                 await self._send_queue.put(msg)
                 raise
 
@@ -165,5 +178,7 @@ class ArtineoClient:
                 await self._ws_task
 
     def send_ws(self, message: str):
-        """Queue un message pour envoi via le WS (même si hors-ligne)."""
+        """Queue un message pour envoi via le WS uniquement si connecté."""
+        if not self._connected.is_set():
+            return
         self._send_queue.put_nowait(message)
