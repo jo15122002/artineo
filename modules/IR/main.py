@@ -3,6 +3,7 @@ import json
 import sys
 import threading
 from pathlib import Path
+import utime
 
 import cv2
 import numpy as np
@@ -75,10 +76,12 @@ def main():
     # 4) Envoi non-bloquant et résilient
     def safe_send(action, data):
         try:
+            ts = utime.ticks_ms()
             msg = json.dumps({
                 "module": client.module_id,
                 "action": action,
-                "data": data
+                "data": data,
+                "_ts_client": ts
             })
             client.send_ws(msg)
         except Exception as e:
