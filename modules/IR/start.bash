@@ -5,6 +5,31 @@ set -euo pipefail
 # start.bash — lance la pipeline IR en tentant l’install
 # ====================================================
 
+# Usage
+usage() {
+  echo "Usage: $0 [--debug|-d]"
+  exit 1
+}
+
+# Parse options
+DEBUG_FLAG=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -d|--debug)
+      DEBUG_FLAG="--debug"
+      shift
+      ;;
+    -*)
+      echo "Unknown option: $1"
+      usage
+      ;;
+    *)
+      echo "Unknown argument: $1"
+      usage
+      ;;
+  esac
+done
+
 # Variables
 WORKDIR="${HOME}/Desktop/artineo/modules/IR"
 FIFO="/tmp/ir_video_fifo"
@@ -55,11 +80,11 @@ libcamera-vid \
 VID_PID=$!
 
 # 5️⃣ Lance ffmpeg → main.py
-echo "🔄 Démarrage de ffmpeg → main.py"
+echo "🔄 Démarrage de ffmpeg → main.py${DEBUG_FLAG:+ (mode debug)}"
 ffmpeg -loglevel error \
        -f rawvideo -pix_fmt yuv420p -s 640x480 -r 30 -i "$FIFO" \
        -f rawvideo -vf "scale=320:240" -pix_fmt bgr24 -r 15 - \
-  | python3 "$WORKDIR/main.py"
+  | python3 "$WORKDIR/main.py" $DEBUG_FLAG
 
-# 6️⃣ Nettoyage si ever main.py termine
+# 6️⃣ Nettoyage si jamais main.py termine
 cleanup

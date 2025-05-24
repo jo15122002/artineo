@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+import argparse
 import asyncio
 import json
 import sys
@@ -58,6 +60,26 @@ def find_brightest_circle(gray, clean):
 
 
 def main():
+    # --- parsing des arguments ---
+    parser = argparse.ArgumentParser(description="Module IR")
+    parser.add_argument(
+        "-d", "--debug",
+        action="store_true",
+        help="Active le mode debug (affiche les logs détaillés et la fenêtre vidéo)"
+    )
+    args = parser.parse_args()
+    debug = args.debug
+    
+    if debug:
+        print("Mode debug activé. Affichage des logs et de la fenêtre vidéo.")
+    else:
+        print("Mode debug désactivé. Aucune fenêtre vidéo ne sera affichée.")
+
+    def log(msg: str):
+        """Affiche msg uniquement si debug est True."""
+        if debug:
+            print(msg)
+
     width, height = 320, 240
     frame_size = width * height * 3  # bgr24
 
@@ -68,10 +90,10 @@ def main():
     def run_ws():
         asyncio.run(client._ws_handler())
     threading.Thread(target=run_ws, daemon=True).start()
-    print("WebSocket handler démarré dans un thread dédié.")
+    log("WebSocket handler démarré dans un thread dédié.")
 
     # 3) (Optionnel) callback de réception
-    client.on_message = lambda msg: print("Message reçu :", msg)
+    client.on_message = lambda msg: log(f"Message reçu : {msg}")
 
     # 4) Envoi + mesure RTT
     def safe_send(action, data):
@@ -84,23 +106,27 @@ def main():
         }
         msg = json.dumps(payload)
         client.send_ws(msg)
+        log(f"[DEBUG] Envoi WS à {ts:.0f} → {msg}")
 
         # → ici, juste après l'envoi, on récupère le RTT
         try:
             latency = client.get_latency(timeout=2.0)
-            print(f"⏱ RTT WS ~ {latency:.1f} ms")
+            log(f"⏱ RTT WS ~ {latency:.1f} ms")
         except Exception as e:
-            print(f"[WARN] Impossible de mesurer le RTT : {e}")
+            log(f"[WARN] Impossible de mesurer le RTT : {e}")
 
-    cv2.namedWindow("Flux de la caméra", cv2.WINDOW_NORMAL)
+    # 4b) Préparation de la fenêtre d'affichage si debug
+    if debug:
+        cv2.namedWindow("Flux de la caméra", cv2.WINDOW_NORMAL)
 
+    # 5) Boucle de lecture du flux caméra
     while True:
         raw = sys.stdin.buffer.read(frame_size)
         if len(raw) < frame_size:
-            break
+            break  # fin du flux
         frame = np.frombuffer(raw, dtype=np.uint8).reshape((height, width, 3))
 
-        gray  = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         clean = preprocess(gray)
 
         best = find_brightest_circle(gray, clean)
@@ -113,12 +139,17 @@ def main():
                 "diameter": r * 2
             })
 
-        cv2.imshow("Flux de la caméra", frame)
-        if cv2.waitKey(1) & 0xFF == ord("q"):
-            break
+        # Affichage seulement si debug
+        if debug:
+            cv2.imshow("Flux de la caméra", frame)
+            if cv2.waitKey(1) & 0xFF == ord("q"):
+                break
 
-    cv2.destroyAllWindows()
-    print("Fin du module, le thread WS s'arrêtera automatiquement.")
+    # 6) Nettoyage fenêtre si debug
+    if debug:
+        cv2.destroyAllWindows()
+        log("Fin du module, le thread WS s'arrêtera automatiquement.")
+
 
 if __name__ == "__main__":
     main()
