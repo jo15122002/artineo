@@ -107,10 +107,6 @@ class ArtineoClient:
                     if sock:
                         sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
-                    await asyncio.sleep(1)  # laisse le temps de se connecter
-                    rtt_ms = await self.measure_latency()
-                    print(f"RTT WebSocket : {rtt_ms:.2f} ms")
-                    
                     # on est connecté
                     self._connected.set()
 

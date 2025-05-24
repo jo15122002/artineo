@@ -63,6 +63,10 @@ def main():
 
     # 1) Initialisation du client WS
     client = ArtineoClient(module_id=1)
+    
+    latency = client.measure_latency()  # pour mesurer la latence des messages
+    if latency is not None:
+        print(f"Latence mesurée : {latency:.2f} ms")
 
     # 2) Fonction pour lancer le handler WS dans sa propre boucle
     def run_ws_loop():
