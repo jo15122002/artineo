@@ -1,5 +1,3 @@
-# serveur/back/ArtineoClient.py
-
 import asyncio
 import json
 import os
@@ -50,13 +48,17 @@ class ArtineoClient:
 
         # queue pour messages sortants
         self._send_queue = asyncio.Queue()
-        # flag d'état de connexion WS
+        # état de connexion WebSocket
         self._connected = asyncio.Event()
-        # référence au WS pour mesurer la latence
-        self._ws = None
+
+        # on va stocker ici le protocole et sa boucle
+        self._ws      = None            # type: websockets.WebSocketClientProtocol
+        self._ws_loop = None            # type: asyncio.AbstractEventLoop
+
         # gestion des tâches asyncio
         self._ws_task    = None
         self._stop_event = asyncio.Event()
+
         # callback user à chaque message reçu
         self.on_message: Callable[[Any], None] = lambda msg: None
 
@@ -99,40 +101,29 @@ class ArtineoClient:
         backoff = self.ws_backoff
 
         while not self._stop_event.is_set():
-            # indicateur déconnecté
+            # on n'est plus connecté
             self._connected.clear()
             self._ws = None
+            self._ws_loop = None
 
             try:
-                async with websockets.connect(
-                    self.ws_url,
-                    compression=None,
-                    ping_interval=None
-                ) as ws:
-                    # Désactiver Nagle (TCP_NODELAY) sur la socket sous-jacente
+                async with websockets.connect(self.ws_url, compression=None, ping_interval=None) as ws:
+                    # Désactiver Nagle
                     sock = ws.transport.get_extra_info('socket')
                     if sock:
                         sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
-                    # on garde la référence pour la latence et on passe connecté
-                    self._ws = ws
+                    # on stocke le protocole et sa boucle
+                    self._ws      = ws
+                    self._ws_loop = asyncio.get_running_loop()
+
+                    # on est connecté
                     self._connected.set()
 
                     # vider tout backlog éventuel
                     while not self._send_queue.empty():
                         self._send_queue.get_nowait()
 
-                    # mesure initiale de la latence
-                    try:
-                        rtt = await self.measure_latency()
-                        print(f"[ArtineoClient] RTT initial : {rtt:.2f} ms")
-                    except Exception as e:
-                        print(f"[ArtineoClient] échec mesure initiale RTT : {e}")
-
-                    # lancement périodique d'un moniteur de latence
-                    latency_task = asyncio.create_task(self._latency_monitor())
-
-                    # reset des compteurs
                     attempt = 0
                     backoff = self.ws_backoff
 
@@ -146,17 +137,14 @@ class ArtineoClient:
                             msg = raw
                         self.on_message(msg)
 
-                    # fin de la connexion : annule les tâches
                     sender_task.cancel()
                     ping_task.cancel()
-                    latency_task.cancel()
 
             except (websockets.ConnectionClosed, OSError, InvalidMessage) as exc:
                 attempt += 1
                 print(f"[ArtineoClient] WS déconnecté ({exc}), essai {attempt}/{self.ws_retries}")
                 if attempt > self.ws_retries:
                     raise RuntimeError("Impossible de reconnecter le WebSocket") from exc
-                # backoff exponentiel + jitter
                 jitter = 1 + 0.1 * (2 * random.random() - 1)
                 await asyncio.sleep(backoff * jitter)
                 backoff *= 2
@@ -164,26 +152,26 @@ class ArtineoClient:
             except asyncio.CancelledError:
                 break
 
-    async def measure_latency(self) -> float:
+    async def _measure_latency(self) -> float:
         """
-        Renvoie le RTT WebSocket en ms.
+        Coroutine : ping‐pong pour calculer le RTT en ms.
         """
         if not self._connected.is_set() or self._ws is None:
             raise RuntimeError("WebSocket non connecté")
         t0 = time.time()
-        pong_waiter = await self._ws.ping()
-        await pong_waiter
+        pong = await self._ws.ping()
+        await pong
         return (time.time() - t0) * 1_000
 
-    async def _latency_monitor(self):
-        """Tâche périodique : mesure la latence toutes les X secondes."""
-        while not self._stop_event.is_set() and self._connected.is_set():
-            try:
-                rtt = await self.measure_latency()
-                print(f"[ArtineoClient] RTT périodique : {rtt:.2f} ms")
-            except Exception:
-                pass
-            await asyncio.sleep(5)  # toutes les 5 secondes
+    def get_latency(self, timeout: float = 5.0) -> float:
+        """
+        Appel synchrone qui planifie _measure_latency dans la boucle WS.
+        """
+        if self._ws_loop is None:
+            raise RuntimeError("WebSocket loop non initialisée")
+        # schedule la coroutine sur la boucle WS
+        future = asyncio.run_coroutine_threadsafe(self._measure_latency(), self._ws_loop)
+        return future.result(timeout)
 
     async def _ws_sender(self, ws):
         """Envoie tous les messages mis en file."""
@@ -192,20 +180,20 @@ class ArtineoClient:
             try:
                 await ws.send(msg)
             except Exception:
-                # remet en queue en cas d'échec
                 await self._send_queue.put(msg)
                 raise
 
     async def _ws_heartbeat(self, ws):
         """Ping périodique pour maintenir la connexion."""
         while True:
-            await ws.ping()
             await asyncio.sleep(self.ws_ping_interval)
+            await ws.ping()
 
     def start(self):
         """Démarre la supervision WebSocket."""
         if self._ws_task is None or self._ws_task.done():
             self._stop_event.clear()
+            # on lance la coroutine handler dans la boucle courante
             self._ws_task = asyncio.create_task(self._ws_handler())
 
     async def stop(self):
@@ -217,7 +205,7 @@ class ArtineoClient:
                 await self._ws_task
 
     def send_ws(self, message: str):
-        """Queue un message pour envoi via le WS uniquement si connecté."""
+        """Queue un message pour envoi uniquement si connecté."""
         if not self._connected.is_set():
             return
         self._send_queue.put_nowait(message)

@@ -64,18 +64,17 @@ def main():
     # 1) Initialisation du client WS
     client = ArtineoClient(module_id=1)
 
-    # 2) Démarrage du handler WS dans un thread avec sa propre boucle
-    def _ws_loop():
+    # 2) Démarrage du handler WS dans un thread dédié
+    def run_ws():
         asyncio.run(client._ws_handler())
-    threading.Thread(target=_ws_loop, daemon=True).start()
+    threading.Thread(target=run_ws, daemon=True).start()
     print("WebSocket handler démarré dans un thread dédié.")
 
-    # 3) (facultatif) callback sur messages reçus
+    # 3) (Optionnel) callback de réception
     client.on_message = lambda msg: print("Message reçu :", msg)
 
-    # 4) Fonction d'envoi + mesure de latence
+    # 4) Envoi + mesure RTT
     def safe_send(action, data):
-        # 4a) Préparation du message
         ts = time.time() * 1000
         payload = {
             "module": client.module_id,
@@ -86,26 +85,22 @@ def main():
         msg = json.dumps(payload)
         client.send_ws(msg)
 
-        # 4b) Mesure de la latence en parallèle
-        def _measure():
-            try:
-                lat = asyncio.run(client.measure_latency())
-                print(f"⏱ latence WS RTT ~ {lat:.1f} ms")
-            except Exception as e:
-                print(f"[WARN] échec mesure latence : {e}")
-        threading.Thread(target=_measure, daemon=True).start()
+        # → ici, juste après l'envoi, on récupère le RTT
+        try:
+            latency = client.get_latency(timeout=2.0)
+            print(f"⏱ RTT WS ~ {latency:.1f} ms")
+        except Exception as e:
+            print(f"[WARN] Impossible de mesurer le RTT : {e}")
 
-    # 5) Préparation de la fenêtre d'affichage
     cv2.namedWindow("Flux de la caméra", cv2.WINDOW_NORMAL)
 
-    # 6) Boucle de lecture du flux caméra
     while True:
         raw = sys.stdin.buffer.read(frame_size)
         if len(raw) < frame_size:
-            break  # fin du flux
+            break
         frame = np.frombuffer(raw, dtype=np.uint8).reshape((height, width, 3))
 
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        gray  = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         clean = preprocess(gray)
 
         best = find_brightest_circle(gray, clean)
@@ -123,8 +118,7 @@ def main():
             break
 
     cv2.destroyAllWindows()
-    print("Fin du module 1, le thread WebSocket sera tué automatiquement.")
-
+    print("Fin du module, le thread WS s'arrêtera automatiquement.")
 
 if __name__ == "__main__":
     main()
