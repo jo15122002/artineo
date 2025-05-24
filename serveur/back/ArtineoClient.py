@@ -107,6 +107,10 @@ class ArtineoClient:
                     if sock:
                         sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
+                    await asyncio.sleep(1)  # laisse le temps de se connecter
+                    rtt_ms = await self.measure_latency()
+                    print(f"RTT WebSocket : {rtt_ms:.2f} ms")
+                    
                     # on est connecté
                     self._connected.set()
 
@@ -142,6 +146,17 @@ class ArtineoClient:
 
             except asyncio.CancelledError:
                 break
+            
+    async def measure_latency(self) -> float:
+        """
+        Renvoie le RTT WebSocket en ms.
+        """
+        if not self._connected.is_set() or self._ws is None:
+            raise RuntimeError("WebSocket non connecté")
+        t0 = time.time()
+        pong_waiter = await self._ws.ping()
+        await pong_waiter
+        return (time.time() - t0) * 1_000
 
     async def _ws_sender(self, ws):
         """Envoie tous les messages mis en file."""
