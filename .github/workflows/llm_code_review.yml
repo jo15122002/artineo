@@ -21,5 +21,4 @@ jobs:
           llm-endpoint: ${{ secrets.LLM_ENDPOINT }}
           diff-chunk-size: 10000
           exclude-patterns: "test,tests,spec,yml,md,txt,log,bash,sh,bat,json,svg,png,jpg,jpeg,gif,webp,mp4,mov,avi"
-          summary-mode: "true"
           github-token: ${{ secrets.GITHUB_TOKEN }}
