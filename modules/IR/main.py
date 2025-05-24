@@ -69,6 +69,11 @@ def main():
     )
     args = parser.parse_args()
     debug = args.debug
+    
+    if debug:
+        print("Mode debug activé. Affichage des logs et de la fenêtre vidéo.")
+    else:
+        print("Mode debug désactivé. Aucune fenêtre vidéo ne sera affichée.")
 
     def log(msg: str):
         """Affiche msg uniquement si debug est True."""
