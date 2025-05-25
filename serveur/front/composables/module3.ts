@@ -4,7 +4,7 @@ import { onBeforeUnmount, onMounted, ref } from 'vue'
 import type { BufferPayload } from '~/utils/ArtineoClient'
 
 export default function useModule3() {
-  // Stub SSR
+  // Stub pour SSR
   if (!process.client) {
     const empty = ref<any>(null)
     return {
@@ -21,16 +21,23 @@ export default function useModule3() {
   }
   const client = $artineo(moduleId)
 
-  // États
-  const assignments    = ref<Record<string, Record<string, string>>>({})
-  const answers        = ref<Array<Record<string, string>>>([])
-  const backgroundSet  = ref<number>(1)
-  const blobTexts      = ref<string[]>(['', '', ''])
-  const blobColors     = ref<string[]>(['', '', ''])
+  // États réactifs
+  const assignments   = ref<Record<string, Record<string, string>>>({})
+  const answers       = ref<Array<Record<string, string>>>([])
+  const backgroundSet = ref<number>(1)
+  const blobTexts     = ref<string[]>(['', '', ''])
+  const blobColors    = ref<string[]>(['', '', ''])
 
   let pollTimer: number
 
-  // Retourne le label correspondant au code, insensible à la casse
+  // Pour corriger le pluriel de chaque catégorie
+  const pluralMap: Record<string,string> = {
+    lieu:    'lieux',
+    couleur: 'couleurs',
+    emotion: 'emotions'
+  }
+
+  // Inverse un mapping label→uid en uid→label (casse ignorée)
   function lookupLabel(
     map: Record<string, string>,
     code: string
@@ -42,31 +49,34 @@ export default function useModule3() {
     return inv[code.toLowerCase()] || 'Inconnu'
   }
 
-  // Met à jour blobs depuis le buffer, en cherchant la carte dans toutes les slots
+  // Applique le buffer aux blobs
   function updateFromBuffer(buf: BufferPayload) {
-    // 1) background
+    // 1) mise à jour du tableau
     if (buf.current_set && buf.current_set !== backgroundSet.value) {
       backgroundSet.value = buf.current_set
     }
 
-    // 2) initialise à "Aucun" / orange
-    const texts = ['Aucun', 'Aucun', 'Aucun']
+    // 2) valeurs par défaut
+    const texts  = ['Aucun', 'Aucun', 'Aucun']
     const colors = ['#FFA500', '#FFA500', '#FFA500']
 
-    // 3) pour chaque catégorie, regarde si l'une des uidX correspond
-    const keys = ['lieu','couleur','emotion'] as const
-    const uidKeys = ['uid1','uid2','uid3'] as const
-    const idx = (backgroundSet.value || 1) - 1
+    // 3) pour chaque catégorie, on cherche dans uid1/2/3
+    const keys   = ['lieu','couleur','emotion'] as const
+    const uidKeys= ['uid1','uid2','uid3'] as const
+    const setIdx = (backgroundSet.value || 1) - 1
+
     keys.forEach((key, i) => {
-      const map = assignments.value[`${key}s`] || {}
+      const cat    = pluralMap[key]         // ex. 'lieux'
+      const map    = assignments.value[cat] || {}
+      const correct = answers.value[setIdx]?.[key]?.toLowerCase()
+
       for (const uk of uidKeys) {
         const code = buf[uk as keyof BufferPayload]
-        if (code) {
-          const label = lookupLabel(map, code as string)
+        if (typeof code === 'string') {
+          const label = lookupLabel(map, code)
           if (label !== 'Inconnu') {
-            texts[i] = label
-            const correct = answers.value[idx]?.[key]
-            colors[i] = (code as string).toLowerCase() === correct?.toLowerCase()
+            texts[i]  = label
+            colors[i] = code.toLowerCase() === correct
               ? '#00FF00'
               : '#FF0000'
             break
@@ -80,28 +90,28 @@ export default function useModule3() {
   }
 
   onMounted(async () => {
-    // a) fetchConfig (assignments + answers)
+    // a) fetchConfig
     try {
       const cfg = await client.fetchConfig()
-      assignments.value = cfg.assignments || {}
-      answers.value     = cfg.answers     || []
+      assignments.value   = cfg.assignments || {}
+      answers.value       = cfg.answers     || []
     } catch (e) {
       console.error('[Module3] fetchConfig error', e)
     }
 
-    // b) WS push
+    // b) réception WS
     client.onMessage(msg => {
       if (msg.action === 'get_buffer') {
         updateFromBuffer(msg.buffer as BufferPayload)
       }
     })
 
-    // c) initial + polling HTTP fallback
+    // c) fallback HTTP + polling
     try {
       const buf0 = await client.getBuffer()
       updateFromBuffer(buf0)
     } catch {
-      // ignore
+      // silent
     }
     pollTimer = window.setInterval(async () => {
       try {
