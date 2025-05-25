@@ -3,83 +3,91 @@
   src: url('./Cheese-Sauce.woff2') format("woff2");
 }
 
-html, body { margin:0; padding:0; height:100vh; width:100vw; }
+/* ----- CONTAINER -------------------------------------------------------- */
+.page-3rfid {
+  --col-green:  #2f9a45;
+  --col-red:    #e84d26;
+  --col-yellow: #ffd953;
 
-body {
-  background-repeat: no-repeat !important;
-  background-size: contain !important;
-  position: relative !important;
-  font-family: 'Comic Sans MS', cursive, sans-serif !important;
-}
-
-#background {
-  z-index: 0;
-  position: fixed;
-  top: 0; left: 0;
-  width: 100vw;
-  height: 100vh;
-  overflow: hidden;      /* on cache l’overflow */
-  margin: 0; padding: 0;
-  background-size: contain;
-  background-repeat: no-repeat;
-  background-position: center center;
-  background-attachment: fixed;
-}
-
-.overlay-video {
-  z-index: 1;
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: auto;
-  height: 100vh;
-  pointer-events: none; /* si tu veux pas gêner la WS ou la page */
-}
-
-.blob {
-  z-index: 2;
-  position: absolute;
-  width: 400px; height: 240px;
-  background-color: white;            /* base avant coloration */
-  mask-repeat: no-repeat;
-  mask-position: center;
-  mask-size: contain;
-  -webkit-mask-repeat: no-repeat;
-  -webkit-mask-position: center;
-  -webkit-mask-size: contain;
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  height: 100vh;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+/* ----- IMAGE ------------------------------------------------------------ */
+.painting {
+  flex: 1 1 0;
+  min-height: 0;
+  width: 100%;
+  object-fit: contain;
+  object-position: center;
+  display: block;
+}
+
+/* ----- ZONE DES BOUTONS ------------------------------------------------- */
+.choices {
+  flex: 0 0 auto;
+  display: flex;
   justify-content: center;
-  color: #333;
-  font-size: 1.3em;
-  text-align: center;
-  pointer-events: none;
-  bottom: 0;
-  font-family: "CheeseSauce", sans-serif;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 0;
+  background: #fff9f4 url("data:image/svg+xml,...") repeat;
 }
 
-#blob1 {
-  left: calc(25% - 200px);
-  mask-image: url('~/assets/modules/3/blob1.svg');
-  -webkit-mask-image: url('~/assets/modules/3/blob1.svg');
-}
-#blob2 {
-  left: calc(50% - 200px);
-  mask-image: url('~/assets/modules/3/blob2.svg');
-  -webkit-mask-image: url('~/assets/modules/3/blob2.svg');
-}
-#blob3 {
-  left: calc(75% - 200px);
-  mask-image: url('~/assets/modules/3/blob3.svg');
-  -webkit-mask-image: url('~/assets/modules/3/blob3.svg');
+/* ---------- BOUTON ------------------------------------------------------ */
+.choice{
+  position:relative;
+  flex:1 1 0;
+  max-width:260px;
+  aspect-ratio:26/12;
+  border:4px solid transparent;     /* pas de bord au repos (frame-44) */
+  border-radius:8px;
+  font-size:2.4rem;
+  font-family:"CheeseSauce",cursive;
+  background:#fff;                  /* partie blanche de la carte      */
+  display:flex;align-items:center;justify-content:center;
+  pointer-events:none;
+
+  /* ombre + transition pour l’effet “clic” */
+  box-shadow:0 6px 0 0 var(--col-yellow);
+  transition:
+    border-color .25s ease,
+    transform     .10s ease-out,
+    box-shadow    .10s ease-out;
 }
 
-.fade-out {
-  animation: fade-out 1s ease-in-out forwards;
+/* socle jaune (visible uniquement à l’état default) */
+.choice::after{
+  content:"";
+  position:absolute;
+  bottom:-16px;left:0;right:0;
+  height:16px;
+  background:var(--col-yellow);
+  border-radius:0 0 8px 8px;
+  z-index:-1;
+  transition:opacity .25s ease;
 }
 
-@keyframes fade-out {
-  0% { opacity: 1; }
-  100% { opacity: 0; }
+/* ----- ÉTATS COULEUR ---------------------------------------------------- */
+.choice.state-default{ /* rien : socle = visible, bord = transparent */ }
+
+.choice.state-correct{
+  border-color:var(--col-green);
+  box-shadow:0 6px 0 0 var(--col-green);   /* ombre verte */
+}
+
+.choice.state-wrong{
+  border-color:var(--col-red);
+  box-shadow:0 6px 0 0 var(--col-red);     /* ombre rouge */
+}
+.choice.state-wrong::after{opacity:0;}     /* on cache le socle jaune */
+
+/* ----- EFFET “PRESSÉ” --------------------------------------------------- */
+.choice.pressed{
+  transform:translateY(6px);
+  box-shadow:0 0 0 0 transparent;
 }
