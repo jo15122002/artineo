@@ -5,9 +5,9 @@
         "diameter": null
     },
     "3": {
-        "uid1": null,
-        "uid2": null,
-        "uid3": null,
+        "uid1": "",
+        "uid2": "",
+        "uid3": "",
         "current_set": 1,
         "button_pressed": false
     },
