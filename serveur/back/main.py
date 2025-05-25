@@ -1,4 +1,5 @@
 # serveur/back/main.py
+
 import asyncio
 import json
 import mimetypes
@@ -13,6 +14,7 @@ from fastapi import (
     WebSocketDisconnect
 )
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles        # ← Ajouté ici
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 
 app = FastAPI()
@@ -24,6 +26,7 @@ app.add_middleware(
     allow_methods=["*"], allow_headers=["*"],
 )
 
+# Monte le dossier assets en /assets
 app.mount(
     "/assets",
     StaticFiles(directory="assets"),
@@ -37,7 +40,7 @@ app.mount(
 CONFIG_DIR = "configs"
 DEFAULT_BUFFER_FILE = "assets/default_buffer.json"
 
-# buffer global (un dict par module_id), chargé à l’startup
+# buffer global (un dict par module_id)
 buffer: Dict[int, dict] = {1: {}, 2: {}, 3: {}, 4: {}}
 
 
@@ -195,7 +198,7 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
-# file de queues de diffs (inchangée)
+# file de queues de diffs
 diff_queues: Dict[int, deque] = {
     1: deque(), 2: deque(), 3: deque(), 4: deque()
 }
@@ -214,18 +217,16 @@ async def websocket_endpoint(ws: WebSocket):
                 module_id = msg.get("module")
                 action    = msg.get("action")
 
-                # on enregistre automatiquement la socket
+                # enregistre la socket
                 if isinstance(module_id, int):
                     manager.register(module_id, ws)
 
-                # ———> ICI on gère le SET
                 if action == "set" and "data" in msg:
-                    # **Met à jour le buffer global**
+                    # Met à jour le buffer global et la queue de diffs
                     buffer[module_id] = msg["data"]
                     diff_queues[module_id].append(msg["data"])
                     print(f"[WS] buffer[{module_id}] ← {msg['data']!r}")
 
-                    # ack
                     resp = {
                       "status": "ok",
                       "action": "set_buffer",
@@ -234,7 +235,6 @@ async def websocket_endpoint(ws: WebSocket):
                     await ws.send_text(json.dumps(resp, ensure_ascii=False))
                     continue
 
-                # GET via WS (renvoie un diff si dispo)
                 if action == "get":
                     if diff_queues[module_id]:
                         payload = diff_queues[module_id].popleft()
@@ -249,7 +249,7 @@ async def websocket_endpoint(ws: WebSocket):
                     await ws.send_text(json.dumps(resp, ensure_ascii=False))
                     continue
 
-                # autres messages (echo/ack)
+                # ack pour autres cas
                 ack = {"action": "ack", "data": msg}
                 await ws.send_text(json.dumps(ack, ensure_ascii=False))
                 continue
@@ -257,7 +257,7 @@ async def websocket_endpoint(ws: WebSocket):
             except json.JSONDecodeError:
                 pass
 
-            # ping/pong basique
+            # ping/pong normal
             if raw == "ping":
                 await ws.send_text("pong")
             elif raw == "pong":
@@ -342,6 +342,7 @@ html = """
 </body>
 </html>
 """
+
 
 @app.get("/")
 async def get():
