@@ -98,6 +98,8 @@ export default function useModule3() {
       const cfg = await client.fetchConfig()
       assignments.value = cfg.assignments || {}
       answers.value     = cfg.answers     || []
+
+      console.log('[Module3] Config fetched', cfg)
     } catch (e) {
       console.error('[Module3] fetchConfig error', e)
     }
