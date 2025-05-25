@@ -24,7 +24,7 @@ export interface ArtObject {
 }
 
 export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
-  // ↪ Guard SSR : on ne veut pas exécuter tout le code graphiques en server-side
+  // ❌ Pas de dessin côté serveur
   if (!process.client) {
     const stub: any = ref(null)
     return {
@@ -42,49 +42,38 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
     '~/assets/modules/4/images/objects/*.png',
     { eager: true, as: 'url' }
   )
-  for (const path in imgModules) {
-    const url = imgModules[path]
+  for (const [path, url] of Object.entries(imgModules)) {
     const name = path.split('/').pop()!.replace('.png', '')
     const img = new Image()
     img.src = url
     objectImages[name] = img
   }
 
-  // 2️⃣ Brushes par canal (brush1.png → canal 1, brush2.png → canal 2, brush3.png → canal 3)
+  // 2️⃣ Couleurs par canal et stockage des canevas
+  const colorMap: Record<string, [number, number, number]> = {
+    '1': [255, 0, 0],   // canal 1 → rouge
+    '2': [0, 255, 0],   // canal 2 → vert
+    '3': [0, 0, 255],   // canal 3 → bleu
+  }
+  const brushCanvases: Record<string, HTMLCanvasElement[]> = {
+    '1': [], '2': [], '3': []
+  }
+  // Charge toutes les images de brushes (grayscale)
   const brushModules = import.meta.glob<string>(
-    '~/assets/modules/4/images/brushes/brush*.png',
+    '~/assets/modules/4/images/brushes/*.png',
     { eager: true, as: 'url' }
   )
-
-  const brushCanvases: Record<string, HTMLImageElement[]> = {
-    '1': [],
-    '2': [],
-    '3': []
-  }
-
-  for (const [path, url] of Object.entries(brushModules)) {
-    const fileName = path.split('/').pop()!
-    const img = new Image()
-    img.src = url
-    if (fileName === 'brush1.png') {
-      brushCanvases['1'].push(img)
-    } else if (fileName === 'brush2.png') {
-      brushCanvases['2'].push(img)
-    } else if (fileName === 'brush3.png') {
-      brushCanvases['3'].push(img)
-    }
-  }
 
   // 3️⃣ Stockage local
   const strokes = ref<Stroke[]>([])
   const objects = ref<ArtObject[]>([])
 
-  // 4️⃣ Dessin
+  // 4️⃣ Fonctions de dessin
   const scale = 3
   function drawStroke(ctx: CanvasRenderingContext2D, s: Stroke) {
-    const imgs = brushCanvases[s.tool_id] || []
-    if (!imgs.length) return
-    const img = imgs[0]  // un seul brush par canal
+    const canvases = brushCanvases[s.tool_id] || []
+    if (canvases.length === 0) return
+    const bc = canvases[0] // un seul brush par canal
     const px = s.x * scale
     const py = s.y * scale
     const size = (s.size || 5) * scale
@@ -93,7 +82,7 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
     ctx.save()
     ctx.translate(px, py)
     ctx.rotate(ang)
-    ctx.drawImage(img, -size / 2, -size / 2, size, size)
+    ctx.drawImage(bc, -size / 2, -size / 2, size, size)
     ctx.restore()
   }
 
@@ -111,7 +100,6 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
     }
   }
 
-  // 5️⃣ Traitement du buffer reçu
   function drawBuffer(buf: {
     newStrokes?: Stroke[]
     removeStrokes?: string[]
@@ -148,38 +136,68 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
     objects.value.forEach(o => drawObject(ctx, o))
   }
 
-  // 6️⃣ Intégration Artineo WS
+  // 5️⃣ Intégration Artineo WS et préparation des brushes
   let intervalId: ReturnType<typeof setInterval> | null = null
 
   onMounted(() => {
     console.log('Module 4: Kinect')
 
-    // attendre que tous les brushes soient chargés
-    const allBrushImages = Object.values(brushCanvases).flat()
-    Promise.all(
-      allBrushImages.map(img =>
-        img.complete
-          ? Promise.resolve()
-          : new Promise<void>(res => { img.onload = () => res() })
-      )
-    ).then(() => {
-      console.log('✅ Brushes chargés par canal')
-    })
+    // Assigner brush1→canal1, brush2→canal2, brush3→canal3
+    const mapping: Record<string, string> = {
+      '1': 'brush1.png',
+      '2': 'brush2.png',
+      '3': 'brush3.png'
+    }
 
+    for (const [toolId, fileName] of Object.entries(mapping)) {
+      // Trouve l'URL correspondant au fichier
+      const entry = Object.entries(brushModules).find(([path]) =>
+        path.endsWith(fileName)
+      )
+      if (!entry) {
+        console.warn(`Brush ${fileName} introuvable pour le canal ${toolId}`)
+        continue
+      }
+      const url = entry[1]
+      const img = new Image()
+      img.src = url
+      img.onload = () => {
+        const cw = img.width, ch = img.height
+        const c = document.createElement('canvas')
+        c.width = cw; c.height = ch
+        const ctx = c.getContext('2d')!
+        ctx.drawImage(img, 0, 0)
+        const idata = ctx.getImageData(0, 0, cw, ch)
+        const d = idata.data
+        const [r, g, b] = colorMap[toolId]
+        for (let i = 0; i < d.length; i += 4) {
+          const lum = d[i]       // niveau de gris
+          d[i] = r           // teinte rouge/vert/bleu
+          d[i + 1] = g
+          d[i + 2] = b
+          d[i + 3] = lum         // alpha = intensité initiale
+        }
+        ctx.putImageData(idata, 0, 0)
+        brushCanvases[toolId].push(c)
+      }
+    }
+
+    // Écoute WS pour recevoir le buffer
     artClient.onMessage(msg => {
       if (msg.action === 'get_buffer' && msg.buffer) {
         drawBuffer(msg.buffer)
       }
     })
 
+    // Récupération initiale et polling HTTP
     artClient.getBuffer()
       .then(buf => drawBuffer(buf))
-      .catch(() => { })
+      .catch(() => {/* ignore */ })
 
     intervalId = setInterval(() => {
       artClient.getBuffer()
         .then(buf => drawBuffer(buf))
-        .catch(() => { })
+        .catch(() => {/* ignore */ })
     }, 100)
   })
 
