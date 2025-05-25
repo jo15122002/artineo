@@ -8,17 +8,15 @@
     ></div>
 
     <!-- 3 blobs générés dynamiquement -->
-    <client-only>
-      <div
-        v-for="i in 3"
-        :key="i"
-        :id="`blob${i}`"
-        class="blob"
-        :style="{ backgroundColor: blobColors[i-1] }"
-      >
-        <span>{{ blobTexts[i-1] }}</span>
-      </div>
-    </client-only>
+    <div
+      v-for="i in 3"
+      :key="i"
+      :id="`blob${i}`"
+      class="blob"
+      :style="{ backgroundColor: blobColors[i-1] }"
+    >
+      <span>{{ blobTexts[i-1] }}</span>
+    </div>
   </div>
 </template>
 
