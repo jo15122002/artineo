@@ -37,7 +37,7 @@ export default function useModule3() {
       backgroundSet.value = buf.current_set
     }
     // 2) textes & couleurs
-    const keys = ['lieu','couleur','emotion'] as const
+    const keys = ['lieux','couleurs','émotions'] as const
     const idx  = (backgroundSet.value || 1) - 1
     blobTexts.value = keys.map((key, i) => {
       const uid = buf[`uid${i+1}` as keyof BufferPayload]
