@@ -5,12 +5,10 @@ import type { BufferPayload } from '~/utils/ArtineoClient'
 
 export default function useModule3() {
   if (!process.client) {
-    const empty = ref<any>(null)
-    return {
-      backgroundSet: empty,
-      blobTexts:     empty,
-      blobColors:    empty
-    }
+    const backgroundSet = ref(1)
+    const blobTexts     = ref<string[]>(['Aucun','Aucun','Aucun'])
+    const blobColors    = ref<string[]>(['#FFA500','#FFA500','#FFA500'])
+    return { backgroundSet, blobTexts, blobColors }
   }
 
   const moduleId = 3
