@@ -1,26 +1,27 @@
-import { useNuxtApp } from '#app'
+// serveur/front/composables/module3.ts
+import { useNuxtApp, useRuntimeConfig } from '#app'
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import type { BufferPayload } from '~/utils/ArtineoClient'
 
 export default function useModule3() {
-  // Stub pour SSR : on initialise aux mêmes valeurs qu’en client
+  // Stub pour SSR
   if (!process.client) {
     const backgroundSet = ref<number>(1)
     const blobTexts     = ref<string[]>(['Aucun', 'Aucun', 'Aucun'])
     const blobColors    = ref<string[]>(['#FFA500', '#FFA500', '#FFA500'])
-    return {
-      backgroundSet,
-      blobTexts,
-      blobColors
-    }
+    return { backgroundSet, blobTexts, blobColors }
   }
 
   const moduleId = 3
   const { $artineo } = useNuxtApp()
+  const { public: { apiUrl } } = useRuntimeConfig()
   if (typeof $artineo !== 'function') {
     throw new Error('Plugin $artineo non injecté — vérifie plugins/artineo.ts')
   }
   const client = $artineo(moduleId)
+
+  // URL HTTP pour fallback
+  const httpBufferUrl = `${apiUrl}/buffer?module=${moduleId}`
 
   // États réactifs
   const assignments   = ref<Record<string, Record<string, string>>>({})
@@ -31,14 +32,14 @@ export default function useModule3() {
 
   let pollTimer: number
 
-  // Pour corriger le pluriel de chaque catégorie
+  // Pour corriger le pluriel
   const pluralMap: Record<string,string> = {
     lieu:    'lieux',
     couleur: 'couleurs',
     emotion: 'emotions'
   }
 
-  // Inverse un mapping label→uid en uid→label (casse ignorée)
+  // Inverse label→uid en uid→label
   function lookupLabel(
     map: Record<string, string>,
     code: string
@@ -50,27 +51,26 @@ export default function useModule3() {
     return inv[code.toLowerCase()] || 'Inconnu'
   }
 
-  // Applique le buffer aux blobs
+  // Applique un buffer reçu
   function updateFromBuffer(buf: BufferPayload) {
     console.log('[Module3] updateFromBuffer', buf)
 
-    // 1) mise à jour du set si changé
+    // changement de set ?
     if (buf.current_set && buf.current_set !== backgroundSet.value) {
       backgroundSet.value = buf.current_set
-      console.log('[Module3] backgroundSet mis à jour →', backgroundSet.value)
+      console.log('[Module3] backgroundSet →', buf.current_set)
     }
 
-    // 2) valeurs par défaut
+    // defaults
     const texts  = ['Aucun', 'Aucun', 'Aucun']
     const colors = ['#FFA500', '#FFA500', '#FFA500']
 
-    // 3) pour chaque catégorie, on cherche dans uid1/2/3
     const keys    = ['lieu','couleur','emotion'] as const
     const uidKeys = ['uid1','uid2','uid3'] as const
     const setIdx  = (backgroundSet.value || 1) - 1
 
     keys.forEach((key, i) => {
-      const cat     = pluralMap[key]         // ex. 'lieux'
+      const cat     = pluralMap[key]
       const map     = assignments.value[cat] || {}
       const correct = answers.value[setIdx]?.[key]?.toLowerCase()
 
@@ -92,13 +92,25 @@ export default function useModule3() {
     blobTexts.value  = texts
     blobColors.value = colors
 
-    console.log('[Module3] blobTexts →', blobTexts.value)
-    console.log('[Module3] blobColors →', blobColors.value)
+    console.log('[Module3] blobTexts →', texts)
+    console.log('[Module3] blobColors →', colors)
+  }
+
+  // Fetch HTTP simple
+  async function fetchBufferHttp(): Promise<BufferPayload> {
+    console.log('[Module3] fetchBufferHttp → GET', httpBufferUrl)
+    const res = await fetch(httpBufferUrl)
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`)
+    }
+    const json = await res.json() as { buffer: BufferPayload }
+    console.log('[Module3] fetchBufferHttp reçu →', json.buffer)
+    return json.buffer
   }
 
   onMounted(async () => {
+    // 1) config HTTP
     console.log('[Module3] onMounted: début fetchConfig')
-    // a) fetchConfig
     try {
       const cfg = await client.fetchConfig()
       console.log('[Module3] fetchConfig réussi →', cfg)
@@ -109,32 +121,31 @@ export default function useModule3() {
       console.error('[Module3] fetchConfig error', e)
     }
 
-    // b) réception WS
+    // 2) réception WS
     client.onMessage(msg => {
       if (msg.action === 'get_buffer') {
-        console.log('[Module3] WS reçu get_buffer →', msg.buffer)
+        console.log('[Module3] WS get_buffer →', msg.buffer)
         updateFromBuffer(msg.buffer as BufferPayload)
       }
     })
 
-    // c) fallback HTTP + polling
+    // 3) fallback initial via HTTP
     console.log('[Module3] récupération initiale du buffer via HTTP')
     try {
-      const buf0 = await client.getBuffer()
-      console.log('[Module3] getBuffer initial →', buf0)
+      const buf0 = await fetchBufferHttp()
       updateFromBuffer(buf0)
     } catch (e) {
-      console.warn('[Module3] getBuffer initial error', e)
+      console.warn('[Module3] fetchBufferHttp initial error', e)
     }
 
+    // 4) polling toutes les secondes via HTTP
     pollTimer = window.setInterval(async () => {
-      console.log('[Module3] polling getBuffer...')
+      console.log('[Module3] polling fetchBufferHttp...')
       try {
-        const buf = await client.getBuffer()
-        console.log('[Module3] getBuffer polling →', buf)
+        const buf = await fetchBufferHttp()
         updateFromBuffer(buf)
       } catch (e) {
-        console.warn('[Module3] getBuffer polling error', e)
+        console.warn('[Module3] fetchBufferHttp polling error', e)
       }
     }, 1000)
   })
@@ -142,7 +153,7 @@ export default function useModule3() {
   onBeforeUnmount(() => {
     clearInterval(pollTimer)
     client.close()
-    console.log('[Module3] onBeforeUnmount: polling arrêté, client fermé')
+    console.log('[Module3] onBeforeUnmount: polling stoppé, client fermé')
   })
 
   return {
