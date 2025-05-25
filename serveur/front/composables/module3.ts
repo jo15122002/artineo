@@ -30,45 +30,53 @@ export default function useModule3() {
 
   let pollTimer: number
 
-  // inverse le mapping pour lookup rapide, insensible à la casse
+  // Retourne le label correspondant au code, insensible à la casse
   function lookupLabel(
     map: Record<string, string>,
-    uid: string
+    code: string
   ): string {
     const inv: Record<string, string> = {}
-    for (const [label, code] of Object.entries(map)) {
-      inv[code.toLowerCase()] = label
+    for (const [label, uid] of Object.entries(map)) {
+      inv[uid.toLowerCase()] = label
     }
-    return inv[uid.toLowerCase()] || 'Inconnu'
+    return inv[code.toLowerCase()] || 'Inconnu'
   }
 
-  // Met à jour blobs depuis le buffer
+  // Met à jour blobs depuis le buffer, en cherchant la carte dans toutes les slots
   function updateFromBuffer(buf: BufferPayload) {
-    // 1) current_set → background
+    // 1) background
     if (buf.current_set && buf.current_set !== backgroundSet.value) {
       backgroundSet.value = buf.current_set
     }
 
-    // 2) textes & couleurs
+    // 2) initialise à "Aucun" / orange
+    const texts = ['Aucun', 'Aucun', 'Aucun']
+    const colors = ['#FFA500', '#FFA500', '#FFA500']
+
+    // 3) pour chaque catégorie, regarde si l'une des uidX correspond
     const keys = ['lieu','couleur','emotion'] as const
-    // index pour answers
+    const uidKeys = ['uid1','uid2','uid3'] as const
     const idx = (backgroundSet.value || 1) - 1
-
-    blobTexts.value = keys.map((key, i) => {
-      const uid = buf[`uid${i+1}` as keyof BufferPayload]
-      if (!uid) return 'Aucun'
+    keys.forEach((key, i) => {
       const map = assignments.value[`${key}s`] || {}
-      return lookupLabel(map, uid as string)
+      for (const uk of uidKeys) {
+        const code = buf[uk as keyof BufferPayload]
+        if (code) {
+          const label = lookupLabel(map, code as string)
+          if (label !== 'Inconnu') {
+            texts[i] = label
+            const correct = answers.value[idx]?.[key]
+            colors[i] = (code as string).toLowerCase() === correct?.toLowerCase()
+              ? '#00FF00'
+              : '#FF0000'
+            break
+          }
+        }
+      }
     })
 
-    blobColors.value = keys.map((key, i) => {
-      const uid = buf[`uid${i+1}` as keyof BufferPayload]
-      if (!uid) return '#FFA500'
-      const correct = answers.value[idx]?.[key]
-      return uid.toLowerCase() === correct?.toLowerCase()
-        ? '#00FF00'
-        : '#FF0000'
-    })
+    blobTexts.value  = texts
+    blobColors.value = colors
   }
 
   onMounted(async () => {
