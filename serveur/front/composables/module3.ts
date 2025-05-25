@@ -52,9 +52,12 @@ export default function useModule3() {
 
   // Applique le buffer aux blobs
   function updateFromBuffer(buf: BufferPayload) {
+    console.log('[Module3] updateFromBuffer', buf)
+
     // 1) mise à jour du set si changé
     if (buf.current_set && buf.current_set !== backgroundSet.value) {
       backgroundSet.value = buf.current_set
+      console.log('[Module3] backgroundSet mis à jour →', backgroundSet.value)
     }
 
     // 2) valeurs par défaut
@@ -88,14 +91,20 @@ export default function useModule3() {
 
     blobTexts.value  = texts
     blobColors.value = colors
+
+    console.log('[Module3] blobTexts →', blobTexts.value)
+    console.log('[Module3] blobColors →', blobColors.value)
   }
 
   onMounted(async () => {
+    console.log('[Module3] onMounted: début fetchConfig')
     // a) fetchConfig
     try {
       const cfg = await client.fetchConfig()
+      console.log('[Module3] fetchConfig réussi →', cfg)
       assignments.value = cfg.assignments || {}
       answers.value     = cfg.answers     || []
+      console.log('[Module3] assignments & answers initialisés')
     } catch (e) {
       console.error('[Module3] fetchConfig error', e)
     }
@@ -103,23 +112,29 @@ export default function useModule3() {
     // b) réception WS
     client.onMessage(msg => {
       if (msg.action === 'get_buffer') {
+        console.log('[Module3] WS reçu get_buffer →', msg.buffer)
         updateFromBuffer(msg.buffer as BufferPayload)
       }
     })
 
     // c) fallback HTTP + polling
+    console.log('[Module3] récupération initiale du buffer via HTTP')
     try {
       const buf0 = await client.getBuffer()
+      console.log('[Module3] getBuffer initial →', buf0)
       updateFromBuffer(buf0)
-    } catch {
-      // silent
+    } catch (e) {
+      console.warn('[Module3] getBuffer initial error', e)
     }
+
     pollTimer = window.setInterval(async () => {
+      console.log('[Module3] polling getBuffer...')
       try {
         const buf = await client.getBuffer()
+        console.log('[Module3] getBuffer polling →', buf)
         updateFromBuffer(buf)
-      } catch {
-        // silent
+      } catch (e) {
+        console.warn('[Module3] getBuffer polling error', e)
       }
     }, 1000)
   })
@@ -127,6 +142,7 @@ export default function useModule3() {
   onBeforeUnmount(() => {
     clearInterval(pollTimer)
     client.close()
+    console.log('[Module3] onBeforeUnmount: polling arrêté, client fermé')
   })
 
   return {
