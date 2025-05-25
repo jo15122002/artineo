@@ -24,7 +24,7 @@
             "Rivière",
             "Restaurant",
             "Marché",
-            "Océan",
+            "Bord de mer",
             "Montagne",
             "Maison",
             "Atelier"
@@ -41,7 +41,7 @@
             "Violet",
             "Beige"
         ],
-        "émotions": [
+        "emotions": [
             "Curiosité",
             "Calme",
             "Monotonie",
@@ -57,7 +57,7 @@
     "assignments": {
         "lieux": {
             "Restaurant": "04f11f63bf2a81",
-            "Océean": "04579963bf2a81",
+            "Bord de mer": "04579963bf2a81",
             "Montagne": "04532663bf2a81",
             "Rivière": "049bb363bf2a81",
             "Campagne": "042ffb62bf2a81",
@@ -79,7 +79,7 @@
             "Marron": "04a1b963bf2a81",
             "Orange": "04218c63bf2a81"
         },
-        "émotions": {
+        "emotions": {
             "Dégoût": "04729f63bf2a81",
             "colère": "0446c463bf2a81",
             "fatigue": "04c27963bf2a81",
