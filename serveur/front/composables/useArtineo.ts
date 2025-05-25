@@ -2,9 +2,17 @@
 import { useRuntimeConfig } from '#app'
 import { ArtineoClient } from '~/utils/ArtineoClient'
 
+const clients: Record<number, ArtineoClient> = {}
+
 export function useArtineo(moduleId: number) {
   const { public: { apiUrl, wsUrl } } = useRuntimeConfig()
-  const client = new ArtineoClient(moduleId, apiUrl, wsUrl)
+
+  // Si une instance existe déjà pour ce moduleId, on la réutilise
+  if (!clients[moduleId]) {
+    clients[moduleId] = new ArtineoClient(moduleId, apiUrl, wsUrl)
+  }
+
+  const client = clients[moduleId]
 
   // Expose les méthodes
   return {
@@ -13,6 +21,9 @@ export function useArtineo(moduleId: number) {
     getBuffer:   () => client.getBuffer(),
     setBuffer:   (buf: any) => client.setBuffer(buf),
     onMessage:   (fn: (msg: any) => void) => client.onMessage(fn),
-    close:       () => client.close(),
+    close:       () => {
+      client.close()
+      delete clients[moduleId]  // supprime l’instance du cache
+    },
   }
 }

@@ -199,5 +199,7 @@ export class ArtineoClient extends EventEmitter {
     clearInterval(this.pingTimer)
     this.ws?.close()
     this.removeAllListeners()
+    this.ws = undefined
+    console.log(`[ArtineoClient] WS connection closed for module ${this.moduleId}`)  // ← log closure
   }
 }
