@@ -1,14 +1,17 @@
 <template>
   <div class="page-3rfid">
-    <img :src="backgroundUrl" class="painting" />
+    <img :src="backgroundUrl" alt="painting" class="painting" />
 
     <section class="choices">
       <button
         v-for="(label, i) in blobTexts"
         :key="i"
-        :class="['choice', stateClasses[i], pressed && 'pressed']"
+        :class="['choice-wrapper', stateClasses[i]]"
+        @click="forcedPressed = !forcedPressed"
       >
+        <span class="choice" :class="forcedPressed && 'pressed'">
         {{ label }}
+        </span>
       </button>
     </section>
   </div>
@@ -23,6 +26,8 @@ definePageMeta({ layout: 'module' })
 
 const { public: { apiUrl } } = useRuntimeConfig()
 const { backgroundSet, blobTexts, stateClasses, pressed } = useModule3()
+
+const forcedPressed = ref(false)
 
 const backgroundUrl = computed(
   () => `${apiUrl}/getAsset?module=3&path=tableau${backgroundSet.value}.png`
