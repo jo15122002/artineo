@@ -28,6 +28,7 @@ from keyboard_selector import KeyboardChannelSelector
 from kinect_interface import KinectInterface
 from object_detector import ObjectDetector
 from payload_sender import PayloadSender
+from roi_calibrator import RoiCalibrator
 from shape_classifier import ShapeClassifier
 from stroke_confirm_tracker import StrokeConfirmTracker
 from stroke_lifetimer import StrokeLifeTimer
@@ -208,6 +209,15 @@ class MainController:
                     await asyncio.sleep(0.01)
                     continue
                 frame = self.kinect.get_depth_frame()
+                
+                if self.config.calibrate_roi:
+                    calib = RoiCalibrator(self.kinect, scale=2)
+                    rx, ry = calib.run()
+                    self.config.roi_x = rx
+                    self.config.roi_y = ry
+                    logger.info(f"ROI calibrated → x={rx}, y={ry}")
+                    # Pour éviter de recalibrer à chaque boucle
+                    self.config.calibrate_roi = False
                 
                 if self.display:
                     self.display.show('depth', frame)

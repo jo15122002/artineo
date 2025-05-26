@@ -14,9 +14,9 @@ class Config(BaseModel):
     )
 
     # ─────────── ROI ────────────
-    roi_x0: int = Field(160, ge=0, description="Left X coordinate of ROI")
+    roi_x0: int = Field(175, ge=0, description="Left X coordinate of ROI")
     roi_y0: int = Field(130, ge=0, description="Top Y coordinate of ROI")
-    roi_x1: int = Field(410, gt=0, description="Right X coordinate of ROI")
+    roi_x1: int = Field(380, gt=0, description="Right X coordinate of ROI")
     roi_y1: int = Field(300, gt=0, description="Bottom Y coordinate of ROI")
 
     # ───────── Templates ─────────
@@ -71,6 +71,9 @@ class Config(BaseModel):
     # ─── Computed read-only fields ───
     roi_width: int | None = Field(None, description="Computed width of ROI")
     roi_height: int | None = Field(None, description="Computed height of ROI")
+    calibrate_roi: bool = Field(
+        False, description="If true, add a window to calibrate ROI dimensions"
+    )
 
     # ─── Mode debug / bypass WS ───
     debug_mode: bool = Field(
