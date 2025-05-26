@@ -7,9 +7,8 @@
         v-for="(label, i) in blobTexts"
         :key="i"
         :class="['choice-wrapper', stateClasses[i]]"
-        @click="forcedPressed = !forcedPressed"
       >
-        <span class="choice" :class="forcedPressed && 'pressed'">
+        <span class="choice" :class="pressed && 'pressed'">
         {{ label }}
         </span>
       </button>
@@ -26,8 +25,6 @@ definePageMeta({ layout: 'module' })
 
 const { public: { apiUrl } } = useRuntimeConfig()
 const { backgroundSet, blobTexts, stateClasses, pressed } = useModule3()
-
-const forcedPressed = ref(false)
 
 const backgroundUrl = computed(
   () => `${apiUrl}/getAsset?module=3&path=tableau${backgroundSet.value}.png`
