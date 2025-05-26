@@ -13,7 +13,7 @@ class Config(BaseModel):
         frozen=True        # make config immutable
     )
 
-    # ─────────── ROI ────────────
+    # ─────────── ROI SIZE ────────────
     roi_x0: int = Field(175, ge=0, description="Left X coordinate of ROI")
     roi_y0: int = Field(130, ge=0, description="Top Y coordinate of ROI")
     roi_x1: int = Field(380, gt=0, description="Right X coordinate of ROI")

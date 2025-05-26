@@ -29,7 +29,7 @@ class RoiCalibrator:
                 time.sleep(0.01)
                 continue
 
-            frame = self.kinect._get_raw_depth().astype(np.uint16)
+            frame = self.kinect._get_raw_depth()
             # Normalisation + conversion en 8-bits
             disp = cv2.normalize(frame, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
             # Agrandissement

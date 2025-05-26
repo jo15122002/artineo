@@ -213,8 +213,6 @@ class MainController:
                 if self.config.calibrate_roi:
                     calib = RoiCalibrator(self.kinect, scale=2)
                     rx, ry = calib.run()
-                    self.config.roi_x = rx
-                    self.config.roi_y = ry
                     logger.info(f"ROI calibrated → x={rx}, y={ry}")
                     # Pour éviter de recalibrer à chaque boucle
                     self.config.calibrate_roi = False

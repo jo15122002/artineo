@@ -39,11 +39,6 @@ class BrushStrokeDetector:
             self.mouse_x = x // 3
             self.mouse_y = y // 3
 
-    def _resize_brush(self, size: float) -> np.ndarray:
-        """Redimensionne le brush selon la taille détectée et le facteur brush_scale"""
-        s = max(3, min(1000, int(size * self.brush_scale)))
-        return cv2.resize(self.brush, (s, s), interpolation=cv2.INTER_AREA)
-
     def detect(self, composite: np.ndarray, tool: str) -> List[Dict]:
         strokes = []
         # on travaille sur la composite déjà colorée

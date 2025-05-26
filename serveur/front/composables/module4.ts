@@ -96,6 +96,11 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
     ctx.save()
     ctx.translate(px, py)
     ctx.rotate(ang)
+
+    if (s.tool_id === "1") {
+      ctx.scale(1.5, 1.5)
+    }
+
     ctx.drawImage(img, -size / 2, -size / 2, size, size)
     ctx.restore()
   }
