@@ -208,6 +208,11 @@ class MainController:
                     await asyncio.sleep(0.01)
                     continue
                 frame = self.kinect.get_depth_frame()
+                
+                if self.display:
+                    self.display.show('depth', frame)
+                    if self.display.process_events() == ord('q'):
+                        break
 
                 # --- 3) Baseline ---
                 try:

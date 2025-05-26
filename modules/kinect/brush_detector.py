@@ -29,8 +29,8 @@ class BrushStrokeDetector:
         self.mouse_x = 0
         self.mouse_y = 0
         # initialisation de la fenêtre dist en DEBUG
-        cv2.namedWindow('dist', cv2.WINDOW_NORMAL)
-        cv2.setMouseCallback('dist', self._mouse_cb)
+        # cv2.namedWindow('dist', cv2.WINDOW_NORMAL)
+        # cv2.setMouseCallback('dist', self._mouse_cb)
 
     def _mouse_cb(self, event, x, y, flags, param):
         # callback pour capturer la position du curseur
@@ -63,10 +63,9 @@ class BrushStrokeDetector:
         skel = cv2.ximgproc.thinning(mask)
 
         if self.config.debug_mode:
-            disp = cv2.normalize(raw_dist, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
-            for name, img in (("mask", mask), ("dist", disp), ("skel", skel)):
+            for name, img in (("mask", mask), ("skel", skel)):
                 big = cv2.resize(img,
-                                 (img.shape[1]*2, img.shape[0]*2),
+                                 (img.shape[1], img.shape[0]),
                                  interpolation=cv2.INTER_NEAREST)
                 cv2.imshow(name, big)
             cv2.waitKey(1)

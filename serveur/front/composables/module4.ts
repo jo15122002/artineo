@@ -70,7 +70,7 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
 
   // 3️⃣ Mapping des couleurs d’overlay par bouton
   const buttonColors: Record<number, string> = {
-    1: 'rgba(255, 0,   0,   0.3)',
+    1: 'rgba(83, 160,   236,   0.2)',
     2: 'rgba(0,   255, 0,   0.3)',
     3: 'rgba(0,   0,   255, 0.3)',
     4: 'rgba(255, 255, 0,   0.3)',
@@ -123,6 +123,9 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
     removeObjects?: string[]
     button?: number
   }) {
+    
+    if (!buf) return
+
     // 7.1) Gestion du bouton
     if (typeof buf.button === 'number') {
       currentButton = buf.button
@@ -169,28 +172,37 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
   }
 
   // 8️⃣ Intégration Artineo WS + polling HTTP fallback
-  let intervalId: ReturnType<typeof setInterval> | null = null
+  let intervalId: number | null = null
 
-  onMounted(() => {
+  onMounted(async () => {
     // 8.1) via WebSocket
     artClient.onMessage(msg => {
       if (msg.action === 'get_buffer' && msg.buffer) {
         drawBuffer(msg.buffer)
       }
     })
+
     // 8.2) HTTP fallback initial + intervalle
-    artClient.getBuffer()
-      .then(buf => drawBuffer(buf))
-      .catch(() => { })
-    intervalId = setInterval(() => {
-      artClient.getBuffer()
-        .then(buf => drawBuffer(buf))
-        .catch(() => { })
-    }, 100)
+    try {
+      const buff = await artClient.getBuffer()
+      drawBuffer(buff)
+    } catch (e) {
+      console.error('[Artineo] Error fetching initial buffer:', e)
+    }
+    
+    // 8.3) Intervalle de polling
+    intervalId = window.setInterval(async () => {
+      try {
+        const buff = await artClient.getBuffer()
+        drawBuffer(buff)
+      } catch (e) {
+        console.error('[Artineo] Error fetching buffer:', e)
+      }
+    }, 100) // 30 FPS par défaut
   })
 
   onBeforeUnmount(() => {
-    // if (intervalId !== null) clearInterval(intervalId)
+    if (intervalId !== null) clearInterval(intervalId)
     artClient.close()
   })
 
