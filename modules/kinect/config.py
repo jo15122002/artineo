@@ -14,9 +14,9 @@ class Config(BaseModel):
     )
 
     # ─────────── ROI SIZE ────────────
-    roi_x0: int = Field(175, ge=0, description="Left X coordinate of ROI")
-    roi_y0: int = Field(130, ge=0, description="Top Y coordinate of ROI")
-    roi_x1: int = Field(380, gt=0, description="Right X coordinate of ROI")
+    roi_x0: int = Field(140, ge=0, description="Left X coordinate of ROI")
+    roi_y0: int = Field(100, ge=0, description="Top Y coordinate of ROI")
+    roi_x1: int = Field(445, gt=0, description="Right X coordinate of ROI")
     roi_y1: int = Field(300, gt=0, description="Bottom Y coordinate of ROI")
 
     # ───────── Templates ─────────

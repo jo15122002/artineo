@@ -2,65 +2,129 @@ import uasyncio as asyncio
 from machine import Pin
 from ArtineoClientMicro import ArtineoClient
 from utime import sleep_ms
+import urequests
+import network, usocket
 
-# ─── CONFIGURATION ──────────────────────────────────────────────────────────────
-
-MODULE_ID = "4" 
+# ————————————————————————————————————————————————————————————————
+# CONFIGURATION réseau & module
+# ————————————————————————————————————————————————————————————————
+MODULE_ID = 4
 HOST      = "192.168.1.142"
 PORT      = 8000
 
-# ─── INITIALISATION DU CLIENT Artineo ────────────────────────────────────────────
-client = ArtineoClient(
-    module_id = MODULE_ID,
-    host      = HOST,
-    port      = PORT,
-    ssid      = SSID,
-    password  = PASSWORD,
-)
+# ————————————————————————————————————————————————————————————————
+# ÉTAT GLOBAL pour la détection d'appuis
+# ————————————————————————————————————————————————————————————————
+button1_pressed = False
+button2_pressed = False
 
-# ─── HANDLER POUR L’APPUI SUR BOUTON ─────────────────────────────────────────────
-def handle_press(pin):
-    # front descendant -> pin.value() passe de 1→0 à l’appui
-    if pin.value() == 0:
-        name = "button1" if pin is button1 else "button2"
-        print(f"🔘 {name} appuyé")
-        # envoi asynchrone (créé une tâche uasyncio)
+def button_irq(pin):
+    """
+    IRQ handler : on tombe ici sur front descendant (appui).
+    On ne fait QUE lever un drapeau, pas d'envoi direct.
+    """
+    global button1_pressed, button2_pressed
+    if pin.value() == 1:
+        sleep_ms(50)  # anti-rebond
+        if pin is button1:
+            button1_pressed = True
+        elif pin is button2:
+            button2_pressed = True
+
+async def ws_connect_with_retry(client, retries=5, base_delay=2):
+    """
+    Tente plusieurs fois de se connecter au WS,
+    en réessayant Wifi+WS avec back-off exponentiel.
+    """
+    delay = base_delay
+    for attempt in range(1, retries + 1):
         try:
-            asyncio.create_task(client.set_buffer({"button": name}))
-        except Exception as e:
-            print("Erreur scheduling send:", e)
-        # anti-rebond logiciel
-        sleep_ms(50)
+            print(f"WS connect, tentative #{attempt}…")
+            await client.connect_ws()
+            print("→ WebSocket OK")
+            return True
+        except OSError as e:
+            print(f"!!! WS connexion échouée ({e}), retry dans {delay}s")
+            # on tente de reconnecter le Wi-Fi avant de réessayer
+            try:
+                client.connect_wifi()
+                print("→ Wi-Fi re-connecté")
+            except Exception as wifi_e:
+                print(f"⚠️ échec reconnection Wi-Fi : {wifi_e}")
+            await asyncio.sleep(delay)
+            delay *= 2
+    return False
 
-# ─── PROGRAMME PRINCIPAL ASYNCHRONE ───────────────────────────────────────────────
-async def main():
-    # 1) connexion Wi-Fi
-    client.connect_wifi()
-    print("Wi-Fi connecté ▶", client.ssid)
+async def async_main():
+    global button1, button2, button1_pressed, button2_pressed
 
+    # 1) Instanciation du client
+    client = ArtineoClient(
+        module_id = MODULE_ID,
+        host      = HOST,
+        port      = PORT,
+        ssid      = SSID,
+        password  = PASSWORD,
+    )
+
+    # 2) Connexion Wi-Fi (blocante)
     try:
-        # Test rapide du GET /config
-        cfg = await client.fetch_config()
-        print("✅ HTTP OK, config reçue:", cfg)
+        client.connect_wifi()
+        print("✅ Wi-Fi connecté :", SSID)
     except Exception as e:
-        print("❌ Échec HTTP :", e)
+        print("❌ Impossible de se connecter au Wi-Fi :", e)
+        return
 
-    # 2) ouverture du WebSocket
-    await client.connect_ws()
-    print("WebSocket open ▶", client.ws_url)
+    # 3) Connexion WebSocket avec retry
+    ok = await ws_connect_with_retry(client, retries=4, base_delay=1)
+    if not ok:
+        print("❌ Échec de la connexion WS après plusieurs tentatives")
+        return
 
-    # 3) configuration des GPIO
-    global button1, button2
+    # 4) (Optionnel) récupération de la config distante
+    try:
+        cfg = await client.fetch_config()
+        print("✅ Config reçue :", cfg)
+    except Exception as e:
+        print("⚠️ fetch_config a échoué :", e)
+
+    # 5) Envoi d'un buffer initial pour « annoncer » l'état au serveur
+    await client.set_buffer({"button1": False, "button2": False})
+
+    # 6) Setup des GPIO
     button1 = Pin(25, Pin.IN, Pin.PULL_UP)
     button2 = Pin(26, Pin.IN, Pin.PULL_UP)
+    # IRQ front descendant = appui
+    button1.irq(trigger=Pin.IRQ_RISING, handler=button_irq)
+    button2.irq(trigger=Pin.IRQ_RISING, handler=button_irq)
+    print("✅ Boutons initialisés")
 
-    # 4) attacher les IRQ front descendant (appui)
-    button1.irq(trigger=Pin.IRQ_FALLING, handler=handle_press)
-    button2.irq(trigger=Pin.IRQ_FALLING, handler=handle_press)
-
-    # 5) boucle infinie pour garder l’event-loop actif
+    # 7) Boucle principale : envoi des événements de bouton hors IRQ
     while True:
-        await asyncio.sleep(1)
+        if button1_pressed or button2_pressed:
+            payload = {}
+            if button1_pressed:
+                print("🔘 Bouton 1 appuyé → envoi WS")
+                payload = {"button": 1}
+            if button2_pressed:
+                print("🔘 Bouton 2 appuyé → envoi WS")
+                payload = {"button": 2}
+            # remise à zéro des drapeaux
+            button1_pressed = False
+            button2_pressed = False
 
-# ─── DÉMARRAGE DE L’APPLICATION ─────────────────────────────────────────────────
-asyncio.run(main())
+            # envoi et gestion d'éventuelle reconnexion
+            try:
+                await client.set_buffer(payload)
+            except Exception as e:
+                print("⚠️ Envoi set_buffer a échoué :", e)
+                # on retentera naturellement au prochain cycle
+
+        # on ne bouffe pas trop de CPU
+        await asyncio.sleep_ms(100)
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(async_main())
+    except Exception as e:
+        print("🔥 Erreur fatale dans async_main :", e)
