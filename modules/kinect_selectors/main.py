@@ -2,8 +2,6 @@ import uasyncio as asyncio
 from machine import Pin
 from ArtineoClientMicro import ArtineoClient
 from utime import sleep_ms
-import urequests
-import network, usocket
 
 # ————————————————————————————————————————————————————————————————
 # CONFIGURATION réseau & module
