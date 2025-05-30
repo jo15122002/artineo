@@ -164,6 +164,24 @@ async def get_asset(
     media_type, _ = mimetypes.guess_type(full_path)
     return FileResponse(full_path, media_type=media_type)
 
+MEDIA_EXTENSIONS = ('.mp3', '.wav', '.ogg', '.mp4', '.webm', '.mov')
+
+@app.get("/media")
+async def get_media(module: int = Query(..., description="ID du module")):
+    base = os.path.join("assets", f"module{module}")
+    if not os.path.isdir(base):
+        raise HTTPException(status_code=404, detail=f"Module {module} introuvable")
+    medias = []
+    for fn in sorted(os.listdir(base)):
+        ext = os.path.splitext(fn)[1].lower()
+        if ext in MEDIA_EXTENSIONS:
+            medias.append({
+                "url": f"/assets/module{module}/{fn}",
+                "type": mimetypes.guess_type(fn)[0] or "application/octet-stream",
+                "title": fn
+            })
+    return JSONResponse(content={"media": medias})
+
 
 # --------------------------------------------------
 # Gestion des connexions WebSocket
