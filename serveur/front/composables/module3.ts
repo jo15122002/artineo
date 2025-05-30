@@ -1,3 +1,4 @@
+// front/composables/module3.ts
 import { useNuxtApp, useRuntimeConfig } from '#app'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import type { BufferPayload } from '~/utils/ArtineoClient'
@@ -6,10 +7,11 @@ export default function useModule3() {
   // Stub SSR
   if (!process.client) {
     const backgroundSet = ref<number>(1)
-    const blobTexts    = ref<string[]>(['Aucun', 'Aucun', 'Aucun'])
-    const states       = ref<('default')[]>(['default','default','default'])
-    const stateClasses = computed(() => states.value.map(s => `state-${s}`))
-    return { backgroundSet, blobTexts, states, stateClasses }
+    const blobTexts     = ref<string[]>(['Aucun','Aucun','Aucun'])
+    const states        = ref<Array<'default'|'correct'|'wrong'>>(['default','default','default'])
+    const stateClasses  = computed(() => states.value.map(s => `state-${s}`))
+    const pressedStates = ref<boolean[]>([false,false,false])
+    return { backgroundSet, blobTexts, stateClasses, pressedStates }
   }
 
   const moduleId = 3
@@ -17,23 +19,19 @@ export default function useModule3() {
   const { public: { apiUrl } } = useRuntimeConfig()
   const client = $artineo(moduleId)
 
-  // Reactive state
   const backgroundSet = ref<number>(1)
-  const blobTexts     = ref<string[]>(['Aucun', 'Aucun', 'Aucun'])
-  const blobColors    = ref<string[]>(['#FFA500', '#FFA500', '#FFA500'])
+  const blobTexts     = ref<string[]>(['Aucun','Aucun','Aucun'])
   const states        = ref<Array<'default'|'correct'|'wrong'>>(['default','default','default'])
   const stateClasses  = computed(() => states.value.map(s => `state-${s}`))
+  const pressedStates = ref<boolean[]>([false,false,false])
+  let prevPressed = false
 
-  const httpBufferUrl = `${apiUrl}/buffer?module=${moduleId}`
-
-  // Pluriels pour lookup
   const pluralMap: Record<string,string> = {
     lieu:    'lieux',
     couleur: 'couleurs',
     emotion: 'emotions'
   }
 
-  // Inverse label→uid en uid→label
   function lookupLabel(map: Record<string,string>, code: string): string {
     const inv: Record<string,string> = {}
     for (const [label, uid] of Object.entries(map)) {
@@ -42,107 +40,93 @@ export default function useModule3() {
     return inv[code.toLowerCase()] || 'Inconnu'
   }
 
-  // Applique le buffer reçu via WS ou HTTP
   function updateFromBuffer(buf: BufferPayload) {
-    // Changement de set ?
+    // Changement de set
     if (buf.current_set && buf.current_set !== backgroundSet.value) {
       backgroundSet.value = buf.current_set
     }
 
-    // Defaults
+    // Construire textes & couleurs
     const texts  = ['Aucun','Aucun','Aucun']
     const colors = ['#FFA500','#FFA500','#FFA500']
-
     const keys    = ['lieu','couleur','emotion'] as const
-    const uidKeys = ['uid1','uid2','uid3'] as const
+    const uidKeys = ['uid1','uid2','uid3']      as const
     const setIdx  = (backgroundSet.value || 1) - 1
+    const answers = (client as any).answers || []
 
-    // Remplissage des textes & couleurs
     keys.forEach((key,i) => {
-      const cat     = pluralMap[key]
-      const map     = (client as any).assignments?.[cat] || {}
-      const correct = (client as any).answers?.[setIdx]?.[key]?.toLowerCase()
+      const cat        = pluralMap[key]
+      const assignMap  = (client as any).assignments?.[cat] || {}
+      const correctUid = answers[setIdx]?.[key]?.toLowerCase()
       for (const uk of uidKeys) {
         const code = buf[uk as keyof BufferPayload]
         if (typeof code === 'string') {
-          const label = lookupLabel(map, code)
-          if (label !== 'Inconnu') {
-            texts[i]  = label
-            colors[i] = code.toLowerCase() === correct
-              ? '#00FF00'
-              : '#FF0000'
+          const lbl = lookupLabel(assignMap, code)
+          if (lbl !== 'Inconnu') {
+            texts[i]  = lbl
+            colors[i] = code.toLowerCase() === correctUid ? '#00FF00' : '#FF0000'
             break
           }
         }
       }
     })
+    blobTexts.value = texts
 
-    blobTexts.value  = texts
-    blobColors.value = colors
+    // Sur front de button_pressed → appliquer états + pressing
+    if (buf.button_pressed && !prevPressed) {
+      // 1) Mettre à jour les états (correct/wrong)
+      states.value = colors.map(c =>
+        c === '#00FF00' ? 'correct'
+        : c === '#FF0000' ? 'wrong'
+        : 'default'
+      )
+      // 2) Enfonce toutes les réponses au départ
+      pressedStates.value = [true, true, true]
 
-    // États visuels
-    if (buf.button_pressed) {
-      // Au clic : verts/rouges
-      states.value = colors.map(c => c === '#00FF00' ? 'correct' : c === '#FF0000' ? 'wrong' : 'default')
-      // Après 2s : on repasse les "wrong" en default
+      // 3) Après 2s, relaie les wrong & débloque les enfoncements
       setTimeout(() => {
+        // repasse les wrong en default
         states.value = states.value.map(s => s === 'wrong' ? 'default' : s)
+        // ne laisse enfoncé que les bons (état correct)
+        pressedStates.value = states.value.map(s => s === 'correct')
       }, 2000)
-    } else {
-      // Avant validation : tous en default
-      states.value = ['default','default','default']
     }
+
+    prevPressed = !!buf.button_pressed
   }
 
-  // Fetch HTTP en fallback
   async function fetchBufferHttp(): Promise<BufferPayload> {
-    const res = await fetch(httpBufferUrl)
+    const res  = await fetch(`${apiUrl}/buffer?module=${moduleId}`)
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    const json = await res.json() as { buffer: BufferPayload }
-    return json.buffer
+    const js  = await res.json() as { buffer: BufferPayload }
+    return js.buffer
   }
 
   onMounted(async () => {
-    // 1) Config initiale
+    // 1) Récup config (assignments & answers)
     try {
       const cfg = await client.fetchConfig()
-      // Stockez assignments & answers localement pour lookupLabel
       ;(client as any).assignments = cfg.assignments || {}
       ;(client as any).answers     = cfg.answers     || []
     } catch {}
 
-    // 2) WS receive
+    // 2) WS push
     client.onMessage((msg: any) => {
       if (msg.action === 'get_buffer') {
         updateFromBuffer(msg.buffer as BufferPayload)
       }
     })
 
-    // 3) Fallback initial HTTP
+    // 3) Fallback HTTP initial + polling
     try {
-      const buf0 = await fetchBufferHttp()
-      updateFromBuffer(buf0)
+      updateFromBuffer(await fetchBufferHttp())
     } catch {}
-
-    // 4) Polling HTTP toutes les secondes
     const poll = setInterval(async () => {
-      try {
-        const buf = await fetchBufferHttp()
-        updateFromBuffer(buf)
-      } catch {}
+      try { updateFromBuffer(await fetchBufferHttp()) } catch {}
     }, 1000)
 
-    onBeforeUnmount(() => {
-      clearInterval(poll)
-      client.close()
-    })
+    onBeforeUnmount(() => clearInterval(poll))
   })
 
-  return {
-    backgroundSet,
-    blobTexts,
-    blobColors,
-    states,
-    stateClasses
-  }
+  return { backgroundSet, blobTexts, stateClasses, pressedStates }
 }

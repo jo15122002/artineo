@@ -32,13 +32,13 @@
 .choices {
   display: flex;
   height: 20%;
-  gap:7%;
+  gap: 7%;
   justify-content: center;
   align-items: center;
   background: center / cover no-repeat url("./choices_bg.jpg");
 }
 
-/* ---------- BOUTON ------------------------------------------------------ */
+/* ---------- BOUTON WRAPPER ------------------------------------------------------ */
 .choice-wrapper {
   position: relative;
   width: 20%;
@@ -48,19 +48,27 @@
   padding: 8px;
   height: 60%;
   border: none;
-  border-radius:8px;
+  border-radius: 8px;
+  /* fond jaune par défaut */
   background: var(--col-yellow);
+  transition: background 0.25s ease;
 }
 
-.choice{
-  background:#fff;
-  position:relative;
-  border-radius:8px;
-  font-size:2.4rem;
-  font-family:"CheeseSauce",cursive;
-  display:flex;
-  align-items:center;
-  justify-content:center;
+/* lorsque l’enfant .choice est enfoncé : fond transparent */
+.choice-wrapper:has(.choice.pressed) {
+  background: transparent;
+}
+
+/* ---------- BOUTON ------------------------------------------------------ */
+.choice {
+  background: #fff;
+  position: relative;
+  border-radius: 8px;
+  font-size: 2.4rem;
+  font-family: "CheeseSauce", cursive;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 100%;
   height: 100%;
   transition:
@@ -70,20 +78,22 @@
 }
 
 /* ----- ÉTATS COULEUR ---------------------------------------------------- */
-.choice.state-default{ /* rien : socle = visible, bord = transparent */ }
+.choice.state-default { /* socle jaune visible, bord transparent */ }
 
-.choice.state-correct{
-  border-color:var(--col-green);
-  box-shadow:0 6px 0 0 var(--col-green);   /* ombre verte */
+.choice.state-correct {
+  border-color: var(--col-green);
+  box-shadow: 0 6px 0 0 var(--col-green);
 }
 
-.choice.state-wrong{
-  border-color:var(--col-red);
-  box-shadow:0 6px 0 0 var(--col-red);     /* ombre rouge */
+.choice.state-wrong {
+  border-color: var(--col-red);
+  box-shadow: 0 6px 0 0 var(--col-red);
 }
-.choice.state-wrong::after{opacity:0;}     /* on cache le socle jaune */
+
+.choice.state-wrong::after { opacity: 0; /* cache le socle jaune */ }
 
 /* ----- EFFET “PRESSÉ” --------------------------------------------------- */
 .choice:not(.pressed) {
-    transform: translateY(-28px);
+  /* position élevée quand non pressé */
+  transform: translateY(-28px);
 }

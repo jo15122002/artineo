@@ -1,15 +1,28 @@
 <template>
   <div class="page-3rfid">
-    <img :src="backgroundUrl" alt="painting" class="painting" />
+    <img
+      v-if="backgroundUrl"
+      :src="backgroundUrl"
+      alt="painting"
+      class="painting"
+    />
 
     <section class="choices">
       <button
         v-for="(label, i) in blobTexts"
         :key="i"
-        :class="['choice-wrapper', stateClasses[i]]"
+        class="choice-wrapper"
       >
-        <span class="choice" :class="pressed && 'pressed'">
-        {{ label }}
+        <!--
+          On applique désormais :
+          • stateClasses[i] pour la couleur (correct/wrong)
+          • pressedStates[i] pour l’effet “enfoncé”
+        -->
+        <span
+          class="choice"
+          :class="[ stateClasses[i], pressedStates[i] && 'pressed' ]"
+        >
+          {{ label }}
         </span>
       </button>
     </section>
@@ -23,8 +36,8 @@ import useModule3 from '~/composables/module3.ts'
 
 definePageMeta({ layout: 'module' })
 
+const { backgroundSet, blobTexts, stateClasses, pressedStates } = useModule3()
 const { public: { apiUrl } } = useRuntimeConfig()
-const { backgroundSet, blobTexts, stateClasses, pressed } = useModule3()
 
 const backgroundUrl = computed(
   () => `${apiUrl}/getAsset?module=3&path=tableau${backgroundSet.value}.png`
