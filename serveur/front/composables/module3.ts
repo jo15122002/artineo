@@ -1,30 +1,29 @@
-// front/composables/module3.ts
-import { useNuxtApp, useRuntimeConfig } from '#app'
+// front/composables/module3.tsimport { useNuxtApp, useRuntimeConfig } from '#app'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import type { BufferPayload } from '~/utils/ArtineoClient'
 
 export default function useModule3() {
   // Stub SSR
   if (!process.client) {
-    const backgroundSet = ref<number>(1)
-    const blobTexts     = ref<string[]>(['Aucun','Aucun','Aucun'])
-    const states        = ref<Array<'default'|'correct'|'wrong'>>(['default','default','default'])
-    const stateClasses  = computed(() => states.value.map(s => `state-${s}`))
-    const pressedStates = ref<boolean[]>([false,false,false])
+    const backgroundSet  = ref<number>(1)
+    const blobTexts      = ref<string[]>(['Aucun','Aucun','Aucun'])
+    const states         = ref<Array<'default'|'correct'|'wrong'>>(['default','default','default'])
+    const stateClasses   = computed(() => states.value.map(s => `state-${s}`))
+    const pressedStates  = ref<boolean[]>([false,false,false])
     return { backgroundSet, blobTexts, stateClasses, pressedStates }
   }
 
-  const moduleId = 3
-  const { $artineo } = useNuxtApp()
+  const moduleId        = 3
+  const { $artineo }    = useNuxtApp()
   const { public: { apiUrl } } = useRuntimeConfig()
-  const client = $artineo(moduleId)
+  const client          = $artineo(moduleId)
 
-  const backgroundSet = ref<number>(1)
-  const blobTexts     = ref<string[]>(['Aucun','Aucun','Aucun'])
-  const states        = ref<Array<'default'|'correct'|'wrong'>>(['default','default','default'])
-  const stateClasses  = computed(() => states.value.map(s => `state-${s}`))
-  const pressedStates = ref<boolean[]>([false,false,false])
-  let prevPressed = false
+  const backgroundSet   = ref<number>(1)
+  const blobTexts       = ref<string[]>(['Aucun','Aucun','Aucun'])
+  const states          = ref<Array<'default'|'correct'|'wrong'>>(['default','default','default'])
+  const stateClasses    = computed(() => states.value.map(s => `state-${s}`))
+  const pressedStates   = ref<boolean[]>([false,false,false])
+  let prevPressed       = false
 
   const pluralMap: Record<string,string> = {
     lieu:    'lieux',
@@ -41,14 +40,18 @@ export default function useModule3() {
   }
 
   function updateFromBuffer(buf: BufferPayload) {
-    // Changement de set
+    // 1) Si on change de set : on remet tout à zéro
     if (buf.current_set && buf.current_set !== backgroundSet.value) {
-      backgroundSet.value = buf.current_set
+      backgroundSet.value  = buf.current_set
+      // états visuels
+      states.value         = ['default','default','default']
+      pressedStates.value  = [false,false,false]
+      prevPressed          = false
     }
 
-    // Construire textes & couleurs
-    const texts  = ['Aucun','Aucun','Aucun']
-    const colors = ['#FFA500','#FFA500','#FFA500']
+    // 2) Construire textes & couleurs pour affichage
+    const texts   = ['Aucun','Aucun','Aucun']
+    const colors  = ['#FFA500','#FFA500','#FFA500']
     const keys    = ['lieu','couleur','emotion'] as const
     const uidKeys = ['uid1','uid2','uid3']      as const
     const setIdx  = (backgroundSet.value || 1) - 1
@@ -72,22 +75,20 @@ export default function useModule3() {
     })
     blobTexts.value = texts
 
-    // Sur front de button_pressed → appliquer états + pressing
+    // 3) À la première transition button_pressed true → afficher feedback
     if (buf.button_pressed && !prevPressed) {
-      // 1) Mettre à jour les états (correct/wrong)
+      // 3a) on passe en correct/wrong
       states.value = colors.map(c =>
         c === '#00FF00' ? 'correct'
         : c === '#FF0000' ? 'wrong'
         : 'default'
       )
-      // 2) Enfonce toutes les réponses au départ
+      // 3b) on enfonce tous les boutons
       pressedStates.value = [true, true, true]
 
-      // 3) Après 2s, relaie les wrong & débloque les enfoncements
+      // 3c) après 2s, on relève les wrong et on garde enfoncés que les correct
       setTimeout(() => {
-        // repasse les wrong en default
-        states.value = states.value.map(s => s === 'wrong' ? 'default' : s)
-        // ne laisse enfoncé que les bons (état correct)
+        states.value        = states.value.map(s => s === 'wrong' ? 'default' : s)
         pressedStates.value = states.value.map(s => s === 'correct')
       }, 2000)
     }
@@ -96,28 +97,28 @@ export default function useModule3() {
   }
 
   async function fetchBufferHttp(): Promise<BufferPayload> {
-    const res  = await fetch(`${apiUrl}/buffer?module=${moduleId}`)
+    const res = await fetch(`${apiUrl}/buffer?module=${moduleId}`)
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const js  = await res.json() as { buffer: BufferPayload }
     return js.buffer
   }
 
   onMounted(async () => {
-    // 1) Récup config (assignments & answers)
+    // Charger assignments & answers
     try {
       const cfg = await client.fetchConfig()
       ;(client as any).assignments = cfg.assignments || {}
       ;(client as any).answers     = cfg.answers     || []
     } catch {}
 
-    // 2) WS push
+    // WS push & HTTP polling
     client.onMessage((msg: any) => {
       if (msg.action === 'get_buffer') {
         updateFromBuffer(msg.buffer as BufferPayload)
       }
     })
 
-    // 3) Fallback HTTP initial + polling
+    // fallback initial + polling
     try {
       updateFromBuffer(await fetchBufferHttp())
     } catch {}

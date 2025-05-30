@@ -53,7 +53,7 @@
   transition: background 0.25s ease;
 }
 
-/* Fond transparent uniquement quand le bouton est en état "pressed" */
+/* Fond transparent uniquement quand le bouton est enfoncé */
 .choice-wrapper:has(.choice.pressed) {
   background: transparent;
 }

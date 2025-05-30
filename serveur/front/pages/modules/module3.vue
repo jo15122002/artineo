@@ -13,11 +13,6 @@
         :key="i"
         class="choice-wrapper"
       >
-        <!--
-          On applique désormais :
-          • stateClasses[i] pour la couleur (correct/wrong)
-          • pressedStates[i] pour l’effet “enfoncé”
-        -->
         <span
           class="choice"
           :class="[ stateClasses[i], pressedStates[i] && 'pressed' ]"
