@@ -6,7 +6,7 @@ from utime import sleep_ms
 # ————————————————————————————————————————————————————————————————
 # CONFIGURATION réseau & module
 # ————————————————————————————————————————————————————————————————
-MODULE_ID = 4
+MODULE_ID = 41
 HOST      = "192.168.1.142"
 PORT      = 8000
 
@@ -117,7 +117,7 @@ async def async_main():
             except Exception as e:
                 print("⚠️ Envoi set_buffer a échoué :", e)
                 # on retentera naturellement au prochain cycle
-
+        
         # on ne bouffe pas trop de CPU
         await asyncio.sleep_ms(100)
 

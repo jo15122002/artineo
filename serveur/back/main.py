@@ -41,7 +41,7 @@ CONFIG_DIR = "configs"
 DEFAULT_BUFFER_FILE = "assets/default_buffer.json"
 
 # buffer global (un dict par module_id)
-buffer: Dict[int, dict] = {1: {}, 2: {}, 3: {}, 4: {}}
+buffer: Dict[int, dict] = {1: {}, 2: {}, 3: {}, 4: {}, 41: {}}
 
 
 @app.on_event("startup")
@@ -200,7 +200,7 @@ manager = ConnectionManager()
 
 # file de queues de diffs
 diff_queues: Dict[int, deque] = {
-    1: deque(), 2: deque(), 3: deque(), 4: deque()
+    1: deque(), 2: deque(), 3: deque(), 4: deque(), 41: deque()
 }
 
 

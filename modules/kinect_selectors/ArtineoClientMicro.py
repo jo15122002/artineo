@@ -1,25 +1,17 @@
-# modules/3RFID/ArtineoClientMicro.py
-
 import network
 import uasyncio as asyncio
 import ujson
 import urequests
 from utime import sleep, ticks_diff, ticks_ms
 
-# Essaie uwebsockets, sinon fallback synchrone
-try:
-    import uwebsockets.client as ws_client
-    ASYNC_WS = True
-except ImportError:
-    import websocket_client as ws_client
-    ASYNC_WS = False
+# Fallback synchrone websocket
+import websocket_client as ws_client
+ASYNC_WS = False
 
-# Affiche les logs seulement si DEBUG_LOGS = True
-DEBUG_LOGS = False
-
-def log(*args, **kwargs):
+DEBUG_LOGS = True
+def log(*args):
     if DEBUG_LOGS:
-        print(*args, **kwargs)
+        print("[ArtineoClient]", *args)
 
 class ArtineoAction:
     SET = "set"
@@ -29,7 +21,7 @@ class ArtineoClient:
     def __init__(
         self,
         module_id,
-        host="192.168.0.50",
+        host="192.168.1.142",
         port=8000,
         ssid=None,
         password=None,
@@ -38,7 +30,6 @@ class ArtineoClient:
         http_timeout=5,
         ws_ping_interval=20.0,
     ):
-        log("[ArtineoClient] __init__")
         self.module_id        = module_id
         self.base_url         = f"http://{host}:{port}"
         self.ws_url           = f"ws://{host}:{port}/ws"
@@ -48,15 +39,13 @@ class ArtineoClient:
         self.ws_ping_interval = ws_ping_interval
         self.ssid             = ssid
         self.password         = password
-
-        self.ws = None
+        self.ws               = None
 
         if self.ssid and self.password:
-            log(f"[ArtineoClient] connect_wifi to: {self.ssid}")
             self.connect_wifi()
 
     def connect_wifi(self, timeout=15):
-        log("[ArtineoClient] connect_wifi()")
+        log("connect_wifi()")
         sta = network.WLAN(network.STA_IF)
         sta.active(True)
         if not sta.isconnected():
@@ -66,30 +55,80 @@ class ArtineoClient:
                 sleep(0.5)
         if not sta.isconnected():
             raise OSError("Impossible de se connecter au Wi-Fi")
-        log("[ArtineoClient] Wi-Fi OK:", sta.ifconfig())
+        log("Wi-Fi OK:", sta.ifconfig())
 
     async def connect_ws(self):
-        """Ouvre la connexion WebSocket une seule fois."""
-        log("[ArtineoClient] connecting to WS…")
-        conn = ws_client.connect(self.ws_url)
-        self.ws = await conn if ASYNC_WS else conn
-        log("[ArtineoClient] WS connected")
-
-        # lance un ping périodique
+        """Connexion WS synchrone + démarrage du heartbeat et du receiver."""
+        log("connecting WS to", self.ws_url)
+        # sync connect
+        self.ws = ws_client.connect(self.ws_url)
+        log("WS connected (fallback)")
+        # ping/pong texte
         asyncio.create_task(self._ws_heartbeat())
+        # receiver loop
+        asyncio.create_task(self._ws_receiver())
 
     async def _ws_heartbeat(self):
-        """Ping régulier pour maintenir la connexion."""
+        """Ping texte périodique."""
+        log("heartbeat started")
         while True:
+            if not self.ws:
+                log("heartbeat: no ws, exiting")
+                break
             try:
-                if ASYNC_WS:
-                    await self.ws.ping()
-                else:
-                    self.ws.send("ping")
+                self.ws.send("ping")
+                # pas de recv ici, serveur répondra "pong" dans _ws_receiver
             except Exception as e:
-                log("[ArtineoClient] WS heartbeat error:", e)
+                log("heartbeat send error:", e)
+                try: self.ws.close()
+                except: pass
+                self.ws = None
                 break
             await asyncio.sleep(self.ws_ping_interval)
+        log("heartbeat exiting")
+
+    async def _ws_receiver(self):
+        """Boucle qui lit tout ce qui vient du serveur."""
+        log("receiver started")
+        while True:
+            if not self.ws:
+                log("receiver: ws is None, exiting")
+                break
+            try:
+                msg = self.ws.recv()  # blocking recv
+                log("Received WS message:", msg)
+            except Exception as e:
+                log("receiver error (connection closed?):", e)
+                try: self.ws.close()
+                except: pass
+                self.ws = None
+                break
+        log("receiver exiting")
+
+    async def set_buffer(self, buf):
+        """Envoie buf, reconnecte si nécessaire."""
+        # reconnect if needed
+        if not self.ws:
+            log("set_buffer: ws down, reconnecting…")
+            if self.ssid and self.password:
+                self.connect_wifi()
+            await self.connect_ws()
+
+        # build message
+        msg = ujson.dumps({
+            "module": self.module_id,
+            "action": ArtineoAction.SET,
+            "data": buf
+        })
+        log("send_buffer:", msg)
+        # try send
+        try:
+            self.ws.send(msg)
+        except Exception as e:
+            log("send error:", e)
+            try: self.ws.close()
+            except: pass
+            self.ws = None
 
     async def fetch_config(self):
         """Charge la config via HTTP GET /config?module=…"""
@@ -110,28 +149,3 @@ class ArtineoClient:
                     delay *= 2
         log("[ArtineoClient] fetch_config giving up, returning {}")
         return {}
-
-    async def set_buffer(self, buf):
-        """Envoie directement le buffer via WS."""
-        if not self.ws:
-            log("[ArtineoClient] set_buffer: WS non connecté, skip")
-            return
-        msg = ujson.dumps({
-            "module": self.module_id,
-            "action": ArtineoAction.SET,
-            "data": buf
-        })
-        log("[ArtineoClient] set_buffer:", msg)
-        try:
-            if ASYNC_WS:
-                await self.ws.send(msg)
-            else:
-                self.ws.send(msg)
-        except Exception as e:
-            log("[ArtineoClient] set_buffer error:", e)
-            # tente une reconnexion Wi-Fi/WS si besoin
-            try:
-                self.connect_wifi()
-                await self.connect_ws()
-            except Exception as reconnect_err:
-                log("[ArtineoClient] reconnect failed:", reconnect_err)

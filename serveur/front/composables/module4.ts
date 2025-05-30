@@ -33,8 +33,10 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
     }
   }
 
-  const moduleId = 4
-  const artClient = useArtineo(moduleId)
+  const kinectModuleId = 4
+  const buttonModuleId = 41
+  const artClientKinect = useArtineo(kinectModuleId)
+  const artClientButton = useArtineo(buttonModuleId)
 
   // 1️⃣ Préchargement des sprites d'objets
   const objectImages: Record<string, HTMLImageElement> = {}
@@ -128,7 +130,7 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
     removeObjects?: string[]
     button?: number
   }) {
-    
+
     if (!buf) return
 
     // 7.1) Gestion du bouton
@@ -180,35 +182,52 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
   let intervalId: number | null = null
 
   onMounted(async () => {
-    // 8.1) via WebSocket
-    artClient.onMessage(msg => {
+    // 1) Ouvrir les deux WS
+    artClientKinect.onMessage(msg => {
+      if (msg.action === 'get_buffer' && msg.buffer) {
+        drawBuffer(msg.buffer)
+      }
+    })
+    artClientButton.onMessage(msg => {
       if (msg.action === 'get_buffer' && msg.buffer) {
         drawBuffer(msg.buffer)
       }
     })
 
-    // 8.2) HTTP fallback initial + intervalle
-    try {
-      const buff = await artClient.getBuffer()
-      drawBuffer(buff)
-    } catch (e) {
-      console.error('[Artineo] Error fetching initial buffer:', e)
-    }
-    
-    // 8.3) Intervalle de polling
+    await Promise.all([
+      artClientKinect.getBuffer()
+        .then(buf => drawBuffer(buf))
+        .catch(e => console.error('[Artineo][Kinect] init failed', e)),
+      artClientButton.getBuffer()
+        .then(buf => drawBuffer(buf))
+        .catch(e => console.error('[Artineo][Button] init failed', e))
+    ])
+
+    // 4) Polling séparé
     intervalId = window.setInterval(async () => {
       try {
-        const buff = await artClient.getBuffer()
-        drawBuffer(buff)
+        const bufK = await artClientKinect.getBuffer()
+        drawBuffer(bufK)
       } catch (e) {
-        console.error('[Artineo] Error fetching buffer:', e)
+        console.error('[Artineo][Kinect] polling error', e)
       }
-    }, 100) // 30 FPS par défaut
+      try {
+        const bufB = await artClientButton.getBuffer()
+        drawBuffer(bufB)
+      } catch (e) {
+        console.error('[Artineo][Button] polling error', e)
+      }
+    }, 100)
   })
 
+
   onBeforeUnmount(() => {
-    if (intervalId !== null) clearInterval(intervalId)
-    artClient.close()
+    if (intervalId !== null) {
+      clearInterval(intervalId)
+      intervalId = null
+    }
+    artClientKinect.close()
+    artClientButton.close()
   })
 
   return { strokes, objects }

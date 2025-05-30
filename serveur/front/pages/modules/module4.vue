@@ -19,7 +19,7 @@ const { strokes, objects } = use4kinect(canvas)
 // 3️⃣ Initialisation de la taille après montage
 onMounted(() => {
   // ROI SIZE
-  const ROISz = { w: 205, h: 170, scale: 3 }
+  const ROISz = { w: 305, h: 200, scale: 3 }
   const c = canvas.value!
   c.width  = ROISz.w * ROISz.scale
   c.height = ROISz.h * ROISz.scale
