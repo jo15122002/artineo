@@ -1,22 +1,26 @@
 <template>
   <div class="page-3rfid">
-    <!-- fond dynamique -->
-    <div
-      id="background"
-      class="background"
-      :style="{ backgroundImage: `url(${backgroundUrl})` }"
-    ></div>
+    <img
+      v-if="backgroundUrl"
+      :src="backgroundUrl"
+      alt="painting"
+      class="painting"
+    />
 
-    <!-- 3 blobs générés dynamiquement -->
-    <div
-      v-for="i in 3"
-      :key="i"
-      :id="`blob${i}`"
-      class="blob"
-      :style="{ backgroundColor: blobColors[i-1] }"
-    >
-      <span>{{ blobTexts[i-1] }}</span>
-    </div>
+    <section class="choices">
+      <button
+        v-for="(label, i) in blobTexts"
+        :key="i"
+        class="choice-wrapper"
+      >
+        <span
+          class="choice"
+          :class="[ stateClasses[i], pressedStates[i] && 'pressed' ]"
+        >
+          {{ label }}
+        </span>
+      </button>
+    </section>
   </div>
 </template>
 
@@ -27,8 +31,8 @@ import useModule3 from '~/composables/module3.ts'
 
 definePageMeta({ layout: 'module' })
 
+const { backgroundSet, blobTexts, stateClasses, pressedStates } = useModule3()
 const { public: { apiUrl } } = useRuntimeConfig()
-const { backgroundSet, blobTexts, blobColors } = useModule3()
 
 const backgroundUrl = computed(
   () => `${apiUrl}/getAsset?module=3&path=tableau${backgroundSet.value}.png`

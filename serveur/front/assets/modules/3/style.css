@@ -3,83 +3,98 @@
   src: url('./Cheese-Sauce.woff2') format("woff2");
 }
 
-html, body { margin:0; padding:0; height:100vh; width:100vw; }
+/* ----- CONTAINER -------------------------------------------------------- */
+.page-3rfid {
+  --col-green:  #2f9a45;
+  --col-red:    #e84d26;
+  --col-yellow: #ffd953;
 
-body {
-  background-repeat: no-repeat !important;
-  background-size: contain !important;
-  position: relative !important;
-  font-family: 'Comic Sans MS', cursive, sans-serif !important;
-}
-
-#background {
-  z-index: 0;
-  position: fixed;
-  top: 0; left: 0;
-  width: 100vw;
+  display: flex;
+  flex-direction: column;
   height: 100vh;
-  overflow: hidden;      /* on cache l’overflow */
-  margin: 0; padding: 0;
-  background-size: contain;
-  background-repeat: no-repeat;
-  background-position: center center;
-  background-attachment: fixed;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: #000;
 }
 
-.overlay-video {
-  z-index: 1;
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: auto;
-  height: 100vh;
-  pointer-events: none; /* si tu veux pas gêner la WS ou la page */
+/* ----- IMAGE ------------------------------------------------------------ */
+.painting {
+  flex: 1 1 0;
+  min-height: 0;
+  width: 100%;
+  object-fit: contain;
+  object-position: center;
+  display: block;
 }
 
-.blob {
-  z-index: 2;
-  position: absolute;
-  width: 400px; height: 240px;
-  background-color: white;            /* base avant coloration */
-  mask-repeat: no-repeat;
-  mask-position: center;
-  mask-size: contain;
-  -webkit-mask-repeat: no-repeat;
-  -webkit-mask-position: center;
-  -webkit-mask-size: contain;
+/* ----- ZONE DES BOUTONS ------------------------------------------------- */
+.choices {
+  display: flex;
+  height: 20%;
+  gap: 7%;
+  justify-content: center;
+  align-items: center;
+  background: center / cover no-repeat url("./choices_bg.jpg");
+}
+
+/* ---------- BOUTON WRAPPER ------------------------------------------------------ */
+.choice-wrapper {
+  position: relative;
+  width: 20%;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #333;
-  font-size: 1.3em;
-  text-align: center;
-  pointer-events: none;
-  bottom: 0;
-  font-family: "CheeseSauce", sans-serif;
+  padding: 8px;
+  height: 60%;
+  border: none;
+  border-radius: 8px;
+  background: var(--col-yellow);
+  transition: background 0.25s ease;
 }
 
-#blob1 {
-  left: calc(25% - 200px);
-  mask-image: url('~/assets/modules/3/blob1.svg');
-  -webkit-mask-image: url('~/assets/modules/3/blob1.svg');
-}
-#blob2 {
-  left: calc(50% - 200px);
-  mask-image: url('~/assets/modules/3/blob2.svg');
-  -webkit-mask-image: url('~/assets/modules/3/blob2.svg');
-}
-#blob3 {
-  left: calc(75% - 200px);
-  mask-image: url('~/assets/modules/3/blob3.svg');
-  -webkit-mask-image: url('~/assets/modules/3/blob3.svg');
+/* Fond transparent uniquement quand le bouton est enfoncé */
+.choice-wrapper:has(.choice.pressed) {
+  background: transparent;
 }
 
-.fade-out {
-  animation: fade-out 1s ease-in-out forwards;
+/* ---------- BOUTON ------------------------------------------------------ */
+.choice {
+  background: #fff;
+  position: relative;
+  border-radius: 8px;
+  font-size: 2.4rem;
+  font-family: "CheeseSauce", cursive;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  border: 9px solid transparent;
+  transition:
+    border-color 0.25s ease,
+    transform    0.10s ease-out;
 }
 
-@keyframes fade-out {
-  0% { opacity: 1; }
-  100% { opacity: 0; }
+/* ----- ÉTATS COULEUR ---------------------------------------------------- */
+/* par défaut, bordure transparente */
+.choice.state-default {
+  border-color: transparent;
+}
+
+/* bordure verte pour la bonne réponse */
+.choice.state-correct {
+  border-color: var(--col-green);
+}
+
+/* bordure rouge pour la mauvaise réponse */
+.choice.state-wrong {
+  border-color: var(--col-red);
+}
+
+/* ----- EFFET “PRESSÉ” --------------------------------------------------- */
+/* descend quand on appuie */
+.choice:not(.pressed) {
+  transform: translateY(-28px);
 }

@@ -1,17 +1,16 @@
 @echo off
-REM 1) Crée l’environnement (uniquement la première fois)
-python -m venv env
+REM — Crée un venv avec Python 3.11
+py -3.11 -m venv env
 
-REM 2) Active l’environnement (il faut CALL)
+REM — Active le venv
 call env\Scripts\activate.bat
 
-REM 3) Met à jour pip et installe les dépendances
-python -m pip install --upgrade pip
-python -m pip install fastapi uvicorn
-python -m pip uninstall -y uvicorn
-python -m pip install "uvicorn[standard]"
+REM — Met à jour pip
+py -3.11 -m pip install --upgrade pip
 
-REM 4) Démarre le serveur
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
+REM — Installe les dépendances
+py -3.11 -m pip install -r requirements.txt
 
+REM — Lance le serveur
+py -3.11 -m uvicorn main:app --reload
 pause

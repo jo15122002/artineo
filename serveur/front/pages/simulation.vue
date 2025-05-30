@@ -130,6 +130,8 @@
 import { onMounted, reactive } from 'vue'
 import { useArtineo } from '~/composables/useArtineo'
 
+definePageMeta({ layout: 'default' })
+
 const moduleIds = [1, 2, 3, 4]
 
 // clients WS et buffers
@@ -254,7 +256,12 @@ function sendModule3() {
 .simulation-dashboard {
   padding: 2rem;
   font-family: sans-serif;
+
+  /* Permettre le scroll si le contenu dépasse la hauteur de la page */
+  max-height: 100vh;
+  overflow-y: auto;
 }
+
 .simulator-card {
   border: 1px solid #ddd;
   border-radius: 6px;
