@@ -1,5 +1,5 @@
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 import cv2
 import numpy as np
@@ -17,7 +17,7 @@ class ShapeClassifier:
         self,
         small_templates: Dict[str, np.ndarray],
         shape_templates: Dict[str, np.ndarray],
-        background_profiles: Dict[str, list[float]],
+        background_profiles: Dict[str, List[float]],
         use_matchshapes: bool = True,
         small_area_threshold: float = 250.0,
         area_threshold: float = 2000.0,
@@ -36,8 +36,10 @@ class ShapeClassifier:
         """
         h, w = mask.shape
         # evenly sample columns across width
-        xs = np.linspace(0, w - 1, num=len(self.background_profiles[next(iter(self.background_profiles))]), dtype=int)
-        prof = np.zeros(len(xs), dtype=float)
+        # length of profile == length of any background_profiles entry
+        prof_len = len(next(iter(self.background_profiles.values())))
+        xs = np.linspace(0, w - 1, num=prof_len, dtype=int)
+        prof = np.zeros(prof_len, dtype=float)
         for i, x in enumerate(xs):
             ys = np.where(mask[:, x] > 0)[0]
             prof[i] = float(ys.min()) / h if ys.size else 0.0
@@ -50,7 +52,7 @@ class ShapeClassifier:
         """
         x, y, w_d, h_d = cv2.boundingRect(cnt)
         mask = np.zeros((h_d, w_d), dtype=np.uint8)
-        cnt_shifted = cnt - [x, y]
+        cnt_shifted = cnt - [x, y]  # translate contour into mask coords
         cv2.drawContours(mask, [cnt_shifted], -1, 255, cv2.FILLED)
         prof = self._compute_profile(mask)
 
@@ -61,7 +63,8 @@ class ShapeClassifier:
             if dist < best_dist:
                 best_dist = dist
                 best_name = name
-        logger.debug("Background classified: %s (dist=%.2f)", best_name, best_dist)
+
+        logger.debug("Background classified: %s (dist=%.3f)", best_name, best_dist)
         return best_name  # type: ignore
 
     def _classify_contour(self, cnt: np.ndarray) -> str:
@@ -76,17 +79,21 @@ class ShapeClassifier:
         elif area < self.area_threshold:
             candidates = self.shape_templates
         else:
+            # too large → treat as background form
             return self._classify_background_by_profile(cnt)
 
         best_score = float('inf')
         best_name = None
+
         if self.use_matchshapes:
+            # use cv2.matchShapes on contour geometry
             for name, template_cnt in candidates.items():
                 score = cv2.matchShapes(cnt, template_cnt, cv2.CONTOURS_MATCH_I1, 0.0)
                 if score < best_score:
                     best_score = score
                     best_name = name
         else:
+            # fallback: compare Hu moments
             hu1 = cv2.HuMoments(cv2.moments(cnt)).flatten()
             for name, template_cnt in candidates.items():
                 hu2 = cv2.HuMoments(cv2.moments(template_cnt)).flatten()
@@ -95,7 +102,7 @@ class ShapeClassifier:
                     best_score = score
                     best_name = name
 
-        logger.debug("Contour classified: %s (score=%.2f)", best_name, best_score)
+        logger.debug("Contour classified: %s (score=%.3f)", best_name, best_score)
         return best_name  # type: ignore
 
     def classify(self, cnt: np.ndarray) -> str:

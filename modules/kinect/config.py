@@ -21,7 +21,7 @@ class Config(BaseModel):
 
     # ───────── Templates ─────────
     template_dir: str = Field(
-        "images/templates/", description="Directory containing shape/background templates"
+        "templates/", description="Directory containing shape/background templates"
     )
 
     # ─── Shape matching thresholds ───

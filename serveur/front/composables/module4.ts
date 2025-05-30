@@ -23,22 +23,30 @@ export interface ArtObject {
   scale: number
 }
 
+/**
+ * Composable for tool 4 (Kinect + button overlay).
+ * Renders strokes, objects, backgrounds, and a color overlay
+ * according to a "button" value received over WS.
+ */
 export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
-  // SSR guard: nothing to do on server
+  // SSR guard: no DOM on server
   if (!process.client) {
     const stub: any = ref(null)
     return {
       strokes: stub as Ref<Stroke[]>,
-      objects: stub as Ref<ArtObject[]>
+      objects: stub as Ref<ArtObject[]>,
+      backgrounds: stub as Ref<ArtObject[]>
     }
   }
 
+  // two module IDs: one for kinect data, one for button events
   const kinectModuleId = 4
   const buttonModuleId = 41
+
   const artClientKinect = useArtineo(kinectModuleId)
   const artClientButton = useArtineo(buttonModuleId)
 
-  // 1️⃣ Préchargement des sprites d'objets
+  // 1️⃣ load object sprites
   const objectImages: Record<string, HTMLImageElement> = {}
   const imgModules = import.meta.glob<string>(
     '~/assets/modules/4/images/objects/*.png',
@@ -52,7 +60,7 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
     objectImages[name] = img
   }
 
-  // 2️⃣ Préchargement d’un brush fixe par canal (brush1.png, brush2.png, brush3.png)
+  // 2️⃣ load a fixed brush image per tool (brush1.png, brush2.png, brush3.png)
   const brushImages: Record<string, HTMLImageElement> = {}
   const brushModules = import.meta.glob<string>(
     '~/assets/modules/4/images/brushes/brush?.png',
@@ -61,31 +69,32 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
   for (const path in brushModules) {
     const url = brushModules[path]
     const file = path.split('/').pop()!
-    const match = file.match(/^brush([1-6])\.png$/)
-    if (match) {
-      const toolId = match[1]
+    const m = file.match(/^brush([1-6])\.png$/)
+    if (m) {
+      const toolId = m[1]
       const img = new Image()
       img.src = url
       brushImages[toolId] = img
     }
   }
 
-  // 3️⃣ Mapping des couleurs d’overlay par bouton
+  // 3️⃣ map button IDs to RGBA overlays
   const buttonColors: Record<number, string> = {
-    1: 'rgba(83, 160,   236,   0.2)',
-    2: 'rgba(0,   255, 0,   0.3)',
-    3: 'rgba(0,   0,   255, 0.3)',
-    4: 'rgba(255, 255, 0,   0.3)',
-    5: 'rgba(255, 0,   255, 0.3)',
-    6: 'rgba(0,   255, 255, 0.3)',
+    1: 'rgba(83, 160, 236, 0.2)',
+    2: 'rgba(0, 255, 0, 0.3)',
+    3: 'rgba(0, 0, 255, 0.3)',
+    4: 'rgba(255, 255, 0, 0.3)',
+    5: 'rgba(255, 0, 255, 0.3)',
+    6: 'rgba(0, 255, 255, 0.3)',
   }
-  let currentButton = 1 // par défaut
+  let currentButton = 1  // default
 
-  // 4️⃣ Stockage local des strokes et objets
+  // 4️⃣ local state
   const strokes = ref<Stroke[]>([])
   const objects = ref<ArtObject[]>([])
+  const backgrounds = ref<ArtObject[]>([])
 
-  // 5️⃣ Fonction de rendu des strokes
+  // 5️⃣ draw a stroke using its fixed brush
   const scale = 3
   function drawStroke(ctx: CanvasRenderingContext2D, s: Stroke) {
     const img = brushImages[s.tool_id]
@@ -98,16 +107,11 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
     ctx.save()
     ctx.translate(px, py)
     ctx.rotate(ang)
-
-    if (s.tool_id === "1") {
-      ctx.scale(1.5, 1.5)
-    }
-
     ctx.drawImage(img, -size / 2, -size / 2, size, size)
     ctx.restore()
   }
 
-  // 6️⃣ Fonction de rendu des objets
+  // 6️⃣ draw an object or background sprite
   function drawObject(ctx: CanvasRenderingContext2D, o: ArtObject) {
     const img = objectImages[o.shape]
     if (img && img.complete) {
@@ -117,31 +121,33 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
       const y = o.cy * scale - h / 2
       ctx.drawImage(img, x, y, w, h)
     } else {
+      // fallback: small dot
       ctx.fillStyle = '#000'
-      ctx.fillRect(o.cx * scale - 5, o.cy * scale - 5, 10, 10)
+      ctx.fillRect(o.cx * scale - 2, o.cy * scale - 2, 4, 4)
     }
   }
 
-  // 7️⃣ Traitement et rendu complet du buffer
+  // 7️⃣ handle incoming diff buffer
   function drawBuffer(buf: {
     newStrokes?: Stroke[]
     removeStrokes?: string[]
+    newBackgrounds?: ArtObject[]
+    removeBackgrounds?: string[]
     newObjects?: ArtObject[]
     removeObjects?: string[]
     button?: number
   }) {
-
     if (!buf) return
 
-    // 7.1) Gestion du bouton
+    // 7.1) button event
     if (typeof buf.button === 'number') {
       currentButton = buf.button
     }
 
-    // 7.2) Ajout des nouveaux traits
+    // 7.2) add strokes
     if (buf.newStrokes) {
       buf.newStrokes.forEach(s => {
-        if (!strokes.value.some(old => old.id === s.id)) {
+        if (!strokes.value.some(x => x.id === s.id)) {
           if (s.angle === undefined) {
             s.angle = Math.random() * Math.PI * 2
           }
@@ -149,11 +155,23 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
         }
       })
     }
-    // 7.3) Suppression des traits effacés
+    // 7.3) remove strokes
     if (buf.removeStrokes) {
       strokes.value = strokes.value.filter(s => !buf.removeStrokes!.includes(s.id))
     }
-    // 7.4) Objets
+
+    // 7.4) backgrounds
+    if (buf.newBackgrounds) {
+      // clear any existing backgrounds if desired:
+      backgrounds.value = backgrounds.value.concat(
+        buf.newBackgrounds.filter(nb => !backgrounds.value.some(b => b.id === nb.id))
+      )
+    }
+    if (buf.removeBackgrounds) {
+      backgrounds.value = backgrounds.value.filter(b => !buf.removeBackgrounds!.includes(b.id))
+    }
+
+    // 7.5) objects
     if (buf.newObjects) {
       objects.value.push(...buf.newObjects)
     }
@@ -161,65 +179,69 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
       objects.value = objects.value.filter(o => !buf.removeObjects!.includes(o.id))
     }
 
-    // 7.5) Rendu sur le canvas
+    // 7.6) render everything
     const canvas = canvasRef.value
     if (!canvas) return
     const ctx = canvas.getContext('2d')!
-    // fond blanc
+    // clear
     ctx.clearRect(0, 0, canvas.width, canvas.height)
+    // optional background fill
     ctx.fillStyle = '#fff'
     ctx.fillRect(0, 0, canvas.width, canvas.height)
-    // strokes et objets
+    // draw backgrounds first
+    backgrounds.value.forEach(b => drawObject(ctx, b))
+    // then strokes & objects
     strokes.value.forEach(s => drawStroke(ctx, s))
     objects.value.forEach(o => drawObject(ctx, o))
-    // overlay rectangle de couleur
+    // finally overlay color rectangle
     const overlay = buttonColors[currentButton] || buttonColors[1]
     ctx.fillStyle = overlay
     ctx.fillRect(0, 0, canvas.width, canvas.height)
   }
 
-  // 8️⃣ Intégration Artineo WS + polling HTTP fallback
+  // 8️⃣ WebSocket + HTTP fallback polling
   let intervalId: number | null = null
 
   onMounted(async () => {
-    // 1) Ouvrir les deux WS
+    // subscribe to Kinect updates
     artClientKinect.onMessage(msg => {
       if (msg.action === 'get_buffer' && msg.buffer) {
         drawBuffer(msg.buffer)
       }
     })
+    // subscribe to button updates
     artClientButton.onMessage(msg => {
       if (msg.action === 'get_buffer' && msg.buffer) {
         drawBuffer(msg.buffer)
       }
     })
 
+    // initial fetch both
     await Promise.all([
       artClientKinect.getBuffer()
         .then(buf => drawBuffer(buf))
-        .catch(e => console.error('[Artineo][Kinect] init failed', e)),
+        .catch(e => console.error('[Artineo][Kinect] init error', e)),
       artClientButton.getBuffer()
         .then(buf => drawBuffer(buf))
-        .catch(e => console.error('[Artineo][Button] init failed', e))
+        .catch(e => console.error('[Artineo][Button] init error', e))
     ])
 
-    // 4) Polling séparé
+    // polling fallback
     intervalId = window.setInterval(async () => {
       try {
         const bufK = await artClientKinect.getBuffer()
         drawBuffer(bufK)
       } catch (e) {
-        console.error('[Artineo][Kinect] polling error', e)
+        console.error('[Artineo][Kinect] poll error', e)
       }
       try {
         const bufB = await artClientButton.getBuffer()
         drawBuffer(bufB)
       } catch (e) {
-        console.error('[Artineo][Button] polling error', e)
+        console.error('[Artineo][Button] poll error', e)
       }
     }, 100)
   })
-
 
   onBeforeUnmount(() => {
     if (intervalId !== null) {
@@ -230,5 +252,5 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
     artClientButton.close()
   })
 
-  return { strokes, objects }
+  return { strokes, objects, backgrounds }
 }

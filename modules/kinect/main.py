@@ -66,7 +66,6 @@ class MainController:
         channel_selector: ChannelSelector = KeyboardChannelSelector(),
         client: ArtineoClient = None,
     ):
-        
         logger.info("Initializing MainController...")
 
         # 1. Load and validate configuration
@@ -98,11 +97,13 @@ class MainController:
             area_threshold=self.config.area_threshold,
         )
         self.depth_processor = DepthProcessor(self.config)
-        
+
+        # tool / channel mapping
         self.current_tool: str = '1'  # default tool
         self.tool_channel = {'1':0, '2':1, '3':2, '4':3}
         self.channel_selector: ChannelSelector = channel_selector
-        
+
+        # stroke-tracking setup
         self.stroke_tracker = StrokeTracker(proximity_threshold=5.0)
         self.stroke_lifetimers = {
             tool: StrokeLifeTimer(max_age=5)
@@ -110,18 +111,15 @@ class MainController:
         }
         self.stroke_confirm = StrokeConfirmTracker(
             proximity_threshold=5.0,
-            min_confirm= self.config.stroke_confirmation_frames
+            min_confirm=self.config.stroke_confirmation_frames
         )
         self.strokes_by_tool: Dict[str, Dict[str, dict]] = {
-            '1': {},
-            '2': {},
-            '3': {},
-            '4': {}
+            '1': {}, '2': {}, '3': {}, '4': {}
         }
 
-        # Load brush image for stroke detection
+        # brush detector (tools 1–3)
         brush_path = Path(self.config.template_dir).parent.joinpath(
-            "brushes", "brush3.png"
+            "images", "brushes", "brush3.png"
         )
         brush_img = cv2.imread(str(brush_path), cv2.IMREAD_GRAYSCALE)
         if brush_img is None:
@@ -131,6 +129,7 @@ class MainController:
             config=self.config,
         )
 
+        # object (and background) detector (tool 4)
         self.object_detector = ObjectDetector(
             cluster_tracker=self.cluster_tracker,
             template_sizes=self.template_manager.template_sizes,
@@ -138,18 +137,23 @@ class MainController:
             roi_height=self.config.roi_height,
         )
 
+        # WS payload sender
         if not self.config.bypass_ws:
             self.payload_sender = PayloadSender(self.client, logger=logger)
 
+        # buffers for drawing & events
         h, w = self.config.roi_height, self.config.roi_width
-
         self.final_drawings = {
             t: np.zeros((h, w, 3), dtype=float)
             for t in self.tool_channel
         }
-
         self.all_objects: Dict[str, Dict] = {}
+        self.backgrounds_by_id: Dict[str, Dict] = {}
 
+        # ROI calibrator
+        self.roi_calibrator = RoiCalibrator(self.kinect, scale=2)
+
+        # display
         if self.config.debug_mode:
             self.display = DisplayManager([])
         else:
@@ -168,92 +172,95 @@ class MainController:
 
         try:
             while True:
-                # Préparation des diffs pour CE cycle
+                # prepare diff lists
                 new_strokes = []
-                removed_ids = []
+                removed_strokes = []
+                new_backgrounds = []
+                removed_backgrounds = []
                 new_objects = []
-                remove_objects = []
+                removed_objects = []
 
-                # --- 1) Changement de canal ? ---
+                # 1) channel switch?
                 next_tool = await self.channel_selector.get_next_channel()
                 if next_tool and next_tool != self.current_tool:
                     old = self.current_tool
                     self.current_tool = next_tool
                     logger.info(f"Tool switched → {self.current_tool}")
 
-                    # a) marque tous les strokes dynamiques de l'ancien canal en persistent
+                    # make old tool's dynamic strokes persistent
                     old_slots = self.strokes_by_tool[old]
                     for sid, ev in old_slots.items():
                         ev['persistent'] = True
-                        # on retire du lifetimer pour qu'ils ne soient plus purgés
                         self.stroke_lifetimers[old].ages.pop(sid, None)
 
-                    # b) réinit baseline & buffers
+                    # reset baseline & drawing buffers
                     self.baseline_calc.reset()
                     for buf in self.final_drawings.values():
                         buf.fill(0)
 
-                    # c) ré-émet TOUS les strokes persistants du nouveau canal
+                    # re-send all persistent strokes of new tool
                     new_slots = self.strokes_by_tool[self.current_tool]
-                    persistent_batch = [ev for ev in new_slots.values() if ev.get('persistent')]
-                    if persistent_batch:
+                    persistent = [
+                        ev for ev in new_slots.values() if ev.get('persistent')
+                    ]
+                    if persistent and not self.config.bypass_ws:
                         await self.payload_sender.send_update(
-                            new_strokes=persistent_batch,
+                            new_strokes=persistent,
                             remove_strokes=[],
+                            new_backgrounds=[],
+                            remove_backgrounds=[],
                             new_objects=[],
                             remove_objects=[]
                         )
 
-                # --- 2) Acquire & skip si pas de frame ---
+                # 2) get depth frame
                 if not self.kinect.has_new_depth_frame():
                     await asyncio.sleep(0.01)
                     continue
                 frame = self.kinect.get_depth_frame()
-                
+
+                # ROI calibration
                 if self.config.calibrate_roi:
-                    calib = RoiCalibrator(self.kinect, scale=2)
-                    rx, ry = calib.run()
+                    rx, ry = self.roi_calibrator.run()
                     logger.info(f"ROI calibrated → x={rx}, y={ry}")
-                    # Pour éviter de recalibrer à chaque boucle
                     self.config.calibrate_roi = False
-                
+
                 if self.display:
                     self.display.show('depth', frame)
                     if self.display.process_events() == ord('q'):
                         break
 
-                # --- 3) Baseline ---
+                # 3) baseline
                 try:
                     baseline = self.baseline_calc.baseline
                 except RuntimeError:
                     self.baseline_calc.update(frame)
                     continue
 
-                # --- 4) Depth → mapped + contours ---
+                # 4) depth → mapped + contours
                 result = self.depth_processor.process(frame, baseline)
 
-                # --- 5) Accumulation composite pour outils 1–3 ---
+                # 5) composite for tools 1–3
                 if self.current_tool in ('1','2','3'):
-                    ch   = self.tool_channel[self.current_tool]
+                    ch = self.tool_channel[self.current_tool]
                     diff = (result.mapped.astype(int) - 128).clip(min=0).astype(float)
                     mask = diff > self.config.stroke_intensity_thresh
-                    buf  = self.final_drawings[self.current_tool][:,:,ch]
-                    buf[mask]   = (1-self.config.alpha)*buf[mask] + self.config.alpha*diff[mask]
+                    buf = self.final_drawings[self.current_tool][:,:,ch]
+                    buf[mask] = (1-self.config.alpha)*buf[mask] + self.config.alpha*diff[mask]
                     buf[~mask] *= (1-alfa_decay)
                     composite = cv2.convertScaleAbs(self.final_drawings[self.current_tool])
                     alfa_decay = alfa_decay * 0.9 + 0.11
                 else:
                     composite = None
 
-                # --- 6) Détection strokes OU objets ---
+                # 6) stroke vs object/background detection
                 if self.current_tool != '4':
-                    # a) raw, unique, confirmed
-                    raw       = self.brush_detector.detect(composite, self.current_tool)
-                    dynamic_values = list(self.strokes_by_tool[self.current_tool].values())
-                    unique    = self.stroke_tracker.update(raw, dynamic_values)
+                    # strokes branch
+                    raw = self.brush_detector.detect(composite, self.current_tool)
+                    existing = list(self.strokes_by_tool[self.current_tool].values())
+                    unique = self.stroke_tracker.update(raw, existing)
                     confirmed = self.stroke_confirm.update(unique)
 
-                    # b) ajoute uniquement les strokes dynamiques validées
                     slots = self.strokes_by_tool[self.current_tool]
                     for ev in confirmed:
                         if ev['size'] > self.config.stroke_size_max:
@@ -264,88 +271,105 @@ class MainController:
                         slots[sid] = ev
                         new_strokes.append(ev)
 
-                    # c) lifetimer sur dynamiques seulement
-                    #    - ne prend pas en compte les persistantes
+                    # lifetimer purge
                     dynamic_slots = {
                         sid: ev
                         for sid, ev in slots.items()
                         if not ev.get('persistent', False)
                     }
-
-                    # d) compute active_ids parmi ces dynamiques
                     active_ids = []
                     for sid, ev in dynamic_slots.items():
                         for r in raw:
-                            if abs(r['x'] - ev['x']) <= prox and abs(r['y'] - ev['y']) <= prox:
+                            if abs(r['x']-ev['x'])<=prox and abs(r['y']-ev['y'])<=prox:
                                 active_ids.append(sid)
                                 break
-
-                    # e) purge via StrokeLifeTimer
                     lifetimer = self.stroke_lifetimers[self.current_tool]
                     stale = lifetimer.update(active_ids)
                     for sid in stale:
                         del slots[sid]
-                        removed_ids.append(sid)
+                        removed_strokes.append(sid)
 
                 else:
-                    # clustering + objets
+                    # clustering + object/background
                     dets = []
                     for cnt in result.contours:
                         shape = self.shape_classifier.classify(cnt)
                         M = cv2.moments(cnt)
                         if M['m00'] == 0:
                             continue
-                        cx = M['m10']/M['m00']; cy = M['m01']/M['m00']
+                        cx = M['m10']/M['m00']
+                        cy = M['m01']/M['m00']
                         area = float(cv2.contourArea(cnt))
-                        x,y,w,h = cv2.boundingRect(cnt)
-                        dets.append((shape,cx,cy,area,0.0,float(w),float(h)))
-
+                        x, y, w, h = cv2.boundingRect(cnt)
+                        dets.append((shape, cx, cy, area, 0.0, float(w), float(h)))
                     self.cluster_tracker.update(dets)
-                    valid = self.object_detector.detect()
-                    for obj in valid:
-                        oid = str(uuid.uuid4())
-                        obj['id'] = oid
-                        self.all_objects[oid] = obj
-                        new_objects.append(obj)
 
-                # --- 7) Envoi WS des diffs dynamiques ---
+                    valid = self.object_detector.detect()
+                    for ev in valid:
+                        # background event?
+                        if ev['type'] == 'background':
+                            # remove previous backgrounds
+                            for bid in list(self.backgrounds_by_id):
+                                removed_backgrounds.append(bid)
+                                del self.backgrounds_by_id[bid]
+                            # register new background
+                            bid = str(uuid.uuid4())
+                            ev['id'] = bid
+                            self.backgrounds_by_id[bid] = ev
+                            new_backgrounds.append(ev)
+                            # reset baseline with this new landscape
+                            self.baseline_calc.reset()
+                        else:
+                            # object event
+                            oid = str(uuid.uuid4())
+                            ev['id'] = oid
+                            self.all_objects[oid] = ev
+                            new_objects.append(ev)
+
+                # 7) send WS diffs
                 if not self.config.bypass_ws and (
-                    new_strokes or removed_ids or new_objects or remove_objects
+                    new_strokes or removed_strokes or
+                    new_backgrounds or removed_backgrounds or
+                    new_objects or removed_objects
                 ):
                     await self.payload_sender.send_update(
                         new_strokes=new_strokes,
-                        remove_strokes=removed_ids,
+                        remove_strokes=removed_strokes,
+                        new_backgrounds=new_backgrounds,
+                        remove_backgrounds=removed_backgrounds,
                         new_objects=new_objects,
-                        remove_objects=remove_objects,
+                        remove_objects=removed_objects,
                     )
 
-                # petit yield
+                # yield
                 await asyncio.sleep(0)
 
         except asyncio.CancelledError:
             logger.info("Main loop cancelled, shutting down.")
         finally:
-            # cleanup final
+            # cleanup
             self.kinect.close()
             if not self.config.bypass_ws:
-                # 1) Collecte de TOUS les IDs de strokes, sur tous les outils
-                all_ids = []
+                # collect all remaining ids
+                all_stroke_ids = []
                 for slots in self.strokes_by_tool.values():
-                    all_ids.extend(slots.keys())
+                    all_stroke_ids.extend(slots.keys())
+                all_obj_ids = list(self.all_objects.keys())
+                all_bg_ids = list(self.backgrounds_by_id.keys())
 
-                # 2) On envoie un remove_strokes massif pour tout supprimer
                 await self.payload_sender.send_update(
                     new_strokes=[],
-                    remove_strokes=all_ids,
+                    remove_strokes=all_stroke_ids,
+                    new_backgrounds=[],
+                    remove_backgrounds=all_bg_ids,
                     new_objects=[],
-                    remove_objects=list(self.all_objects.keys()),
+                    remove_objects=all_obj_ids,
                 )
                 await self.payload_sender.stop()
 
             if self.display:
                 cv2.destroyAllWindows()
             logger.info("Shutdown complete.")
-
 
 
 if __name__ == '__main__':
@@ -360,7 +384,6 @@ if __name__ == '__main__':
     # Fetch config from remote
     client = ArtineoClient(module_id=4, host="localhost", port=8000)
     raw_conf = client.fetch_config()
-    # raw_conf = {}
 
     controller = MainController(
         raw_config=raw_conf,
