@@ -32,9 +32,15 @@ const {
 function onPlayerReady() {
   console.log('[Module3] ArtyPlayer prêt → lecture de l’intro…')
   player3.value?.playByTitle(
+    'imagination.mp4',
+    () => console.log('→ onStart video imagination.mp4'),
+    () => console.log('→ onComplete video imagination.mp4')
+  )
+
+  player3.value?.playByTitle(
     'Introduction.mp3',
-    () => console.log('→ onStart : début de Introduction.mp3'),
-    () => console.log('→ onComplete : fin de Introduction.mp3')
+    () => console.log('→ onStart audio Introduction.mp3'),
+    () => console.log('→ onComplete audio Introduction.mp3')
   )
 }
 </script>
