@@ -3,8 +3,7 @@
     <img v-if="backgroundUrl" :src="backgroundUrl" alt="painting" class="painting" />
 
     <!-- 
-      On écoute `@ready="onPlayerReady"` : 
-      dès que le composant ArtyPlayer émet "ready", on appelle onPlayerReady()
+      On place le player ici, avec ref="player3"
     -->
     <ArtyPlayer ref="player3" :module="3" @ready="onPlayerReady" class="arty-player" />
 
@@ -19,39 +18,36 @@
 </template>
 
 <script setup lang="ts">
-import { useRuntimeConfig } from '#app'
-import { computed, ref } from 'vue'
+import { ref } from 'vue'
 import ArtyPlayer from '~/components/ArtyPlayer.vue'
 import useModule3 from '~/composables/module3.ts'
 
-definePageMeta({ layout: 'module' })
-
-// 1) ref pour récupérer l’instance <ArtyPlayer>
+// — 1) On crée le ref qui pointera vers l’instance ArtyPlayer —
 const player3 = ref<InstanceType<typeof ArtyPlayer> | null>(null)
 
-// 2) Fonction déclenchée à la réception de l’événement `ready`
-const titreVoulu = 'Introduction.mp3'
+// — 2) On transmet player3 à notre composable —
+const {
+  backgroundSet,
+  blobTexts,
+  stateClasses,
+  pressedStates,
+  backgroundUrl,
+  playIntro
+} = useModule3(player3)
+
+/**
+ * Si vous avez configuré ArtyPlayer pour émettre `@ready="..."`, 
+ * alors on peut écouter ici. Sinon, vous pouvez tout appeler à la main.
+ */
 function onPlayerReady() {
-  console.log(`[Module 3] onPlayerReady() → lecture de "${titreVoulu}"`)
-  // Appel en toute sécurité : l’enfant ArtyPlayer est monté et a chargé sa liste
-  player3.value?.playByTitle(titreVoulu)
+  console.log('[module3.vue] ArtyPlayer a émis ready → onPlayerReady()')
+  // On peut déclencher directement la méthode du composable, qui à son tour
+  // appellera player3.value!.playByTitle("Introduction.mp3")
+  playIntro()
 }
 
-// 3) Reste du composant 3RFID
-const { backgroundSet, blobTexts, stateClasses, pressedStates } = useModule3()
-const { public: { apiUrl } } = useRuntimeConfig()
+// Vous pouvez aussi appeler `playIntro()` plus tard, suite à un clic 3RFID, etc.
 
-const backgroundUrl = computed(
-  () => `${apiUrl}/getAsset?module=3&path=tableau${backgroundSet.value}.png`
-)
 </script>
 
 <style scoped src="~/assets/modules/3/style.css"></style>
-
-<style scoped>
-.module3-player-wrapper {
-  margin-top: 2rem;
-  padding: 1rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.2);
-}
-</style>
