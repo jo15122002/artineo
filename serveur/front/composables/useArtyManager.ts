@@ -1,166 +1,211 @@
-// composables/useArtyManager.ts
+// front/composables/useArtyManager.ts
 import { useRuntimeConfig } from '#app'
 import { ref, watch, type Ref } from 'vue'
 
 export interface MediaItem {
-  url:    string
-  type:   string
-  title:  string
+  title: string
+  type:  string
+  url:   string
+}
+
+export interface UseArtyManagerReturn {
+  mediaList:     Ref<MediaItem[]>
+  currentIndex:  Ref<number>
+  load:          () => Promise<void>
+  play:          () => void
+  next:          () => void
+  prev:          () => void
+  playByTitle:   (
+    title: string,
+    onStart?: () => void,
+    onComplete?: () => void
+  ) => void
 }
 
 /**
- * useArtyManager :
- *   - moduleId : numéro du module (pour GET /media?module=…)
- *   - targetRef : Ref<HTMLElement|null> pointant vers l’élément DOM où injecter <audio>/<video>
+ * useArtyManager gère la récupération et la lecture des médias (audio/vidéo)
+ * pour un module donné. 
+ *
+ * @param moduleId     Identifiant numérique du module (ex. 3)
+ * @param containerRef Réf vers le <div> qui accueillera le <audio> ou <video>
  */
 export function useArtyManager(
   moduleId: number,
-  targetRef: Ref<HTMLElement | null>
-) {
+  containerRef: Ref<HTMLElement | null>
+): UseArtyManagerReturn {
+  // ─── 1) RÉFÉRENCES RÉACTIVES ───────────────────────────────────────────────────
+  const mediaList    = ref<MediaItem[]>([])
+  const currentIndex = ref<number>(0)
+  const playerEl     = ref<HTMLMediaElement | null>(null)
+
+  // Récupère apiUrl depuis runtimeConfig (ex. "http://localhost:8000")
   const { public: { apiUrl } } = useRuntimeConfig()
 
-  // liste des médias renvoyée par l'API
-  const mediaList = ref<MediaItem[]>([])
-  // index du média actuellement chargé
-  const currentIndex = ref(0)
-  // référence au <audio> ou <video> créé dans le DOM
-  let player: HTMLMediaElement | null = null
-
-  // --- 1. initPlayer() : reconstruit le <audio>/<video> dans targetRef.value ---
-  function initPlayer() {
-    const target = targetRef.value
-    if (!target) {
-      console.warn(`[ArtyManager][Module ${moduleId}] initPlayer() → targetRef.value est null`)
-      player = null
-      return
-    }
-
-    // vide le conteneur
-    target.innerHTML = ''
-
-    if (!mediaList.value.length) {
-      console.log(`[ArtyManager][Module ${moduleId}] Aucun média trouvé pour ce module`)
-      player = null
-      return
-    }
-
-    const m = mediaList.value[currentIndex.value]
-    console.log(
-      `[ArtyManager][Module ${moduleId}] initPlayer() → index=${currentIndex.value}, ` +
-      `title="${m.title}", type="${m.type}", url="${m.url}"`
-    )
-
-    // créer <video> ou <audio> selon le type MIME
-    player = document.createElement(
-      m.type.startsWith('video/') ? 'video' : 'audio'
-    )
-    player.src = `${apiUrl.replace(/^http/, 'http')}${m.url}`
-    player.controls = true
-    player.style.maxWidth = '100%'
-
-    target.appendChild(player)
-  }
-
-  // --- 2. load() : appel GET /media?module=… puis initPlayer() ---
+  // ─── 2) load() : fetch `<apiUrl>/media?module=…` ──────────────────────────────
   async function load() {
     console.log(`[ArtyManager][Module ${moduleId}] → Début de load()`)
     try {
-      const url = `${apiUrl}/media?module=${moduleId}`
-      console.log(`[ArtyManager]   Envoi GET ${url}`)
-      const res = await fetch(url)
-      if (!res.ok) {
-        console.warn(
-          `[ArtyManager][Module ${moduleId}] GET /media a échoué → status ${res.status}`
-        )
-        return
+      // On appelle l’endpoint media sur FastAPI
+      const resp = await fetch(`${apiUrl}/media?module=${moduleId}`)
+      if (!resp.ok) {
+        throw new Error(`HTTP ${resp.status} au lieu de 200`)
       }
-      const js = (await res.json()) as { media: MediaItem[] }
-      mediaList.value = js.media || []
+      const json = await resp.json()
+      // On attend un objet { medias: [ { title, type, url }, … ] }
+      const list: MediaItem[] = (json.medias || []).map((m: any) => {
+        // Si url est relative (commence par '/assets'), on le préfixe avec apiUrl
+        let fullUrl: string
+        if (typeof m.url === 'string' && m.url.startsWith('/')) {
+          // Exemple : "/assets/module3/Introduction.mp3" → "http://localhost:8000/assets/module3/Introduction.mp3"
+          fullUrl = apiUrl + m.url
+        } else {
+          fullUrl = m.url
+        }
+        return {
+          title: m.title,
+          type:  m.type,
+          url:   fullUrl
+        }
+      })
 
-      console.log(
-        `[ArtyManager][Module ${moduleId}] Liste reçue → ${mediaList.value.length} élément(s)`
-      )
-      mediaList.value.forEach((m, i) => {
+      console.log(`[ArtyManager]   Envoi GET ${apiUrl}/media?module=${moduleId}`)
+      console.log(`[ArtyManager][Module ${moduleId}] Liste reçue → ${list.length} élément(s)`)
+      list.forEach((m, i) => {
         console.log(`   [${i}] title="${m.title}", type="${m.type}", url="${m.url}"`)
       })
 
-      // Dès que la liste est chargée, on initialise le player (si targetRef.value existe déjà)
-      if (targetRef.value) {
-        initPlayer()
+      mediaList.value = list
+      if (list.length > 0) {
+        currentIndex.value = 0
+        initPlayer(currentIndex.value)
       }
-    } catch (err) {
-      console.error(
-        `[ArtyManager][Module ${moduleId}] Erreur pendant load():`, err
-      )
+    } catch (e) {
+      console.error(`[ArtyManager][Module ${moduleId}] Erreur pendant load():`, e)
     }
   }
 
-  // --- 3. Fonctions basiques de lecture ---
-  function play() {
-    if (!player) {
-      console.log(`[ArtyManager][Module ${moduleId}] play() → player non initialisé, appel initPlayer()`)
-      initPlayer()
+  // ─── 3) initPlayer() : (re)crée <audio> ou <video> pour l’index donné ─────────
+  function initPlayer(
+    index: number,
+    onStartCallback?: () => void,
+    onCompleteCallback?: () => void
+  ) {
+    const container = containerRef.value
+    if (!container) {
+      console.warn('[ArtyManager] initPlayer: containerRef non défini, skip')
+      return
     }
-    console.log(`[ArtyManager][Module ${moduleId}] play() → Lecture du média index=${currentIndex.value}`)
-    player?.play()
+
+    // Si un player existait, on le retire avec ses listeners
+    if (playerEl.value) {
+      playerEl.value.removeEventListener('play',  handlePlay)
+      playerEl.value.removeEventListener('ended', handleEnded)
+      container.removeChild(playerEl.value)
+      playerEl.value = null
+    }
+
+    const info = mediaList.value[index]
+    if (!info) {
+      console.warn(`[ArtyManager] initPlayer: pas de média pour index=${index}`)
+      return
+    }
+
+    // Selon le type MIME, on crée <video> ou <audio>
+    let el: HTMLMediaElement
+    if (info.type.startsWith('video/')) {
+      el = document.createElement('video')
+      // dimensions par défaut (modifiez si besoin)
+      ;(el as HTMLVideoElement).width  = 640
+      ;(el as HTMLVideoElement).height = 360
+      el.controls = true
+    } else {
+      el = document.createElement('audio')
+      // On cache l’audio, on n’affiche pas l’élément
+      el.style.display = 'none'
+    }
+
+    el.src     = info.url
+    el.preload = 'auto'
+    el.muted   = false
+
+    function handlePlay() {
+      console.log(`[ArtyManager][Module ${moduleId}] onStart() pour "${info.title}"`)
+      onStartCallback && onStartCallback()
+    }
+    function handleEnded() {
+      console.log(`[ArtyManager][Module ${moduleId}] onComplete() pour "${info.title}"`)
+      onCompleteCallback && onCompleteCallback()
+    }
+
+    el.addEventListener('play',  handlePlay)
+    el.addEventListener('ended', handleEnded)
+
+    container.appendChild(el)
+    playerEl.value = el
+  }
+
+  // ─── 4) Fonctions de contrôle : play(), next(), prev() ───────────────────────
+  function play() {
+    if (playerEl.value) {
+      playerEl.value.play().catch(err => {
+        console.warn('[ArtyManager] play() bloqué :', err)
+      })
+    }
   }
 
   function next() {
-    if (currentIndex.value + 1 < mediaList.value.length) {
-      currentIndex.value++
-      console.log(`[ArtyManager][Module ${moduleId}] next() → Passage à index=${currentIndex.value}`)
-      initPlayer()
-      play()
-    } else {
-      console.log(`[ArtyManager][Module ${moduleId}] next() → Déjà au dernier média`)
-    }
-  }
-
-  function prev() {
-    if (currentIndex.value > 0) {
-      currentIndex.value--
-      console.log(`[ArtyManager][Module ${moduleId}] prev() → Passage à index=${currentIndex.value}`)
-      initPlayer()
-      play()
-    } else {
-      console.log(`[ArtyManager][Module ${moduleId}] prev() → Déjà au premier média`)
-    }
-  }
-
-  // --- 4. playByTitle(title) : recherche par title et joue le média ---
-  function playByTitle(title: string) {
-    console.log(`[ArtyManager][Module ${moduleId}] playByTitle("${title}") appelé`)
-    const idx = mediaList.value.findIndex(item => item.title === title)
-    if (idx === -1) {
-      console.warn(
-        `[ArtyManager][Module ${moduleId}] Aucun média trouvé pour le titre "${title}"`
-      )
-      return
-    }
-    currentIndex.value = idx
-    console.log(
-      `[ArtyManager][Module ${moduleId}] Index mis à jour → ${idx}, ` +
-      `title="${mediaList.value[idx].title}"`
-    )
-    initPlayer()
+    if (!mediaList.value.length) return
+    let nxt = currentIndex.value + 1
+    if (nxt >= mediaList.value.length) nxt = 0
+    currentIndex.value = nxt
+    initPlayer(nxt)
     play()
   }
 
-  // --- 5. Si targetRef.value change (montage du <div>), on peut initPlayer() automatiquement ---
-  watch(targetRef, (el) => {
-    if (el && mediaList.value.length) {
-      console.log(`[ArtyManager][Module ${moduleId}] watch(targetRef) → nouvel élément, appel initPlayer()`)
-      initPlayer()
-    }
-  })
+  function prev() {
+    if (!mediaList.value.length) return
+    let prv = currentIndex.value - 1
+    if (prv < 0) prv = mediaList.value.length - 1
+    currentIndex.value = prv
+    initPlayer(prv)
+    play()
+  }
 
+  // ─── 5) playByTitle() : cherche le média par titre, l’initialise et le joue ──
+  function playByTitle(
+    title: string,
+    onStart?: () => void,
+    onComplete?: () => void
+  ) {
+    const idx = mediaList.value.findIndex(m => m.title === title)
+    if (idx < 0) {
+      console.warn(`[ArtyManager] playByTitle("${title}") → média introuvable`)
+      return
+    }
+    currentIndex.value = idx
+    initPlayer(idx, onStart, onComplete)
+    play()
+  }
+
+  // ─── 6) Watch sur containerRef : dès qu’il existe, on appelle load() ────────
+  watch(
+    () => containerRef.value,
+    async (el) => {
+      if (el) {
+        await load()
+      }
+    },
+    { immediate: true }
+  )
+
+  // ─── 7) On retourne toutes les méthodes, y compris load() ───────────────────
   return {
+    mediaList,
+    currentIndex,
     load,
     play,
     next,
     prev,
-    playByTitle,
-    mediaList,
-    currentIndex
+    playByTitle
   }
 }
