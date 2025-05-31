@@ -33,7 +33,8 @@ ExecStart=/usr/bin/chromium-browser \\
     --noerrdialogs \\
     --disable-infobars \\
     --incognito \\
-    --kiosk http://artineo.local/modules/module3
+    --kiosk http://artineo.local/modules/module3 \\
+    --autoplay-policy=no-user-gesture-required
 Restart=on-failure
 RestartSec=5
 
