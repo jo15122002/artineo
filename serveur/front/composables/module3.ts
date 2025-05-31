@@ -23,9 +23,7 @@ export default function useModule3(
       backgroundSet,
       blobTexts,
       stateClasses,
-      pressedStates,
-      // Ajout d’une fonction no-op pour playIntro en SSR
-      playIntro: () => {}
+      pressedStates
     }
   }
 
@@ -123,17 +121,6 @@ export default function useModule3(
     return js.buffer
   }
 
-  // ─── 5. Fonction pour jouer « Introduction.mp3 » via le playerRef ──────────
-  function playIntro() {
-    const titre = 'Introduction.mp3'
-    if (playerRef.value) {
-      console.log(`[useModule3] playIntro() → demande playByTitle("${titre}")`)
-      playerRef.value.playByTitle(titre)
-    } else {
-      console.warn('[useModule3] playIntro() → playerRef.value est null, impossible de jouer')
-    }
-  }
-
   // ─── 6. Cycle de vie de Vue : onMounted / onBeforeUnmount ───────────────────
   onMounted(async () => {
     // 6.1) Charger assignments & answers depuis fetchConfig()
@@ -180,7 +167,6 @@ export default function useModule3(
     blobTexts,
     stateClasses,
     pressedStates,
-    backgroundUrl,
-    playIntro
+    backgroundUrl
   }
 }
