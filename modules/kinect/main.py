@@ -21,6 +21,7 @@ from ArtineoClient import ArtineoClient
 from baseline_calculator import BaselineCalculator
 from brush_detector import BrushStrokeDetector
 from channel_selector import ChannelSelector
+from channel4_detector import Channel4Detector
 from cluster_tracker import ClusterTracker
 from config import Config
 from depth_processor import DepthProcessor
@@ -84,12 +85,9 @@ class MainController:
             small_area_threshold=self.config.small_area_threshold,
         )
         self.shape_classifier = ShapeClassifier(
-            small_templates=self.template_manager.small_templates,
-            shape_templates=self.template_manager.forme_templates,
-            background_profiles=self.template_manager.background_profiles,
-            use_matchshapes=self.config.use_matchshapes,
+            depth_templates=self.template_manager.depth_templates,
             small_area_threshold=self.config.small_area_threshold,
-            area_threshold=self.config.area_threshold,
+            # match_threshold=self.config.area_threshold
         )
         self.cluster_tracker = ClusterTracker(
             max_history=self.config.n_profile,
@@ -97,6 +95,11 @@ class MainController:
             area_threshold=self.config.area_threshold,
         )
         self.depth_processor = DepthProcessor(self.config)
+        self.depth_processor_4 = DepthProcessor(
+            self.config,
+            mask_threshold=2,
+            morph_kernel=5
+        )
 
         # tool / channel mapping
         self.current_tool: str = '1'  # default tool
@@ -158,6 +161,21 @@ class MainController:
             self.display = DisplayManager([])
         else:
             self.display = None
+            
+        self.background_detected = False
+        self.current_background_id: str | None = None
+
+        # Nouvelle baseline pour la détection DES OBJETS
+        self.obj_baseline_calc = BaselineCalculator(self.config, logger=logger)
+        self.obj_baseline_ready = False
+        
+        self.channel4_detector = Channel4Detector(
+            depth_processor=self.depth_processor_4,
+            shape_classifier=self.shape_classifier,
+            cluster_tracker=self.cluster_tracker,
+            object_detector=self.object_detector,
+            small_area_threshold=self.config.small_area_threshold,
+        )
 
         logger.info("MainController initialized.")
 
@@ -167,12 +185,8 @@ class MainController:
         if not self.config.bypass_ws:
             self.payload_sender.start()
 
-        alfa_decay = 0.1
-        prox = self.stroke_tracker.proximity_threshold
-
         try:
             while True:
-                # prepare diff lists
                 new_strokes = []
                 removed_strokes = []
                 new_backgrounds = []
@@ -180,29 +194,29 @@ class MainController:
                 new_objects = []
                 removed_objects = []
 
-                # 1) channel switch?
+                # 1) Changement d’outil ?
                 next_tool = await self.channel_selector.get_next_channel()
                 if next_tool and next_tool != self.current_tool:
                     old = self.current_tool
                     self.current_tool = next_tool
                     logger.info(f"Tool switched → {self.current_tool}")
 
-                    # make old tool's dynamic strokes persistent
+                    # 1.1) Transformer les anciens strokes en “persistents”
                     old_slots = self.strokes_by_tool[old]
                     for sid, ev in old_slots.items():
                         ev['persistent'] = True
                         self.stroke_lifetimers[old].ages.pop(sid, None)
 
-                    # reset baseline & drawing buffers
+                    # 1.2) **Toujours reset baseline** quand on change d’outil
                     self.baseline_calc.reset()
+
+                    # 1.3) Reset visuels / buffers
                     for buf in self.final_drawings.values():
                         buf.fill(0)
 
-                    # re-send all persistent strokes of new tool
+                    # 1.4) Ré-émettre les strokes persistents du nouveau canal
                     new_slots = self.strokes_by_tool[self.current_tool]
-                    persistent = [
-                        ev for ev in new_slots.values() if ev.get('persistent')
-                    ]
+                    persistent = [ev for ev in new_slots.values() if ev.get('persistent')]
                     if persistent and not self.config.bypass_ws:
                         await self.payload_sender.send_update(
                             new_strokes=persistent,
@@ -213,49 +227,42 @@ class MainController:
                             remove_objects=[]
                         )
 
-                # 2) get depth frame
+                # 2) Récupérer le frame de profondeur
                 if not self.kinect.has_new_depth_frame():
                     await asyncio.sleep(0.01)
                     continue
                 frame = self.kinect.get_depth_frame()
 
-                # ROI calibration
+                # 3) ROI calibrage si demandé
                 if self.config.calibrate_roi:
                     rx, ry = self.roi_calibrator.run()
                     logger.info(f"ROI calibrated → x={rx}, y={ry}")
                     self.config.calibrate_roi = False
 
+                # 4) Affichage brut (debug) si activé
                 if self.display:
                     self.display.show('depth', frame)
                     if self.display.process_events() == ord('q'):
                         break
 
-                # 3) baseline
-                try:
-                    baseline = self.baseline_calc.baseline
-                except RuntimeError:
-                    self.baseline_calc.update(frame)
-                    continue
+                # 5) OUTILS 1–3 (pinceaux) : même logique qu’avant
+                if self.current_tool in ('1', '2', '3'):
+                    try:
+                        baseline = self.baseline_calc.ensure_baseline_ready(frame)
+                    except RuntimeError:
+                        continue
 
-                # 4) depth → mapped + contours
-                result = self.depth_processor.process(frame, baseline)
-
-                # 5) composite for tools 1–3
-                if self.current_tool in ('1','2','3'):
+                    # 5.2) Une fois baseline ready, on fait la soustraction + composite
+                    result = self.depth_processor.process(frame, baseline)
                     ch = self.tool_channel[self.current_tool]
                     diff = (result.mapped.astype(int) - 128).clip(min=0).astype(float)
                     mask = diff > self.config.stroke_intensity_thresh
-                    buf = self.final_drawings[self.current_tool][:,:,ch]
-                    buf[mask] = (1-self.config.alpha)*buf[mask] + self.config.alpha*diff[mask]
-                    buf[~mask] *= (1-alfa_decay)
+                    buf = self.final_drawings[self.current_tool][:, :, ch]
+                    buf[mask] = (1 - self.config.alpha) * buf[mask] + self.config.alpha * diff[mask]
+                    buf[~mask] *= (1 - 0.1)
                     composite = cv2.convertScaleAbs(self.final_drawings[self.current_tool])
-                    alfa_decay = alfa_decay * 0.9 + 0.11
-                else:
-                    composite = None
 
-                # 6) stroke vs object/background detection
-                if self.current_tool != '4':
-                    # strokes branch
+                    # 5.3) Détection de strokes (inchangée)
                     raw = self.brush_detector.detect(composite, self.current_tool)
                     existing = list(self.strokes_by_tool[self.current_tool].values())
                     unique = self.stroke_tracker.update(raw, existing)
@@ -271,7 +278,6 @@ class MainController:
                         slots[sid] = ev
                         new_strokes.append(ev)
 
-                    # lifetimer purge
                     dynamic_slots = {
                         sid: ev
                         for sid, ev in slots.items()
@@ -280,7 +286,8 @@ class MainController:
                     active_ids = []
                     for sid, ev in dynamic_slots.items():
                         for r in raw:
-                            if abs(r['x']-ev['x'])<=prox and abs(r['y']-ev['y'])<=prox:
+                            if abs(r['x'] - ev['x']) <= self.stroke_tracker.proximity_threshold \
+                               and abs(r['y'] - ev['y']) <= self.stroke_tracker.proximity_threshold:
                                 active_ids.append(sid)
                                 break
                     lifetimer = self.stroke_lifetimers[self.current_tool]
@@ -289,44 +296,21 @@ class MainController:
                         del slots[sid]
                         removed_strokes.append(sid)
 
-                else:
-                    # clustering + object/background
-                    dets = []
-                    for cnt in result.contours:
-                        shape = self.shape_classifier.classify(cnt)
-                        M = cv2.moments(cnt)
-                        if M['m00'] == 0:
-                            continue
-                        cx = M['m10']/M['m00']
-                        cy = M['m01']/M['m00']
-                        area = float(cv2.contourArea(cnt))
-                        x, y, w, h = cv2.boundingRect(cnt)
-                        dets.append((shape, cx, cy, area, 0.0, float(w), float(h)))
-                    self.cluster_tracker.update(dets)
+                # 6) OUTIL 4 (canal fond + objets) : on réutilise exactement la même logique de baseline
+                else:  # self.current_tool == '4'
+                    try:
+                        baseline = self.baseline_calc.ensure_baseline_ready(frame)
+                    except RuntimeError:
+                        continue
 
-                    valid = self.object_detector.detect()
-                    for ev in valid:
-                        # background event?
-                        if ev['type'] == 'background':
-                            # remove previous backgrounds
-                            for bid in list(self.backgrounds_by_id):
-                                removed_backgrounds.append(bid)
-                                del self.backgrounds_by_id[bid]
-                            # register new background
-                            bid = str(uuid.uuid4())
-                            ev['id'] = bid
-                            self.backgrounds_by_id[bid] = ev
-                            new_backgrounds.append(ev)
-                            # reset baseline with this new landscape
-                            self.baseline_calc.reset()
-                        else:
-                            # object event
-                            oid = str(uuid.uuid4())
-                            ev['id'] = oid
-                            self.all_objects[oid] = ev
-                            new_objects.append(ev)
+                    # 6.2) Dès que baseline_for_bg est disponible, on passe à la détection
+                    nb, rb, no, ro = self._process_channel4(frame)
+                    new_backgrounds.extend(nb)
+                    removed_backgrounds.extend(rb)
+                    new_objects.extend(no)
+                    removed_objects.extend(ro)
 
-                # 7) send WS diffs
+                # 7) Envoi WS des diffs (strokes, backgrounds, objects)
                 if not self.config.bypass_ws and (
                     new_strokes or removed_strokes or
                     new_backgrounds or removed_backgrounds or
@@ -341,16 +325,16 @@ class MainController:
                         remove_objects=removed_objects,
                     )
 
-                # yield
+                # 8) Yield
                 await asyncio.sleep(0)
 
         except asyncio.CancelledError:
             logger.info("Main loop cancelled, shutting down.")
         finally:
-            # cleanup
+            # --- cleanup ---
             self.kinect.close()
             if not self.config.bypass_ws:
-                # collect all remaining ids
+                # On supprime tout ce qui reste pour éviter d’afficher des résidus
                 all_stroke_ids = []
                 for slots in self.strokes_by_tool.values():
                     all_stroke_ids.extend(slots.keys())
@@ -370,6 +354,230 @@ class MainController:
             if self.display:
                 cv2.destroyAllWindows()
             logger.info("Shutdown complete.")
+
+    def _process_channel4(
+        self,
+        raw_frame: np.ndarray
+    ) -> tuple[
+        list[dict],  # new_backgrounds
+        list[str],   # removed_backgrounds
+        list[dict],  # new_objects
+        list[str]    # removed_objects
+    ]:
+        new_backgrounds: list[dict] = []
+        removed_backgrounds: list[str] = []
+        new_objects: list[dict] = []
+        removed_objects: list[str] = []
+
+        # --- 1) Récupérer ou accumuler la baseline-fond ---
+        try:
+            baseline_for_bg = self.baseline_calc.ensure_baseline_ready(raw_frame)
+        except RuntimeError:
+            # on retourne vide : la baseline n'est pas encore prête
+            return [], [], [], []
+
+        # --- 2) Déléguer toute la détection à Channel4Detector ---
+        bg_events, obj_events, cnts_raw = self.channel4_detector.detect(
+            raw_frame,
+            baseline_for_bg
+        )
+
+        # --- 3) Affichage debug (si nécessaire) ---
+        if self.display:
+            # Pour visualiser la carte 8 bits, on la recalcule ici (map + blur),
+            # mais uniquement pour l’affichage. Ça ne re-crée pas de bruit.
+            depth_res = self.depth_processor_4.process(raw_frame, baseline_for_bg)
+            mapped = depth_res.mapped
+            self._display_detection_debug(
+                mapped,
+                cnts_raw,
+                bg_events,
+                obj_events
+            )
+
+        # --- 4) Gestion des événements “fond” ---
+        if not self.background_detected and bg_events:
+            bg = bg_events[0]
+            self.current_background_id = bg["id"]
+            self.background_detected = True
+
+            logger.info(
+                "Fond initial détecté (3D) : %s (id=%s). Construction de la baseline-objets…",
+                bg["shape"], bg["id"]
+            )
+
+            # Création de la baseline-objets
+            self.obj_baseline_calc.reset()
+            try:
+                self.obj_baseline_calc.update(raw_frame)
+                self.obj_baseline_ready = True
+                logger.info("obj_baseline initialisée sur le fond détecté.")
+            except RuntimeError as e:
+                logger.warning("Impossible de calculer obj_baseline en une frame : %s", e)
+                self.obj_baseline_ready = False
+
+            new_backgrounds.append({
+                "id":    bg["id"],
+                "type":  "background",
+                "shape": bg["shape"],
+                "cx":    bg["cx"],
+                "cy":    bg["cy"],
+                "w":     bg["w"],
+                "h":     bg["h"],
+                "angle": bg["angle"],
+                "scale": bg["scale"],
+            })
+
+        elif self.background_detected and bg_events:
+            # Remplacement de fond
+            rem = [ev for ev in bg_events if ev["id"] != self.current_background_id]
+            if rem:
+                bg_new = rem[0]
+                old_id = self.current_background_id
+                self.current_background_id = bg_new["id"]
+
+                logger.info(
+                    "Remplacement du fond : ancien id=%s → nouveau id=%s (shape=%s)",
+                    old_id, bg_new["id"], bg_new["shape"]
+                )
+                removed_backgrounds.append(old_id)
+
+                self.obj_baseline_calc.reset()
+                try:
+                    self.obj_baseline_calc.update(raw_frame)
+                    self.obj_baseline_ready = True
+                    logger.info("obj_baseline recalculée sur le nouveau fond.")
+                except RuntimeError as e:
+                    logger.warning("Impossible de recalculer obj_baseline : %s", e)
+                    self.obj_baseline_ready = False
+
+                new_backgrounds.append({
+                    "id":    bg_new["id"],
+                    "type":  "background",
+                    "shape": bg_new["shape"],
+                    "cx":    bg_new["cx"],
+                    "cy":    bg_new["cy"],
+                    "w":     bg_new["w"],
+                    "h":     bg_new["h"],
+                    "angle": bg_new["angle"],
+                    "scale": bg_new["scale"],
+                })
+
+        # 4.1) Disparition effective du fond
+        if self.background_detected and not bg_events:
+            logger.info("Le fond (id=%s) a été retiré.", self.current_background_id)
+            removed_backgrounds.append(self.current_background_id)
+            self.background_detected = False
+            self.obj_baseline_ready = False
+            self.current_background_id = None
+            self.obj_baseline_calc.reset()
+
+        # --- 5) Gestion des objets (après validation du fond et baseline-objets prête) ---
+        if self.background_detected and self.obj_baseline_ready:
+            try:
+                baseline_obj = self.obj_baseline_calc.baseline
+                result_obj = self.depth_processor_4.process(raw_frame, baseline_obj)
+            except RuntimeError:
+                result_obj = None
+
+            if result_obj is not None:
+                cnts_obj = result_obj.contours
+                dets_for_obj: list[tuple] = []
+                for cnt in cnts_obj:
+                    area = float(cv2.contourArea(cnt))
+                    if area < self.config.small_area_threshold:
+                        continue
+
+                    shape = self.shape_classifier.classify_3d(
+                        cnt,
+                        result_obj.mapped
+                    )
+                    if shape is None:
+                        continue
+
+                    M = cv2.moments(cnt)
+                    if M.get("m00", 0) == 0:
+                        continue
+                    cx = float(M["m10"] / M["m00"])
+                    cy = float(M["m01"] / M["m00"])
+                    x, y, w, h = cv2.boundingRect(cnt)
+                    dets_for_obj.append((shape, cx, cy, area, 0.0, float(w), float(h)))
+
+                self.cluster_tracker.update(dets_for_obj)
+
+                evs_obj, removed_ids_obj = self.object_detector.detect()
+                for ev in evs_obj:
+                    if ev["type"] != "background":
+                        new_objects.append(ev)
+                for rid in removed_ids_obj:
+                    if rid not in (self.current_background_id or []):
+                        removed_objects.append(rid)
+
+        return new_backgrounds, removed_backgrounds, new_objects, removed_objects
+
+    def _display_detection_debug(
+        self,
+        raw_frame: np.ndarray,
+        contours: list[np.ndarray],
+        candidate_backgrounds: list[dict],
+        candidate_objects: list[dict]
+    ):
+        """
+        Affiche dans la fenêtre 'debug4' le raw_frame (en 8-bit) annoté :
+        - tous les contours en BLEU (non classifiés),
+        - en ROUGE les contours ayant été classés background (shape returned),
+        - en VERT les contours ayant été classés objets.
+        - Ajoute un label textuel au-dessus de chaque bounding box.
+        `raw_frame` est soit frame, soit result.mapped converti en 8-bit.
+        """
+        if not self.display:
+            return
+
+        # 1) Normalisation en 8-bit pour affichage
+        img8 = cv2.convertScaleAbs(raw_frame)
+        debug_img = cv2.cvtColor(img8, cv2.COLOR_GRAY2BGR)
+
+        # 2) dessiner tous les contours (BLEU)
+        for cnt in contours:
+            x, y, w, h = cv2.boundingRect(cnt)
+            cv2.rectangle(debug_img, (x, y), (x + w, y + h), (255, 128, 0), 1)
+            cv2.drawContours(debug_img, [cnt], -1, (255, 128, 0), 1)
+
+        # 3) dessiner backgrounds validés (ROUGE) et label
+        for ev in candidate_backgrounds:
+            # on a les coordonnées (cx, cy, w, h) dans ev
+            cx, cy, w_, h_ = int(ev['cx']), int(ev['cy']), int(ev['w']), int(ev['h'])
+            x = int(cx - w_ / 2); y = int(cy - h_ / 2)
+            cv2.rectangle(debug_img, (x, y), (x + int(w_), y + int(h_)), (0, 0, 255), 2)
+            cv2.putText(
+                debug_img,
+                f"BG:{ev['shape']}",
+                (x, max(y - 5, 0)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (0, 0, 255),
+                1,
+                cv2.LINE_AA,
+            )
+
+        # 4) dessiner objects candidates (VERT) et label
+        for ev in candidate_objects:
+            cx, cy, w_, h_ = int(ev['cx']), int(ev['cy']), int(ev['w']), int(ev['h'])
+            x = int(cx - w_ / 2); y = int(cy - h_ / 2)
+            cv2.rectangle(debug_img, (x, y), (x + int(w_), y + int(h_)), (0, 255, 0), 2)
+            cv2.putText(
+                debug_img,
+                f"OBJ:{ev['shape']}",
+                (x, max(y - 5, 0)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (0, 255, 0),
+                1,
+                cv2.LINE_AA,
+            )
+
+        # 5) afficher le tout
+        self.display.show("debug4", debug_img)
 
 
 if __name__ == '__main__':

@@ -2,24 +2,19 @@
 
 import uuid
 from typing import Any, Dict, List, Tuple
-
+from cluster_tracker import ClusterTracker
 
 class ObjectDetector:
     """
     À partir des clusters fournis par ClusterTracker, génère
     deux listes :
-      - new_objects : nouveaux objets détectés, chacun sous forme de dict
-        {'id', 'shape', 'cx', 'cy', 'w', 'h', 'angle', 'scale'}
-      - remove_objects : liste des IDs d'objets qui ont disparu
-
-    Filtre les clusters trop petits (nombre de points < min_points)
-    ou trop grands (surface > max_area_ratio * ROI area),
-    et maintient un état interne pour suivre les objets entre les appels.
+      - new_events : nouveaux événements détectés (objets ou fonds),
+        chacun sous forme de dict {'id','type','shape','cx','cy','w','h','angle','scale'}
+      - remove_ids : liste des IDs d'objets/fonds qui ont disparu
     """
-
     def __init__(
         self,
-        cluster_tracker: Any,
+        cluster_tracker: ClusterTracker,
         template_sizes: Dict[str, Tuple[int, int]],
         roi_width: int,
         roi_height: int,
@@ -32,76 +27,83 @@ class ObjectDetector:
         self._min_points = min_points
         self._max_area_ratio = max_area_ratio
 
-        # État interne pour le tracking des objets
-        # clef = object ID, valeur = dernières propriétés de l'objet
+        # État interne pour le tracking
+        # clef = object/fond ID, valeur = dernières propriétés
         self._tracked_objects: Dict[str, Dict[str, Any]] = {}
 
     def detect(self) -> Tuple[List[Dict[str, Any]], List[str]]:
         """
         Parcourt les clusters validés et compare à l'état précédent pour
         générer :
-          - new_objects : liste d'objets fraîchement arrivés
-          - remove_objects : liste d'IDs d'objets disparus
+          - new_events : liste d'événements récents, sous forme de dicts
+          - remove_ids  : liste d'IDs disparus
         """
-        # Récupère les clusters "confirmés" par ClusterTracker
+        # 1) Récupère les clusters « confirmés »
         clusters = self._tracker.get_valid_clusters(
             min_confirmations=self._min_points
         )
 
-        current_objects: Dict[str, Dict[str, Any]] = {}
+        # On identifie dynamiquement les templates de fond
+        bg_names = {
+            name for name in self._template_sizes.keys()
+            if name.startswith("landscape_")
+        }
 
+        current: Dict[str, Dict[str, Any]] = {}
+
+        # 2) Parcours et filtre
         for cl in clusters:
-            avg_w = cl.avg_width
-            avg_h = cl.avg_height
+            avg_w, avg_h = cl.avg_width, cl.avg_height
 
-            # filtre par surface
-            if (avg_w * avg_h) > (self._roi_area * self._max_area_ratio):
+            # rejet des très gros clusters
+            if avg_w * avg_h > self._roi_area * self._max_area_ratio:
                 continue
 
             name = cl.shape
             cx, cy = cl.centroid
             angle = cl.avg_angle
 
-            # calcul de l'échelle relative au template
-            w_t, h_t = self._template_sizes[name]
+            # échelle relative au template
+            w_t, h_t = self._template_sizes.get(name, (avg_w, avg_h))
             scale = (avg_w / w_t + avg_h / h_t) / 2.0
 
-            # génère un ID stable si possible, sinon un nouveau UUID
-            # on suppose que ClusterTracker expose un identifiant unique `cl.id`
+            # ID stable si possible
             cluster_id = getattr(cl, "id", None)
-            if cluster_id is not None:
-                obj_id = str(cluster_id)
-            else:
-                obj_id = str(uuid.uuid4())
+            obj_id = str(cluster_id) if cluster_id is not None else str(uuid.uuid4())
 
-            obj = {
-                "id": obj_id,
+            # type « background » vs « object »
+            ev_type = "background" if name in bg_names else "object"
+
+            # construction de l'événement
+            ev = {
+                "id":    obj_id,
+                "type":  ev_type,
                 "shape": name,
-                "cx": int(cx),
-                "cy": int(cy),
-                "w": float(avg_w),
-                "h": float(avg_h),
+                "cx":    int(cx),
+                "cy":    int(cy),
+                "w":     float(avg_w),
+                "h":     float(avg_h),
                 "angle": float(angle),
                 "scale": float(scale),
             }
 
-            current_objects[obj_id] = obj
+            current[obj_id] = ev
 
-        # Détecte les arrivées et disparitions
-        new_objects: List[Dict[str, Any]] = []
-        remove_objects: List[str] = []
+        # 3) Différence avec l'état précédent
+        new_events: List[Dict[str, Any]] = []
+        remove_ids: List[str]   = []
 
-        # nouveaux IDs
-        for oid, props in current_objects.items():
+        # arrivées
+        for oid, ev in current.items():
             if oid not in self._tracked_objects:
-                new_objects.append(props)
+                new_events.append(ev)
 
-        # IDs disparus
+        # disparitions
         for oid in list(self._tracked_objects.keys()):
-            if oid not in current_objects:
-                remove_objects.append(oid)
+            if oid not in current:
+                remove_ids.append(oid)
 
-        # met à jour l'état interne
-        self._tracked_objects = current_objects
-
-        return new_objects, remove_objects
+        # 4) MàJ de l'état interne
+        self._tracked_objects = current
+        
+        return new_events, remove_ids

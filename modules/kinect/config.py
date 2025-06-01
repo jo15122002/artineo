@@ -14,10 +14,10 @@ class Config(BaseModel):
     )
 
     # ─────────── ROI SIZE ────────────
-    roi_x0: int = Field(140, ge=0, description="Left X coordinate of ROI")
-    roi_y0: int = Field(100, ge=0, description="Top Y coordinate of ROI")
-    roi_x1: int = Field(445, gt=0, description="Right X coordinate of ROI")
-    roi_y1: int = Field(300, gt=0, description="Bottom Y coordinate of ROI")
+    roi_x0: int = Field(125, ge=0, description="Left X coordinate of ROI")
+    roi_y0: int = Field(90, ge=0, description="Top Y coordinate of ROI")
+    roi_x1: int = Field(400, gt=0, description="Right X coordinate of ROI")
+    roi_y1: int = Field(265, gt=0, description="Bottom Y coordinate of ROI")
 
     # ───────── Templates ─────────
     template_dir: str = Field(
@@ -29,10 +29,10 @@ class Config(BaseModel):
         True, description="Use cv2.matchShapes vs. Hu moments"
     )
     area_threshold: float = Field(
-        2000.0, gt=0, description="Area threshold for background vs. shape classification"
+        15000.0, gt=0, description="Area threshold for background vs. shape classification"
     )
     small_area_threshold: float = Field(
-        250.0, gt=0, description="Area threshold for small-shape classification"
+        1000.0, gt=0, description="Area threshold for small-shape classification"
     )
 
     # ─── Background profiling ───

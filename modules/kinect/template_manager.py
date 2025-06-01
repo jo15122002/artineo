@@ -19,8 +19,8 @@ class TemplateManager:
         self,
         template_dir: str,
         n_profile: int = 100,
-        area_threshold: float = 2000.0,
-        small_area_threshold: float = 250.0
+        area_threshold: float = 15000.0,
+        small_area_threshold: float = 1000.0
     ) -> None:
         self.template_dir = Path(template_dir)
         self.n_profile = n_profile
@@ -37,6 +37,7 @@ class TemplateManager:
         self.forme_templates: Dict[str, np.ndarray] = {}
         self.fond_templates: Dict[str, np.ndarray] = {}
         self.small_templates: Dict[str, np.ndarray] = {}
+        self.depth_templates: Dict[str, np.ndarray] = {}
 
         self._load_all_templates()
         self._classify_templates()
@@ -62,6 +63,8 @@ class TemplateManager:
             if arr.ndim != 2:
                 logger.warning("Template NumPy %s a une forme inattendue %s, attendu 2D", name, arr.shape)
                 continue
+            
+            self.depth_templates[name] = arr.copy()
 
             # Masque binaire : pixels non nuls
             mask = (arr > 0).astype(np.uint8) * 255
@@ -148,7 +151,13 @@ class TemplateManager:
         )
 
     def _is_background(self, name: str) -> bool:
-        return name in self.fond_templates or name.startswith("Fond_")
+        """
+        Détermine si un template doit être traité comme un fond.
+        On considère comme fonds :
+          - les noms legacy commençant par 'Fond_'
+          - les nouveaux templates de paysage commençant par 'landscape_'
+        """
+        return name.startswith("Fond_") or name.startswith("landscape_")
 
     def _extract_sprite(
         self,

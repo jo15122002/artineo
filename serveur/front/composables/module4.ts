@@ -111,7 +111,7 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
     ctx.restore()
   }
 
-  // 6️⃣ draw an object or background sprite
+  // 6️⃣ draw an object sprite (non-background)
   function drawObject(ctx: CanvasRenderingContext2D, o: ArtObject) {
     const img = objectImages[o.shape]
     if (img && img.complete) {
@@ -125,6 +125,25 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
       ctx.fillStyle = '#000'
       ctx.fillRect(o.cx * scale - 2, o.cy * scale - 2, 4, 4)
     }
+  }
+
+  // 6️⃣bis draw a background sprite full-width, aligned en bas
+  function drawBackground(ctx: CanvasRenderingContext2D, b: ArtObject) {
+    const img = objectImages[b.shape]
+    if (!img || !img.complete) return
+
+    // La largeur du canvas
+    const canvasWidth = ctx.canvas.width
+    // Calculer la hauteur en conservant l'aspect ratio
+    const aspect = img.naturalHeight / img.naturalWidth
+    const drawWidth = canvasWidth
+    const drawHeight = canvasWidth * aspect
+
+    // Positionner pour que le bas de l'image touche le bas du canvas
+    const x = 0
+    const y = ctx.canvas.height - drawHeight
+
+    ctx.drawImage(img, x, y, drawWidth, drawHeight)
   }
 
   // 7️⃣ handle incoming diff buffer
@@ -162,7 +181,7 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
 
     // 7.4) backgrounds
     if (buf.newBackgrounds) {
-      // clear any existing backgrounds if desired:
+      // remplace les backgrounds existants avec ceux reçus
       backgrounds.value = backgrounds.value.concat(
         buf.newBackgrounds.filter(nb => !backgrounds.value.some(b => b.id === nb.id))
       )
@@ -188,12 +207,15 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
     // optional background fill
     ctx.fillStyle = '#fff'
     ctx.fillRect(0, 0, canvas.width, canvas.height)
-    // draw backgrounds first
-    backgrounds.value.forEach(b => drawObject(ctx, b))
-    // then strokes & objects
+
+    // 7.6.1) draw backgrounds **plein écran**, aligné en bas
+    backgrounds.value.forEach(b => drawBackground(ctx, b))
+
+    // 7.6.2) draw strokes & objects
     strokes.value.forEach(s => drawStroke(ctx, s))
     objects.value.forEach(o => drawObject(ctx, o))
-    // finally overlay color rectangle
+
+    // 7.6.3) finally overlay color rectangle
     const overlay = buttonColors[currentButton] || buttonColors[1]
     ctx.fillStyle = overlay
     ctx.fillRect(0, 0, canvas.width, canvas.height)
