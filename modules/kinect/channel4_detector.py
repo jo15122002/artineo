@@ -75,6 +75,7 @@ class Channel4Detector:
         # 2) Pour chaque contour, classification 3D
         for cnt in cnts_raw:
             area = float(cv2.contourArea(cnt))
+            print()
             if area < self.small_area_threshold:
                 continue
 

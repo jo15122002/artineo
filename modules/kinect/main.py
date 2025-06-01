@@ -382,19 +382,6 @@ class MainController:
             baseline_for_bg
         )
 
-        # --- 3) Affichage debug (si nécessaire) ---
-        if self.display:
-            # Pour visualiser la carte 8 bits, on la recalcule ici (map + blur),
-            # mais uniquement pour l’affichage. Ça ne re-crée pas de bruit.
-            depth_res = self.depth_processor_4.process(raw_frame, baseline_for_bg)
-            mapped = depth_res.mapped
-            self._display_detection_debug(
-                mapped,
-                cnts_raw,
-                bg_events,
-                obj_events
-            )
-
         # --- 4) Gestion des événements “fond” ---
         if not self.background_detected and bg_events:
             bg = bg_events[0]
@@ -514,71 +501,6 @@ class MainController:
                         removed_objects.append(rid)
 
         return new_backgrounds, removed_backgrounds, new_objects, removed_objects
-
-    def _display_detection_debug(
-        self,
-        raw_frame: np.ndarray,
-        contours: list[np.ndarray],
-        candidate_backgrounds: list[dict],
-        candidate_objects: list[dict]
-    ):
-        """
-        Affiche dans la fenêtre 'debug4' le raw_frame (en 8-bit) annoté :
-        - tous les contours en BLEU (non classifiés),
-        - en ROUGE les contours ayant été classés background (shape returned),
-        - en VERT les contours ayant été classés objets.
-        - Ajoute un label textuel au-dessus de chaque bounding box.
-        `raw_frame` est soit frame, soit result.mapped converti en 8-bit.
-        """
-        if not self.display:
-            return
-
-        # 1) Normalisation en 8-bit pour affichage
-        img8 = cv2.convertScaleAbs(raw_frame)
-        debug_img = cv2.cvtColor(img8, cv2.COLOR_GRAY2BGR)
-
-        # 2) dessiner tous les contours (BLEU)
-        for cnt in contours:
-            x, y, w, h = cv2.boundingRect(cnt)
-            cv2.rectangle(debug_img, (x, y), (x + w, y + h), (255, 128, 0), 1)
-            cv2.drawContours(debug_img, [cnt], -1, (255, 128, 0), 1)
-
-        # 3) dessiner backgrounds validés (ROUGE) et label
-        for ev in candidate_backgrounds:
-            # on a les coordonnées (cx, cy, w, h) dans ev
-            cx, cy, w_, h_ = int(ev['cx']), int(ev['cy']), int(ev['w']), int(ev['h'])
-            x = int(cx - w_ / 2); y = int(cy - h_ / 2)
-            cv2.rectangle(debug_img, (x, y), (x + int(w_), y + int(h_)), (0, 0, 255), 2)
-            cv2.putText(
-                debug_img,
-                f"BG:{ev['shape']}",
-                (x, max(y - 5, 0)),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.5,
-                (0, 0, 255),
-                1,
-                cv2.LINE_AA,
-            )
-
-        # 4) dessiner objects candidates (VERT) et label
-        for ev in candidate_objects:
-            cx, cy, w_, h_ = int(ev['cx']), int(ev['cy']), int(ev['w']), int(ev['h'])
-            x = int(cx - w_ / 2); y = int(cy - h_ / 2)
-            cv2.rectangle(debug_img, (x, y), (x + int(w_), y + int(h_)), (0, 255, 0), 2)
-            cv2.putText(
-                debug_img,
-                f"OBJ:{ev['shape']}",
-                (x, max(y - 5, 0)),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.5,
-                (0, 255, 0),
-                1,
-                cv2.LINE_AA,
-            )
-
-        # 5) afficher le tout
-        self.display.show("debug4", debug_img)
-
 
 if __name__ == '__main__':
 

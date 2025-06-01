@@ -32,7 +32,7 @@ class Config(BaseModel):
         15000.0, gt=0, description="Area threshold for background vs. shape classification"
     )
     small_area_threshold: float = Field(
-        1000.0, gt=0, description="Area threshold for small-shape classification"
+        500.0, gt=0, description="Area threshold for small-shape classification"
     )
 
     # ─── Background profiling ───
