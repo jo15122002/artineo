@@ -1,30 +1,47 @@
-// front/composables/module3.tsimport { useNuxtApp, useRuntimeConfig } from '#app'
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+// front/composables/module3.ts
+import { useNuxtApp, useRuntimeConfig } from '#app'
+import { computed, onBeforeUnmount, onMounted, ref, type Ref } from 'vue'
+import type ArtyPlayerComponent from '~/components/ArtyPlayer.vue'
 import type { BufferPayload } from '~/utils/ArtineoClient'
 
-export default function useModule3() {
-  // Stub SSR
+/**
+ * useModule3 : gère la logique 3RFID et permet de piloter ArtyPlayer via playerRef.
+ *
+ * @param playerRef  Référence vers l’instance de <ArtyPlayer> (ou null avant le montage)
+ */
+export default function useModule3(
+  playerRef: Ref<InstanceType<typeof ArtyPlayerComponent> | null>
+) {
+  // ─── 1. Stub SSR ───────────────────────────────────────────────────────────
   if (!process.client) {
     const backgroundSet  = ref<number>(1)
     const blobTexts      = ref<string[]>(['Aucun','Aucun','Aucun'])
     const states         = ref<Array<'default'|'correct'|'wrong'>>(['default','default','default'])
     const stateClasses   = computed(() => states.value.map(s => `state-${s}`))
     const pressedStates  = ref<boolean[]>([false,false,false])
-    return { backgroundSet, blobTexts, stateClasses, pressedStates }
+    return {
+      backgroundSet,
+      blobTexts,
+      stateClasses,
+      pressedStates
+    }
   }
 
-  const moduleId        = 3
-  const { $artineo }    = useNuxtApp()
+  // ─── 2. Initialisation du composable (client, refs, etc.) ───────────────────
+  const moduleId      = 3
+  const { $artineo }  = useNuxtApp()
   const { public: { apiUrl } } = useRuntimeConfig()
-  const client          = $artineo(moduleId)
+  const client        = $artineo(moduleId)
 
-  const backgroundSet   = ref<number>(1)
-  const blobTexts       = ref<string[]>(['Aucun','Aucun','Aucun'])
-  const states          = ref<Array<'default'|'correct'|'wrong'>>(['default','default','default'])
-  const stateClasses    = computed(() => states.value.map(s => `state-${s}`))
-  const pressedStates   = ref<boolean[]>([false,false,false])
-  let prevPressed       = false
+  // Réfs pour l’affichage et le feedback 3RFID
+  const backgroundSet  = ref<number>(1)
+  const blobTexts      = ref<string[]>(['Aucun','Aucun','Aucun'])
+  const states         = ref<Array<'default'|'correct'|'wrong'>>(['default','default','default'])
+  const stateClasses   = computed(() => states.value.map(s => `state-${s}`))
+  const pressedStates  = ref<boolean[]>([false,false,false])
+  let prevPressed      = false
 
+  // Mappage catégories → champ config
   const pluralMap: Record<string,string> = {
     lieu:    'lieux',
     couleur: 'couleurs',
@@ -39,17 +56,17 @@ export default function useModule3() {
     return inv[code.toLowerCase()] || 'Inconnu'
   }
 
+  // ─── 3. Mise à jour depuis le buffer retourné par le serveur ─────────────────
   function updateFromBuffer(buf: BufferPayload) {
-    // 1) Si on change de set : on remet tout à zéro
+    // 3.1) Si changement de set, reset visuel
     if (buf.current_set && buf.current_set !== backgroundSet.value) {
       backgroundSet.value  = buf.current_set
-      // états visuels
       states.value         = ['default','default','default']
       pressedStates.value  = [false,false,false]
       prevPressed          = false
     }
 
-    // 2) Construire textes & couleurs pour affichage
+    // 3.2) Construit textes (blobTexts) & couleurs (states) d’après les UIDs
     const texts   = ['Aucun','Aucun','Aucun']
     const colors  = ['#FFA500','#FFA500','#FFA500']
     const keys    = ['lieu','couleur','emotion'] as const
@@ -75,18 +92,18 @@ export default function useModule3() {
     })
     blobTexts.value = texts
 
-    // 3) À la première transition button_pressed true → afficher feedback
+    // 3.3) À la transition button_pressed true → afficher feedback visuel
     if (buf.button_pressed && !prevPressed) {
-      // 3a) on passe en correct/wrong
+      // a) on passe les états en correct/wrong
       states.value = colors.map(c =>
         c === '#00FF00' ? 'correct'
         : c === '#FF0000' ? 'wrong'
         : 'default'
       )
-      // 3b) on enfonce tous les boutons
+      // b) on met tous les boutons enfoncés
       pressedStates.value = [true, true, true]
 
-      // 3c) après 2s, on relève les wrong et on garde enfoncés que les correct
+      // c) après 2s, on relève les wrong, on laisse down les correct
       setTimeout(() => {
         states.value        = states.value.map(s => s === 'wrong' ? 'default' : s)
         pressedStates.value = states.value.map(s => s === 'correct')
@@ -96,6 +113,7 @@ export default function useModule3() {
     prevPressed = !!buf.button_pressed
   }
 
+  // ─── 4. Récupération via HTTP (fallback) ────────────────────────────────────
   async function fetchBufferHttp(): Promise<BufferPayload> {
     const res = await fetch(`${apiUrl}/buffer?module=${moduleId}`)
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
@@ -103,31 +121,52 @@ export default function useModule3() {
     return js.buffer
   }
 
+  // ─── 6. Cycle de vie de Vue : onMounted / onBeforeUnmount ───────────────────
   onMounted(async () => {
-    // Charger assignments & answers
+    // 6.1) Charger assignments & answers depuis fetchConfig()
     try {
       const cfg = await client.fetchConfig()
       ;(client as any).assignments = cfg.assignments || {}
       ;(client as any).answers     = cfg.answers     || []
-    } catch {}
+    } catch (e) {
+      console.warn('[useModule3] fetchConfig error', e)
+    }
 
-    // WS push & HTTP polling
+    // 6.2) Écoute push WebSocket et HTTP polling
     client.onMessage((msg: any) => {
       if (msg.action === 'get_buffer') {
         updateFromBuffer(msg.buffer as BufferPayload)
       }
     })
 
-    // fallback initial + polling
+    // 6.3) initial + polling HTTP fallback
     try {
       updateFromBuffer(await fetchBufferHttp())
-    } catch {}
+    } catch (e) {
+      console.warn('[useModule3] fetchBufferHttp initial error', e)
+    }
     const poll = setInterval(async () => {
-      try { updateFromBuffer(await fetchBufferHttp()) } catch {}
+      try {
+        updateFromBuffer(await fetchBufferHttp())
+      } catch {
+        // ignore
+      }
     }, 1000)
 
     onBeforeUnmount(() => clearInterval(poll))
   })
 
-  return { backgroundSet, blobTexts, stateClasses, pressedStates }
+  // ─── 7. URL d’arrière-plan pour l’image tableauX.png ────────────────────────
+  const backgroundUrl = computed(
+    () => `${apiUrl}/getAsset?module=3&path=tableau${backgroundSet.value}.png`
+  )
+
+  // ─── 8. On retourne tout ce dont le composant a besoin ──────────────────────
+  return {
+    backgroundSet,
+    blobTexts,
+    stateClasses,
+    pressedStates,
+    backgroundUrl
+  }
 }

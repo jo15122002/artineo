@@ -164,6 +164,39 @@ async def get_asset(
     media_type, _ = mimetypes.guess_type(full_path)
     return FileResponse(full_path, media_type=media_type)
 
+MEDIA_EXTENSIONS = ('.mp3', '.wav', '.ogg', '.mp4', '.webm', '.mov')
+
+@app.get("/media")
+async def get_media(module: int = Query(..., description="ID du module")):
+    """
+    Retourne la liste des médias (audio / vidéo) disponibles pour un module donné.
+    On suppose que les fichiers sont dans assets/module{module}/
+    """
+    base_dir = os.path.join("assets", f"module{module}")
+    if not os.path.isdir(base_dir):
+        # si le dossier assets/module{module} n’existe pas, levons un 404
+        raise HTTPException(status_code=404, detail=f"Dossier assets/module{module} introuvable")
+    
+    medias = []
+    for filename in os.listdir(base_dir):
+        # Ne lister que les fichiers audio ou vidéo (extensions courantes)
+        if filename.lower().endswith((".mp3", ".wav", ".ogg", ".mp4", ".webm", ".m4a")):
+            # Déduit le mime-type du fichier (audio/mpeg, video/mp4, etc.)
+            mime_type, _ = mimetypes.guess_type(filename)
+            if not mime_type:
+                # Si on n’arrive pas à deviner, passer au suivant
+                continue
+
+            medias.append({
+                "title": filename,
+                "type": mime_type,
+                # L’URL qu’on renverra sera récupérable via l’endpoint statique `/assets/…`
+                # C’est-à-dire : /assets/module{module}/{filename}
+                "url": f"/assets/module{module}/{filename}"
+            })
+
+    return JSONResponse(content={"medias": medias})
+
 
 # --------------------------------------------------
 # Gestion des connexions WebSocket
