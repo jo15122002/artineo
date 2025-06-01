@@ -83,6 +83,8 @@ class ShapeClassifier:
                 best_score = mse
                 best_name = name
 
+        print(f"Best match: {best_name} with MSE {best_score:.2f}")
+
         # 6) Si le MSE minimal est en dessous du seuil, on retourne le nom du template
         if best_score < self.match_threshold:
             return best_name

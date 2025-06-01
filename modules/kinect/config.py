@@ -34,6 +34,15 @@ class Config(BaseModel):
     small_area_threshold: float = Field(
         500.0, gt=0, description="Area threshold for small-shape classification"
     )
+    removal_threshold: float = Field(
+        20.0, gt=0, description="Area threshold for removing small shapes"
+    )
+    removal_ratio: float = Field(
+        0.5, ge=0.0, le=1.0, description="Ratio of pixels above removal_threshold to remove shape"
+    )
+    match_threshold: float = Field(
+        100.0, gt=0, description="Maximum MSE threshold for shape matching"
+    )
 
     # ─── Background profiling ───
     n_profile: int = Field(
