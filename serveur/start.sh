@@ -27,6 +27,11 @@ trap cleanup SIGINT SIGTERM EXIT
 (
   cd "$BASE_DIR/back"
   source env/bin/activate
+  # Assurez-vous que uvicorn est installé dans l'environnement virtuel
+  if ! command -v uvicorn &> /dev/null; then
+    echo "Uvicorn n'est pas installé dans l'environnement virtuel. Installation en cours..."
+    pip install uvicorn
+  fi
   exec uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ) &
 backendPID=$!
@@ -37,6 +42,7 @@ PORT=$(find_free_port $FRONT_START_PORT)
 
 (
   cd "$BASE_DIR/front"
+  npm install
   # npm devrait maintenant être trouvé
   exec npm run dev -- --host 0.0.0.0 --port $PORT
 ) &
