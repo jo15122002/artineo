@@ -1,16 +1,14 @@
 <template>
   <div class="module1-container">
-    <img
-      v-if="backgroundPath"
-      :src="`${apiUrl}/getAsset?module=1&path=${backgroundPath}`"
-      class="fullscreen-img"
-      :style="{ filter: filterStyle }"
-    />
-    <div
-      v-if="showDebug"
-      class="debug-circle"
-      :style="circleStyle"
-    ></div>
+    <!-- Image de fond IR -->
+    <img v-if="backgroundPath" :src="`${apiUrl}/getAsset?module=1&path=${backgroundPath}`" class="fullscreen-img"
+      :style="{ filter: filterStyle }" />
+
+    <!-- Zone cible (si debug=true) -->
+    <div v-if="showDebug" class="debug-zone" :style="zoneStyle"></div>
+
+    <!-- Cercle de détection IR (si debug=true) -->
+    <div v-if="showDebug" class="debug-circle" :style="circleStyle"></div>
   </div>
 </template>
 
@@ -24,10 +22,38 @@ definePageMeta({ layout: 'module' })
 const { public: { apiUrl } } = useRuntimeConfig()
 const { backgroundPath, filterStyle, x, y, diamPx } = useModule1()
 
-// Pour afficher le cercle de debug si nécessaire
+// ────────────────────────────────────────────────────────────────────────────
+// 1) PARAMÈTRE debug dans l’URL
+// ────────────────────────────────────────────────────────────────────────────
+// On affiche les cercles uniquement si ?debug=true
 const showDebug = computed(() =>
-  new URLSearchParams(window.location.search).get('debug') === '1'
+  new URLSearchParams(window.location.search).get('debug') === 'true'
 )
+
+// ────────────────────────────────────────────────────────────────────────────
+// 2) Définition de la “zone cible” fixe (x=160, y=120, rayon=30px)
+// ────────────────────────────────────────────────────────────────────────────
+const goodResponsePosition = { x: 160, y: 120 }
+const goodResponseZoneSize = 30 // en pixels
+
+// Calcul du style ajusté au conteneur (320×240 → 100%×100%)
+const zoneStyle = computed(() => ({
+  position: 'absolute',
+  left: `${(goodResponsePosition.x / 320) * 100}%`,
+  top: `${(goodResponsePosition.y / 240) * 100}%`,
+  width: `${goodResponseZoneSize * 2}px`,
+  height: `${goodResponseZoneSize * 2}px`,
+  border: '2px dashed red',
+  borderRadius: '50%',
+  transform: 'translate(-50%, -50%)',
+  pointerEvents: 'none',
+  boxSizing: 'border-box',
+  zIndex: 10,
+}))
+
+// ────────────────────────────────────────────────────────────────────────────
+// 3) Style du cercle de détection IR (x, y, diamPx)
+// ────────────────────────────────────────────────────────────────────────────
 const circleStyle = computed(() => ({
   position: 'absolute',
   left: `${(x.value / 320) * 100}%`,
@@ -39,7 +65,7 @@ const circleStyle = computed(() => ({
   transform: 'translate(-50%, -50%)',
   pointerEvents: 'none',
   boxSizing: 'border-box',
-  zIndex: 10,
+  zIndex: 11,
 }))
 </script>
 
