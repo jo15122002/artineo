@@ -1,6 +1,6 @@
-// front/composables/module1.ts
+// serveur/front/composables/module1.ts
 import { useNuxtApp } from '#app'
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { BufferPayload } from '~/utils/ArtineoClient'
 
 export default function useModule1() {
@@ -13,6 +13,10 @@ export default function useModule1() {
       x: stub,
       y: stub,
       diamPx: stub,
+      // on renvoie aussi ces refs même s’ils ne sont pas utilisés en SSR
+      inZone: stub,
+      entryTime: stub,
+      responseAlreadyValidated: stub,
     }
   }
 
@@ -29,11 +33,27 @@ export default function useModule1() {
   const y              = ref(0)
   const diamPx         = ref(1)
 
-  // 3) fps & interval dynamique
+  // ────────────────────────────────────────────────────────────────────────────
+  // 3) VARIABLES DE “BONNE RÉPONSE” (ZONE + DURÉE)   <<< MODIF
+  // ────────────────────────────────────────────────────────────────────────────
+  // Position cible (en pixels) sur la zone IR (résolution 320×240)
+  const goodResponsePosition = { x: 160, y: 120 }
+  // Rayon (en pixels) de la zone considérée comme “correcte”
+  const goodResponseZoneSize = 30
+  // Nombre de secondes à rester DANS la zone pour valider
+  const goodResponseStayTime = 2.0
+
+  // Variables d’état internes
+  const inZone = ref(false)
+  let entryTime: number | null = null
+  let responseAlreadyValidated = false
+  // ────────────────────────────────────────────────────────────────────────────
+
+  // 4) fps & interval dynamique
   const fps      = ref(10)           // valeur par défaut
   let pollTimer: number | undefined
 
-  // 4) style calculé
+  // 5) style calculé
   const frameH = 240, minB = 50, maxB = 150
   const bright = computed(() => {
     const pct = (1 - y.value / frameH) * (maxB - minB) + minB
@@ -45,7 +65,7 @@ export default function useModule1() {
     () => `hue-rotate(${hue.value}deg) saturate(${sat.value}%) brightness(${bright.value}%)`
   )
 
-  // 5) setup
+  // 6) CETTE PARTIE S’EXÉCUTE LORSQUE LE COMPOSANT MONTE
   onMounted(async () => {
     // a) fetchConfig incluant fps
     try {
@@ -71,9 +91,9 @@ export default function useModule1() {
     // c) polling dynamique selon fps
     const pollIntervalMs = () => Math.round(1000 / fps.value)
     const apply = (buf: BufferPayload) => {
-      x.value      = buf.x
-      y.value      = buf.y
-      diamPx.value = buf.diameter
+      x.value      = buf.x      ?? x.value
+      y.value      = buf.y      ?? y.value
+      diamPx.value = buf.diameter ?? diamPx.value
     }
 
     // initial + fallback HTTP
@@ -91,6 +111,43 @@ export default function useModule1() {
         // ignore
       }
     }, pollIntervalMs())
+
+    // ────────────────────────────────────────────────────────────────────────────
+    // WATCHER DE VALIDATION “BONNE RÉPONSE”   <<< MODIF
+    // À chaque fois que x ou y change, on vérifie si l’on entre/sort de la zone
+    watch([x, y], ([newX, newY]) => {
+      const dx = newX - goodResponsePosition.x
+      const dy = newY - goodResponsePosition.y
+      const distance = Math.hypot(dx, dy)
+      const now = performance.now() / 1000 // secondes
+
+      if (distance <= goodResponseZoneSize) {
+        // L’utilisateur est DANS la zone
+        if (!inZone.value) {
+          // Entrée dans la zone : on démarre le chrono
+          inZone.value = true
+          entryTime = now
+          responseAlreadyValidated = false
+          console.log(`[Module1] Entrée zone à ${entryTime.toFixed(3)}s`)
+        } else if (!responseAlreadyValidated && entryTime !== null) {
+          // Si on reste dans la zone depuis assez longtemps, on valide une fois
+          if (now - entryTime >= goodResponseStayTime) {
+            console.log('Bonne réponse validée ! (front)')
+            responseAlreadyValidated = true
+          }
+        }
+      } else {
+        // L’utilisateur est HORS de la zone : on réinitialise
+        if (inZone.value) {
+          console.log(`[Module1] Sortie zone à ${(now).toFixed(3)}s`)
+        }
+        inZone.value = false
+        entryTime = null
+        responseAlreadyValidated = false
+      }
+    })
+    // ────────────────────────────────────────────────────────────────────────────
+
   })
 
   onBeforeUnmount(() => {
@@ -98,11 +155,14 @@ export default function useModule1() {
     client.close()
   })
 
-  // 6) expose fps si besoin
+  // 7) expose fps si besoin
   return {
     backgroundPath,
     filterStyle,
-    x, y, diamPx,
-    fps,              // optionnel, pour debug ou UI
+    x, y, diamPx, fps,
+    // on peut aussi exposer les refs d’état si nécessaire :
+    inZone,
+    entryTime,
+    responseAlreadyValidated,
   }
 }
