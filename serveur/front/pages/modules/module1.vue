@@ -1,6 +1,5 @@
 <template>
   <div class="module1-container">
-    <!-- Image de fond IR -->
     <img v-if="backgroundPath" :src="`${apiUrl}/getAsset?module=1&path=${backgroundPath}`" class="fullscreen-img"
       :style="{ filter: filterStyle }" />
 
@@ -22,21 +21,16 @@ definePageMeta({ layout: 'module' })
 const { public: { apiUrl } } = useRuntimeConfig()
 const { backgroundPath, filterStyle, x, y, diamPx } = useModule1()
 
-// ────────────────────────────────────────────────────────────────────────────
-// 1) PARAMÈTRE debug dans l’URL
-// ────────────────────────────────────────────────────────────────────────────
 // On affiche les cercles uniquement si ?debug=true
 const showDebug = computed(() =>
   new URLSearchParams(window.location.search).get('debug') === 'true'
 )
 
-// ────────────────────────────────────────────────────────────────────────────
-// 2) Définition de la “zone cible” fixe (x=160, y=120, rayon=30px)
-// ────────────────────────────────────────────────────────────────────────────
+// Zone “bonne réponse” fixe (x=160, y=120, rayon=30px)
 const goodResponsePosition = { x: 160, y: 120 }
-const goodResponseZoneSize = 30 // en pixels
+const goodResponseZoneSize = 30
 
-// Calcul du style ajusté au conteneur (320×240 → 100%×100%)
+// Style de la zone (absolu, 320×240 → 100%×100%)
 const zoneStyle = computed(() => ({
   position: 'absolute',
   left: `${(goodResponsePosition.x / 320) * 100}%`,
@@ -51,9 +45,7 @@ const zoneStyle = computed(() => ({
   zIndex: 10,
 }))
 
-// ────────────────────────────────────────────────────────────────────────────
-// 3) Style du cercle de détection IR (x, y, diamPx)
-// ────────────────────────────────────────────────────────────────────────────
+// Style du cercle de détection IR
 const circleStyle = computed(() => ({
   position: 'absolute',
   left: `${(x.value / 320) * 100}%`,
