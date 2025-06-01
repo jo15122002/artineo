@@ -1,134 +1,111 @@
 // front/composables/module2.ts
 import * as THREE from 'three'
-import { Ref, onBeforeUnmount, onMounted } from 'vue'
+import { MTLLoader } from 'three/examples/jsm/loaders/MTLLoader.js'
+import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js'
+import type { Ref } from 'vue'
+import { onBeforeUnmount, onMounted } from 'vue'
 import { useArtineo } from './useArtineo'
 
-/**
- * Composable pour Module 2 :
- * - initialise Three.js (scene, caméra fixe, renderer, cube)
- * - récupère périodiquement le buffer Artineo (via getBuffer) ou se souscrit à onMessage
- * - applique les valeurs reçues sur la rotation du cube
- */
 export default function useModule2(canvasRef: Ref<HTMLCanvasElement | null>) {
-  // 1) Préparer le client Artineo
-  const moduleId = 2
-  const artClient = useArtineo(moduleId)
-
-  // 2) Variables Three.js
-  let scene: THREE.Scene, camera: THREE.PerspectiveCamera, renderer: THREE.WebGLRenderer
-  let cube: THREE.Mesh
+  const artClient = useArtineo(2)
+  let loadedObject: THREE.Object3D | null = null
+  let intervalId: ReturnType<typeof setInterval> | null = null
   let animationFrameId: number | null = null
-  let pollIntervalId: ReturnType<typeof setInterval> | null = null
 
-  // -- Fonction d'initialisation Three.js --
-  function initThree(canvas: HTMLCanvasElement) {
-    // a) Scène
-    scene = new THREE.Scene()
-
-    // b) Caméra fixe
-    const fov = 60
-    const aspect = canvas.clientWidth / canvas.clientHeight
-    const near = 0.1
-    const far = 1000
-    camera = new THREE.PerspectiveCamera(fov, aspect, near, far)
-    camera.position.set(0, 0, 5)
-    camera.lookAt(0, 0, 0)
-
-    // c) Renderer
-    renderer = new THREE.WebGLRenderer({ antialias: true, canvas })
-    renderer.setSize(canvas.clientWidth, canvas.clientHeight)
-
-    // d) Cube de test (géométrie + matériau)
-    const geometry = new THREE.BoxGeometry(1, 1, 1)
-    const material = new THREE.MeshNormalMaterial()
-    cube = new THREE.Mesh(geometry, material)
-    scene.add(cube)
-
-    // e) Gérer le redimensionnement
-    window.addEventListener('resize', onWindowResize)
+  function applyBuffer(buf: any) {
+    if   (buf.rotX !== undefined && loadedObject) loadedObject.rotation.x = buf.rotX
+    if   (buf.rotY !== undefined && loadedObject) loadedObject.rotation.y = buf.rotY
+    if   (buf.rotZ !== undefined && loadedObject) loadedObject.rotation.z = buf.rotZ
   }
 
-  // -- Callback resize --
-  function onWindowResize() {
-    const canvas = canvasRef.value!
-    camera.aspect = canvas.clientWidth / canvas.clientHeight
-    camera.updateProjectionMatrix()
-    renderer.setSize(canvas.clientWidth, canvas.clientHeight)
-  }
-
-  // -- Boucle d’animation (render) --
-  function animate() {
-    animationFrameId = requestAnimationFrame(animate)
-    renderer.render(scene, camera)
-  }
-
-  // -- Met à jour la rotation du cube à partir du buffer reçu --
-  function applyBufferToCube(buf: any) {
-    // Exemples de champs possibles dans buf :
-    //   { rotX: <nombre>, rotY: <nombre>, rotZ: <nombre> }
-    // Si vous avez dans votre back-end des champs différents, adaptez-les ici.
-    if (typeof buf.rotX === 'number') cube.rotation.x = buf.rotX
-    if (typeof buf.rotY === 'number') cube.rotation.y = buf.rotY
-    if (typeof buf.rotZ === 'number') cube.rotation.z = buf.rotZ
-    // Si votre buffer contient d’autres données (par exemple un angle unique),
-    // mappez-les de la manière souhaitée :
-    //   cube.rotation.y = buf.angle * Math.PI / 180
-  }
-
-  // -- Récupération périodique du buffer (fallback HTTP polling) --
   async function pollBuffer() {
     try {
       const buf = await artClient.getBuffer()
-      applyBufferToCube(buf)
-    } catch {
-      // Ignore si erreur réseau
-    }
+      applyBuffer(buf)
+    } catch { /* ignore */ }
   }
 
-  // -- Subcription WebSocket :
-  //   à chaque message { action: 'get_buffer', buffer: {...} },
-  //   on applique la rotation directement.  --
   function setupWebsocketListener() {
     artClient.onMessage((msg: any) => {
       if (msg.action === 'get_buffer' && msg.buffer) {
-        applyBufferToCube(msg.buffer)
+        applyBuffer(msg.buffer)
       }
-      // Vous pouvez aussi vérifier msg.module si besoin
     })
   }
 
-  // -- Démarrage du composable --
+  function initThree(canvas: HTMLCanvasElement) {
+    const scene = new THREE.Scene()
+    const camera = new THREE.PerspectiveCamera(
+      60,
+      canvas.clientWidth / canvas.clientHeight,
+      0.1,
+      1000
+    )
+    camera.position.set(0, 0, 5)
+    camera.lookAt(0, 0, 0)
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, canvas })
+    renderer.setSize(canvas.clientWidth, canvas.clientHeight)
+
+    const ambient = new THREE.AmbientLight(0xffffff, 0.8)
+    scene.add(ambient)
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.5)
+    dirLight.position.set(5, 10, 7.5)
+    scene.add(dirLight)
+
+    const mtlLoader = new MTLLoader()
+    mtlLoader.setPath('/models/module2/')
+    mtlLoader.load(
+      'Enter a title.mtl',
+      materials => {
+        materials.preload()
+        const objLoader = new OBJLoader()
+        objLoader.setMaterials(materials)
+        objLoader.setPath('/models/module2/')
+        objLoader.load(
+          'Enter a title.obj',
+          object => {
+            object.scale.set(0.5, 0.5, 0.5)
+            scene.add(object)
+            loadedObject = object
+          },
+          undefined,
+          err => console.error('Erreur OBJ :', err)
+        )
+      },
+      undefined,
+      err => console.error('Erreur MTL :', err)
+    )
+
+    window.addEventListener('resize', () => {
+      camera.aspect = canvas.clientWidth / canvas.clientHeight
+      camera.updateProjectionMatrix()
+      renderer.setSize(canvas.clientWidth, canvas.clientHeight)
+    })
+
+    function animate() {
+      animationFrameId = requestAnimationFrame(animate)
+      if (loadedObject) {
+        // rotation appliquée par applyBuffer déjà mise à jour
+      }
+      renderer.render(scene, camera)
+    }
+    animate()
+  }
+
   onMounted(() => {
     const canvas = canvasRef.value
     if (!canvas) return
 
-    // 1) Initialiser Three.js
     initThree(canvas)
-    animate()
-
-    // 2) Se connecter (ou démarrer automatiquement) au WebSocket Artineo
-    //   Le composable useArtineo() se charge de la connexion sous-jacente.
     setupWebsocketListener()
-
-    // 3) Faire un premier getBuffer() en HTTP (fallback)
     pollBuffer()
-    // 4) Puis réitérer toutes les 100 ms (par exemple) pour rattraper les cas où 
-    //    WebSocket n’atteint pas le client
-    pollIntervalId = setInterval(pollBuffer, 100)
+    intervalId = setInterval(pollBuffer, Math.round(1000 / 24))
   })
 
-  // -- Nettoyage à la destruction du composable --
   onBeforeUnmount(() => {
-    if (animationFrameId !== null) {
-      cancelAnimationFrame(animationFrameId)
-      animationFrameId = null
-    }
-    if (pollIntervalId !== null) {
-      clearInterval(pollIntervalId)
-      pollIntervalId = null
-    }
-    window.removeEventListener('resize', onWindowResize)
+    if (intervalId !== null) clearInterval(intervalId)
+    if (animationFrameId !== null) cancelAnimationFrame(animationFrameId)
     artClient.close()
-    // Optionnel : renderer.dispose(), géométries.dispose(), matériaux.dispose()
   })
 }
