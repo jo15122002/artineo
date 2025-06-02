@@ -13,7 +13,7 @@
 
 <script setup lang="ts">
 import { useRuntimeConfig } from '#app'
-import { computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import useModule1 from '~/composables/module1.ts'
 
 definePageMeta({ layout: 'module' })
@@ -21,16 +21,23 @@ definePageMeta({ layout: 'module' })
 const { public: { apiUrl } } = useRuntimeConfig()
 const { backgroundPath, filterStyle, x, y, diamPx } = useModule1()
 
-// On affiche les cercles uniquement si ?debug=true
-const showDebug = computed(() =>
-  new URLSearchParams(window.location.search).get('debug') === 'true'
-)
+// ────────────────────────────────────────────────────────────────────────────
+// 1) PARAMÈTRE debug dans l’URL (côté CLIENT uniquement)
+// ────────────────────────────────────────────────────────────────────────────
+const showDebug = ref(false)
 
-// Zone “bonne réponse” fixe (x=160, y=120, rayon=30px)
+onMounted(() => {
+  const params = new URLSearchParams(window.location.search)
+  showDebug.value = params.get('debug') === 'true'
+})
+
+// ────────────────────────────────────────────────────────────────────────────
+// 2) Définition de la “zone cible” fixe (x=160, y=120, rayon=30px)
+// ────────────────────────────────────────────────────────────────────────────
 const goodResponsePosition = { x: 160, y: 120 }
 const goodResponseZoneSize = 30
 
-// Style de la zone (absolu, 320×240 → 100%×100%)
+// Calcul du style ajusté au conteneur (320×240 → 100%×100%)
 const zoneStyle = computed(() => ({
   position: 'absolute',
   left: `${(goodResponsePosition.x / 320) * 100}%`,
@@ -45,7 +52,9 @@ const zoneStyle = computed(() => ({
   zIndex: 10,
 }))
 
-// Style du cercle de détection IR
+// ────────────────────────────────────────────────────────────────────────────
+// 3) Style du cercle de détection IR (x, y, diamPx)
+// ────────────────────────────────────────────────────────────────────────────
 const circleStyle = computed(() => ({
   position: 'absolute',
   left: `${(x.value / 320) * 100}%`,
