@@ -26,10 +26,17 @@ const { backgroundPath, filterStyle, x, y, diamPx } = useModule1()
 // ────────────────────────────────────────────────────────────────────────────
 const showDebug = ref(false)
 
+// reactive pour la position, initialisée à 0
+const goodResponsePosition = reactive({ x: 0, y: 0 })
+const goodResponseZoneSize = 30
+
 onMounted(() => {
   const params = new URLSearchParams(window.location.search)
-  console.log('Module 1 - showDebug:', params.get('debug'))
   showDebug.value = params.get('debug') === 'true'
+
+  // génération aléatoire dans [0,320]×[0,240]
+  goodResponsePosition.x = Math.random() * 320
+  goodResponsePosition.y = Math.random() * 240
 })
 
 // ────────────────────────────────────────────────────────────────────────────
