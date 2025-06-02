@@ -28,6 +28,7 @@ const showDebug = ref(false)
 
 onMounted(() => {
   const params = new URLSearchParams(window.location.search)
+  console.log('Module 1 - showDebug:', params.get('debug'))
   showDebug.value = params.get('debug') === 'true'
 })
 
