@@ -18,6 +18,7 @@ sys.path.insert(
     )
 )
 from ArtineoClient import ArtineoClient
+from background_tracker import BackgroundTracker
 from baseline_calculator import BaselineCalculator
 from baseline_manager import BaselineManager
 from brush_detector import BrushStrokeDetector
@@ -133,6 +134,7 @@ class MainController:
             small_area_threshold=self.config.small_area_threshold,
             display=self.config.debug_mode
         )
+        self.bg_tracker = BackgroundTracker()
 
         # 9. Gestion des outils 1–3 (brush, strokes, etc.)
         self.current_tool: str = '1'
@@ -203,6 +205,9 @@ class MainController:
         if not self.config.bypass_ws:
             self.payload_sender.start()
 
+        # IDs des zones fraîchement ajoutées à ignorer pour la détection de retrait
+        self.skip_removal_ids: set[str] = set()
+
         try:
             while True:
                 # Listes temporaires d’événements à envoyer
@@ -234,7 +239,12 @@ class MainController:
                     for buf in self.final_drawings.values():
                         buf.fill(0)
 
-                    # 2.d) Ré-émettre strokes persistents du nouvel outil
+                    # 2.d) Réinitialiser le contexte “fond” en canal 4
+                    self.current_background_shape = None
+                    self.current_background_id = None
+                    self.skip_removal_ids.clear()
+
+                    # 2.e) Ré-émission des strokes persistents du nouvel outil
                     new_slots = self.strokes_by_tool[self.current_tool]
                     persistent = [ev for ev in new_slots.values() if ev.get('persistent')]
                     if persistent and not self.config.bypass_ws:
@@ -261,22 +271,19 @@ class MainController:
 
                 # --- 5) Affichage brut (debug) si activé ---
                 if self.config.debug_mode:
-                    disp_dbg = cv2.convertScaleAbs(frame, alpha=255.0/(frame.max() or 1))
+                    disp_dbg = cv2.convertScaleAbs(frame, alpha=255.0 / (frame.max() or 1))
                     cv2.imshow("Depth (debug)", disp_dbg)
                     if cv2.waitKey(1) == ord('q'):
                         break
 
                 # --- 6) OUTILS 1–3 (pinceaux) ---
                 if self.current_tool in ('1', '2', '3'):
-                    # 6.a) Calcul (ou attente) de la baseline « sable+dessin »
                     try:
                         baseline_dessin = self.baseline_calc.ensure_baseline_ready(frame)
                         self.baseline_ready = True
                     except RuntimeError:
-                        # Tant que n_profile frames ne sont pas accumulées, on reste ici
                         continue
 
-                    # 6.b) Soustraction + mise à jour du buffer couleur
                     result = self.depth_processor.process(frame, baseline_dessin)
                     ch = self.tool_channel[self.current_tool]
                     diff = (result.mapped.astype(int) - 128).clip(min=0).astype(float)
@@ -286,7 +293,6 @@ class MainController:
                     buf[~mask] *= (1 - 0.1)
                     composite = cv2.convertScaleAbs(self.final_drawings[self.current_tool])
 
-                    # 6.c) Détection de strokes (inchangée)
                     raw = self.brush_detector.detect(composite, self.current_tool)
                     existing = list(self.strokes_by_tool[self.current_tool].values())
                     unique = self.stroke_tracker.update(raw, existing)
@@ -311,7 +317,7 @@ class MainController:
                     for sid, ev in dynamic_slots.items():
                         for r in raw:
                             if abs(r['x'] - ev['x']) <= self.stroke_tracker.proximity_threshold \
-                            and abs(r['y'] - ev['y']) <= self.stroke_tracker.proximity_threshold:
+                               and abs(r['y'] - ev['y']) <= self.stroke_tracker.proximity_threshold:
                                 active_ids.append(sid)
                                 break
                     lifetimer = self.stroke_lifetimers[self.current_tool]
@@ -321,101 +327,98 @@ class MainController:
                         removed_strokes.append(sid)
 
                 # --- 7) OUTIL 4 (canal fond + objets) ---
-                else:  # self.current_tool == '4'
-                    # 7.a) S’assurer d’abord d’avoir la baseline « sable+dessin »
+                else:
                     if not self.baseline_ready:
                         try:
                             baseline_dessin = self.baseline_calc.ensure_baseline_ready(frame)
-                            # Première baseline prête : on l’injecte dans BaselineManager
                             self.baseline_manager.baseline = baseline_dessin.copy()
                             self.baseline_ready = True
                             logger.info("Baseline dessin injectée dans BaselineManager.")
                         except RuntimeError:
-                            # Tant que la baseline dessin n'est pas prête, on affiche ou on attend
                             if self.config.debug_mode:
-                                disp = cv2.convertScaleAbs(frame, alpha=255.0/(frame.max() or 1))
+                                disp = cv2.convertScaleAbs(frame, alpha=255.0 / (frame.max() or 1))
                                 cv2.imshow("Attente baseline", disp)
                                 cv2.waitKey(1)
-                            continue  # on ne détecte rien tant que la baseline n'est pas prête
+                            continue
 
-                    # 7.b) Récupérer la baseline courante (qui évolue dynamiquement)
                     baseline_for_bg = self.baseline_manager.get_baseline()
 
-                    # 7.c) Gestion des suppressions (fonds ou objets déjà collés)
                     removal_bg_ids: List[str] = []
                     removal_obj_ids: List[str] = []
 
                     def _mark_removal(evt: dict):
-                        """
-                        Appelée par BaselineManager dès qu’un retrait est détecté.
-                        Stocke l’ID dans la liste appropriée.
-                        """
                         shape_name = evt["shape"]
+                        shape_id = evt["id"]
+                        # Ignorer si dans skip_removal_ids
+                        if shape_id in self.skip_removal_ids:
+                            return
+                        logger.debug(f"Detected removal: {shape_name} (id={shape_id})")
                         if shape_name.startswith("landscape_"):
-                            removal_bg_ids.append(shape_name)
+                            removal_bg_ids.append(shape_id)
+                            if shape_id == self.current_background_id:
+                                self.current_background_shape = None
+                                self.current_background_id = None
                         else:
-                            removal_obj_ids.append(shape_name)
+                            removal_obj_ids.append(shape_id)
 
                     self.baseline_manager.detect_and_handle_removals(
                         frame,
                         send_event_fn=_mark_removal
                     )
-                    # On récupère les shape des entités supprimées
+
+                    logger.debug(f"Removed backgrounds: {removal_bg_ids}, Removed objects: {removal_obj_ids}")
                     removed_backgrounds.extend(removal_bg_ids)
                     removed_objects.extend(removal_obj_ids)
 
-                    # 7.d) Détection des nouveaux ajouts (fonds + objets) avec Channel4Detector
                     bg_events, obj_events, _cnts = self.channel4_detector.detect(
                         frame,
                         baseline_for_bg
                     )
-                    
-                    logger.debug(f"bg_events reçus = {bg_events} ; obj_events reçus = {obj_events}")
 
-                    # 7.e) Traitement des NOUVEAUX paysages (backgrounds)
-                    if bg_events:
-                        for ev in bg_events:
-                            name    = ev["shape"]
-                            cx, cy  = ev["cx"], ev["cy"]
-                            w_box   = ev["w"]
-                            h_box   = ev["h"]
+                    # 7.e) Suivi du fond unique avec BackgroundTracker
+                    shapes = [ev["shape"] for ev in bg_events]
+                    new_bg_entries, removed_bg_entries = self.bg_tracker.update(shapes)
 
-                            # Coller immédiatement le template paysage dans la baseline
-                            self.baseline_manager.place_zone(name, cx, cy, w_box, h_box)
-                            self.backgrounds_in_baseline.append(name)
+                    if new_bg_entries:
+                        new_shape = new_bg_entries[0]["shape"]
+                        cx = bg_events[0]["cx"]
+                        cy = bg_events[0]["cy"]
+                        w_box = bg_events[0]["w"]
+                        h_box = bg_events[0]["h"]
+                        new_id = self.baseline_manager.place_zone(new_shape, cx, cy, w_box, h_box)
+                        self.current_background_shape = new_shape
+                        self.current_background_id = new_id
+                        self.skip_removal_ids.add(new_id)
+                        new_backgrounds.append({
+                            "id":    new_id,
+                            "type":  "background",
+                            "shape": new_shape,
+                            "cx":    cx,
+                            "cy":    cy,
+                            "w":     w_box,
+                            "h":     h_box,
+                            "angle": bg_events[0].get("angle", 0.0),
+                            "scale": bg_events[0].get("scale", 1.0),
+                        })
 
-                            # Ajouter à la liste new_backgrounds sans envoyer tout de suite
-                            new_backgrounds.append({
-                                "id":    ev["id"],
-                                "type":  "background",
-                                "shape": name,
-                                "cx":    cx,
-                                "cy":    cy,
-                                "w":     w_box,
-                                "h":     h_box,
-                                "angle": ev.get("angle", 0.0),
-                                "scale": ev.get("scale", 1.0),
-                            })
-                            # Si on ne veut gérer qu’un seul paysage à la fois, décommentez le break
-                            # break
+                    for rid in removed_bg_entries:
+                        if rid not in removed_backgrounds:
+                            removed_backgrounds.append(rid)
+                        if rid == self.current_background_id:
+                            self.current_background_shape = None
+                            self.current_background_id = None
 
-                    # 7.f) Traitement des NOUVEAUX objets (medium, small)
+                    # 7.f) Traitement des objets
                     if obj_events:
                         for ev in obj_events:
                             if ev["type"] == "background":
                                 continue
-                            name    = ev["shape"]
-                            cx, cy  = ev["cx"], ev["cy"]
-                            w_box   = ev["w"]
-                            h_box   = ev["h"]
-
-                            # Coller immédiatement l’objet dans la baseline
-                            self.baseline_manager.place_zone(name, cx, cy, w_box, h_box)
-                            self.objects_in_baseline.append(name)
-
-                            # Ajouter à la liste new_objects sans envoyer tout de suite
+                            name = ev["shape"]
+                            cx, cy = ev["cx"], ev["cy"]
+                            w_box, h_box = ev["w"], ev["h"]
+                            new_id = self.baseline_manager.place_zone(name, cx, cy, w_box, h_box)
                             new_objects.append({
-                                "id":    ev["id"],
+                                "id":    new_id,
                                 "type":  "object",
                                 "shape": name,
                                 "cx":    cx,
@@ -425,8 +428,9 @@ class MainController:
                                 "angle": ev.get("angle", 0.0),
                                 "scale": ev.get("scale", 1.0),
                             })
-                            # Si on ne veut gérer qu’un seul objet à la fois, décommentez le break
-                            # break
+
+                    # On supprime la skip list **après** cette frame
+                    self.skip_removal_ids.clear()
 
                 # --- 8) Envoi WS des diffs (strokes, backgrounds, objets) ---
                 if not self.config.bypass_ws and (
@@ -443,7 +447,7 @@ class MainController:
                         remove_objects=removed_objects,
                     )
 
-                # --- 9) Pause non bloquante pour la boucle asyncio ---
+                # --- 9) Petite pause non bloquante pour la boucle asyncio ---
                 await asyncio.sleep(0)
 
         except asyncio.CancelledError:
@@ -453,18 +457,25 @@ class MainController:
             self.kinect.close()
 
             if not self.config.bypass_ws:
-                # Supprimer toutes les entités restantes :
                 all_stroke_ids = []
                 for slots in self.strokes_by_tool.values():
                     all_stroke_ids.extend(slots.keys())
+
+                remaining_bg_ids = []
+                remaining_obj_ids = []
+                for (name, x0, y0, w, h, unique_id, _orig_patch) in self.baseline_manager.placed_zones:
+                    if name.startswith("landscape_"):
+                        remaining_bg_ids.append(unique_id)
+                    else:
+                        remaining_obj_ids.append(unique_id)
 
                 await self.payload_sender.send_update(
                     new_strokes=[],
                     remove_strokes=all_stroke_ids,
                     new_backgrounds=[],
-                    remove_backgrounds=self.backgrounds_in_baseline.copy(),
+                    remove_backgrounds=remaining_bg_ids,
                     new_objects=[],
-                    remove_objects=self.objects_in_baseline.copy(),
+                    remove_objects=remaining_obj_ids,
                 )
                 await self.payload_sender.stop()
 
