@@ -13,7 +13,7 @@
 
 <script setup lang="ts">
 import { useRuntimeConfig } from '#app'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, reactive } from 'vue'    // ajout de reactive
 import useModule1 from '~/composables/module1.ts'
 
 definePageMeta({ layout: 'module' })
@@ -21,9 +21,7 @@ definePageMeta({ layout: 'module' })
 const { public: { apiUrl } } = useRuntimeConfig()
 const { backgroundPath, filterStyle, x, y, diamPx } = useModule1()
 
-// ────────────────────────────────────────────────────────────────────────────
-// 1) PARAMÈTRE debug dans l’URL (côté CLIENT uniquement)
-// ────────────────────────────────────────────────────────────────────────────
+// debug flag
 const showDebug = ref(false)
 
 // reactive pour la position, initialisée à 0
@@ -39,13 +37,7 @@ onMounted(() => {
   goodResponsePosition.y = Math.random() * 240
 })
 
-// ────────────────────────────────────────────────────────────────────────────
-// 2) Définition de la “zone cible” fixe (x=160, y=120, rayon=30px)
-// ────────────────────────────────────────────────────────────────────────────
-const goodResponsePosition = { x: 160, y: 120 }
-const goodResponseZoneSize = 30
-
-// Calcul du style ajusté au conteneur (320×240 → 100%×100%)
+// style de la zone cible
 const zoneStyle = computed(() => ({
   position: 'absolute',
   left: `${(goodResponsePosition.x / 320) * 100}%`,
