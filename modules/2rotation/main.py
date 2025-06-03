@@ -9,8 +9,8 @@ from ArtineoClientMicro import ArtineoClient, ArtineoAction
 # ————————————————
 # 1) CONFIGURATION WIFI + ARTINEO
 # ————————————————
-SSID = "Xiaomi_2FAE"
-PASSWORD = "jodjoy2002"
+SSID = "Bob_bricolo"
+PASSWORD = "bobbricolo"
 HOST = "artineo.local"    # Adresse de votre serveur Artineo
 PORT = 8000
 MODULE_ID = 2            # Identifiant unique pour ce module
@@ -47,6 +47,7 @@ def normalize(raw):
 # 4) TASK ASYNCHRONE PRINCIPALE
 # ————————————————
 async def async_main():
+    print("Démarrage du module de rotation...")
     # a) Connexion Wi-Fi
     sta = network.WLAN(network.STA_IF)
     sta.active(True)
