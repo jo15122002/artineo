@@ -1,34 +1,34 @@
-# main.py -- MicroPython code for ESP32 WROOM32 with 3 joysticks sending to Artineo buffer
-# Ajout d’une notion de FPS pour limiter la fréquence de lecture des joysticks et d’envoi WS
+# main.py -- MicroPython code pour ESP32 WROOM32 avec 3 joysticks, envoi au buffer Artineo, FPS limité
 
 import network
 import uasyncio as asyncio
 from machine import ADC, Pin
-from ArtineoClientMicro import ArtineoClient, ArtineoAction
+from utime import ticks_ms, ticks_diff
+from ArtineoClientMicro import ArtineoClient
 
 # ————————————————
 # 1) CONFIGURATION WIFI + ARTINEO
 # ————————————————
-SSID = "Bob_bricolo"
-PASSWORD = "bobbricolo"
-HOST = "artineo.local"    # Adresse de votre serveur Artineo
-PORT = 8000
-MODULE_ID = 2            # Identifiant unique pour ce module
+SSID      = "Bob_bricolo"
+PASSWORD  = "bobbricolo"
+HOST      = "artineo.local"    # Adresse de votre serveur Artineo
+PORT      = 8000
+MODULE_ID = 2                  # Identifiant unique pour ce module
 
 # ————————————————
 # 2) CONFIGURATION DES FPS
 # ————————————————
-# On souhaite limiter la fréquence de lecture / envoi à 20 images par seconde, par exemple.
-JOYSTICK_FPS = 24
-JOYSTICK_INTERVAL_MS = int(1000 / JOYSTICK_FPS)   # ex. 1000/20 = 50 ms
+# On souhaite limiter la fréquence de lecture / envoi à 24 images par seconde.
+JOYSTICK_FPS        = 10
+JOYSTICK_INTERVAL_MS = int(1000 / JOYSTICK_FPS)   # ≃41 ms
 
 # ————————————————
 # 3) INITIALISATION ADC (joysticks)
 # ————————————————
-# Chaque joystick utilise une sortie analogique (potentiomètre) connectée aux broches ADC 34, 35 et 32.
+# Chaque joystick utilise une sortie analogique (potentiomètre) sur GPIO 34, 35 et 32.
 adcX = ADC(Pin(34))
-adcX.width(ADC.WIDTH_12BIT)    # plage 0-4095
-adcX.atten(ADC.ATTN_11DB)      # plage d'entrée jusqu'à ~3.3V
+adcX.width(ADC.WIDTH_12BIT)    # plage 0–4095
+adcX.atten(ADC.ATTN_11DB)      # jusqu’à ~3.3 V
 
 adcY = ADC(Pin(35))
 adcY.width(ADC.WIDTH_12BIT)
@@ -38,27 +38,28 @@ adcZ = ADC(Pin(32))
 adcZ.width(ADC.WIDTH_12BIT)
 adcZ.atten(ADC.ATTN_11DB)
 
-# Fonction de normalisation (0-4095 → -1.0 à +1.0)
+# Fonction de normalisation (0–4095 → -1.0 .. +1.0)
 def normalize(raw):
-    # raw ∈ [0..4095] → on ramène en [-1.0 .. +1.0]
     return (raw / 2047.5) - 1.0
 
 # ————————————————
-# 4) TASK ASYNCHRONE PRINCIPALE
+# 4) TÂCHE ASYNCHRONE PRINCIPALE
 # ————————————————
 async def async_main():
-    print("Démarrage du module de rotation...")
+    print("Démarrage du module de rotation…")
+
     # a) Connexion Wi-Fi
     sta = network.WLAN(network.STA_IF)
     sta.active(True)
     if not sta.isconnected():
         sta.connect(SSID, PASSWORD)
-        t_start = asyncio.get_event_loop().time()
-        while not sta.isconnected() and (asyncio.get_event_loop().time() - t_start) < 15:
+        start = ticks_ms()
+        # Attendre jusqu’à 15 000 ms max
+        while not sta.isconnected() and ticks_diff(ticks_ms(), start) < 15000:
             await asyncio.sleep_ms(500)
     if not sta.isconnected():
         raise OSError("Impossible de se connecter au Wi-Fi")
-    print("[WiFi] Connecté:", sta.ifconfig())
+    print("[WiFi] Connecté :", sta.ifconfig())
 
     # b) Création du client Artineo et connexion WS
     client = ArtineoClient(
@@ -74,33 +75,33 @@ async def async_main():
     # c) Tâche périodique de lecture des joysticks et envoi au buffer
     async def joystick_task():
         while True:
-            # lecture brute
+            # lire chaque axe
             raw_x = adcX.read()   # 0..4095
             raw_y = adcY.read()
             raw_z = adcZ.read()
-            # normalisation en [-1.0..+1.0]
+
+            # normaliser en [-1.0 .. +1.0]
             vx = normalize(raw_x)
             vy = normalize(raw_y)
             vz = normalize(raw_z)
-            # Construction du buffer à envoyer
+
             buf = {
                 "rotX": vx,
                 "rotY": vy,
                 "rotZ": vz
             }
-            # Envoi via WebSocket (ArtineoAction.SET)
+            # envoyer au buffer via WebSocket
             try:
                 await client.set_buffer(buf)
             except Exception as e:
-                print("[Artineo] Erreur set_buffer:", e)
-                # On continue malgré l’erreur
-            # Pause pour respecter la fréquence JOYSTICK_FPS
+                print("[Artineo] Erreur set_buffer :", e)
+            # attendre pour respecter JOYSTICK_FPS
             await asyncio.sleep_ms(JOYSTICK_INTERVAL_MS)
 
-    # d) Lancement de la tâche de lecture en parallèle
+    # d) Lancer la tâche de lecture en arrière-plan
     asyncio.create_task(joystick_task())
 
-    # e) Garder le programme en vie
+    # e) Garder la boucle active
     while True:
         await asyncio.sleep(1)
 
