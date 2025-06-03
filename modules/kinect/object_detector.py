@@ -1,5 +1,3 @@
-# kinect/object_detector.py
-
 import uuid
 from typing import Any, Dict, List, Tuple
 from cluster_tracker import ClusterTracker
@@ -54,14 +52,18 @@ class ObjectDetector:
         # 2) Parcours et filtre
         for cl in clusters:
             avg_w, avg_h = cl.avg_width, cl.avg_height
-
-            # rejet des très gros clusters
-            if avg_w * avg_h > self._roi_area * self._max_area_ratio:
-                continue
-
             name = cl.shape
             cx, cy = cl.centroid
             angle = cl.avg_angle
+
+            # Vérifier la condition « cluster trop gros » DÉPENDANT du type (fond ou objet)
+            # Si c'est un objet (pas un “landscape_”), on applique le filtre
+            if name not in bg_names and (avg_w * avg_h > self._roi_area * self._max_area_ratio):
+                # On voit un objet trop gros : on skip
+                print(f"[ObjectDetector] skip cluster {cl.id} (objet trop gros : w×h={(avg_w*avg_h):.0f}, seuil={(self._roi_area*self._max_area_ratio):.0f})")
+                continue
+            # Si c'est un background (shape.startswith("landscape_")), on ne skip pas,
+            # même si sa surface dépasse 50 %.
 
             # échelle relative au template
             w_t, h_t = self._template_sizes.get(name, (avg_w, avg_h))
@@ -71,7 +73,7 @@ class ObjectDetector:
             cluster_id = getattr(cl, "id", None)
             obj_id = str(cluster_id) if cluster_id is not None else str(uuid.uuid4())
 
-            # type « background » vs « object »
+            # type “background” vs “object”
             ev_type = "background" if name in bg_names else "object"
 
             # construction de l'événement

@@ -121,8 +121,8 @@ class MainController:
         )
         self.depth_processor_4 = DepthProcessor(
             self.config,
-            mask_threshold=2,
-            morph_kernel=5
+            mask_threshold=1,
+            morph_kernel=3
         )
 
         # 8. Channel4Detector (ne fait que détecter)
@@ -196,6 +196,17 @@ class MainController:
         # (inutile si vous n’avez pas de structure dédiée)
         self.backgrounds_in_baseline: List[str] = []
         self.objects_in_baseline: List[str] = []
+        
+        self.baseline_sand: np.ndarray | None = None
+        self.baseline_objects: np.ndarray | None = None
+
+        self.active_background: dict | None = None       # Contiendra l’événement complet du fond posé (ou None)
+        self.active_objects: Dict[str, dict] = {}        # Clé = object_id, Valeur = event dict correspondant à l’objet.
+
+        # ID des zones fraîchement ajoutées à ignorer pour la détection de retrait
+        self.skip_removal_ids: set[str] = set()
+        
+        
 
         logger.info("MainController initialized.")
 
@@ -204,9 +215,6 @@ class MainController:
         self.kinect.open()
         if not self.config.bypass_ws:
             self.payload_sender.start()
-
-        # IDs des zones fraîchement ajoutées à ignorer pour la détection de retrait
-        self.skip_removal_ids: set[str] = set()
 
         try:
             while True:
@@ -221,6 +229,7 @@ class MainController:
                 # --- 2) Changement d’outil éventuel ---
                 next_tool = await self.channel_selector.get_next_channel()
                 if next_tool and next_tool != self.current_tool:
+                    # (identique à votre version : réinitialiser tout le contexte)
                     old = self.current_tool
                     self.current_tool = next_tool
                     logger.info(f"Tool switched → {self.current_tool}")
@@ -239,9 +248,11 @@ class MainController:
                     for buf in self.final_drawings.values():
                         buf.fill(0)
 
-                    # 2.d) Réinitialiser le contexte “fond” en canal 4
-                    self.current_background_shape = None
-                    self.current_background_id = None
+                    # 2.d) Réinitialiser le contexte “fond” et “objets” en canal 4
+                    self.active_background = None
+                    self.active_objects.clear()
+                    self.baseline_sand = None
+                    self.baseline_objects = None
                     self.skip_removal_ids.clear()
 
                     # 2.e) Ré-émission des strokes persistents du nouvel outil
@@ -278,6 +289,7 @@ class MainController:
 
                 # --- 6) OUTILS 1–3 (pinceaux) ---
                 if self.current_tool in ('1', '2', '3'):
+                    # (votre code inchangé pour la phase dessin)
                     try:
                         baseline_dessin = self.baseline_calc.ensure_baseline_ready(frame)
                         self.baseline_ready = True
@@ -317,7 +329,7 @@ class MainController:
                     for sid, ev in dynamic_slots.items():
                         for r in raw:
                             if abs(r['x'] - ev['x']) <= self.stroke_tracker.proximity_threshold \
-                               and abs(r['y'] - ev['y']) <= self.stroke_tracker.proximity_threshold:
+                            and abs(r['y'] - ev['y']) <= self.stroke_tracker.proximity_threshold:
                                 active_ids.append(sid)
                                 break
                     lifetimer = self.stroke_lifetimers[self.current_tool]
@@ -328,111 +340,41 @@ class MainController:
 
                 # --- 7) OUTIL 4 (canal fond + objets) ---
                 else:
-                    if not self.baseline_ready:
+                    # 7.a) Initialiser baseline_sand dès qu’on entre en canal 4 pour la première fois
+                    if self.baseline_sand is None:
                         try:
-                            baseline_dessin = self.baseline_calc.ensure_baseline_ready(frame)
-                            self.baseline_manager.baseline = baseline_dessin.copy()
-                            self.baseline_ready = True
-                            logger.info("Baseline dessin injectée dans BaselineManager.")
+                            self._initialize_baseline_for_channel4(frame)
                         except RuntimeError:
-                            if self.config.debug_mode:
-                                disp = cv2.convertScaleAbs(frame, alpha=255.0 / (frame.max() or 1))
-                                cv2.imshow("Attente baseline", disp)
-                                cv2.waitKey(1)
+                            # si ensure_baseline_ready échoue, on attend la frame suivante
                             continue
 
-                    baseline_for_bg = self.baseline_manager.get_baseline()
-
-                    removal_bg_ids: List[str] = []
-                    removal_obj_ids: List[str] = []
-
-                    def _mark_removal(evt: dict):
-                        shape_name = evt["shape"]
-                        shape_id = evt["id"]
-                        # Ignorer si dans skip_removal_ids
-                        if shape_id in self.skip_removal_ids:
-                            return
-                        logger.debug(f"Detected removal: {shape_name} (id={shape_id})")
-                        if shape_name.startswith("landscape_"):
-                            removal_bg_ids.append(shape_id)
-                            if shape_id == self.current_background_id:
-                                self.current_background_shape = None
-                                self.current_background_id = None
-                        else:
-                            removal_obj_ids.append(shape_id)
-
-                    self.baseline_manager.detect_and_handle_removals(
+                    # 7.b) Détection des fonds (par rapport à la baseline_sand)
+                    bg_events, obj_events_unused, _cnts_unused = self.channel4_detector.detect(
                         frame,
-                        send_event_fn=_mark_removal
+                        self.baseline_sand
                     )
 
-                    logger.debug(f"Removed backgrounds: {removal_bg_ids}, Removed objects: {removal_obj_ids}")
-                    removed_backgrounds.extend(removal_bg_ids)
-                    removed_objects.extend(removal_obj_ids)
+                    # 7.c) Traitement des événements “fond” en utilisant BackgroundTracker
+                    _new_bgs, _rem_bgs = self._handle_background_events(bg_events, frame)
+                    for ev in _new_bgs:
+                        new_backgrounds.append(ev)
+                    for rid in _rem_bgs:
+                        removed_backgrounds.append(rid)
 
-                    bg_events, obj_events, _cnts = self.channel4_detector.detect(
-                        frame,
-                        baseline_for_bg
-                    )
+                    # 7.d) Si on a maintenant un fond confirmé, on fait la détection d’objets sur baseline_objects
+                    if self.active_background is not None:
+                        _new_objs, _rem_objs = self._handle_object_events(frame)
+                        for ev in _new_objs:
+                            new_objects.append(ev)
+                        for oid in _rem_objs:
+                            removed_objects.append(oid)
 
-                    # 7.e) Suivi du fond unique avec BackgroundTracker
-                    shapes = [ev["shape"] for ev in bg_events]
-                    new_bg_entries, removed_bg_entries = self.bg_tracker.update(shapes)
-
-                    if new_bg_entries:
-                        new_shape = new_bg_entries[0]["shape"]
-                        cx = bg_events[0]["cx"]
-                        cy = bg_events[0]["cy"]
-                        w_box = bg_events[0]["w"]
-                        h_box = bg_events[0]["h"]
-                        new_id = self.baseline_manager.place_zone(new_shape, cx, cy, w_box, h_box)
-                        self.current_background_shape = new_shape
-                        self.current_background_id = new_id
-                        self.skip_removal_ids.add(new_id)
-                        new_backgrounds.append({
-                            "id":    new_id,
-                            "type":  "background",
-                            "shape": new_shape,
-                            "cx":    cx,
-                            "cy":    cy,
-                            "w":     w_box,
-                            "h":     h_box,
-                            "angle": bg_events[0].get("angle", 0.0),
-                            "scale": bg_events[0].get("scale", 1.0),
-                        })
-
-                    for rid in removed_bg_entries:
-                        if rid not in removed_backgrounds:
-                            removed_backgrounds.append(rid)
-                        if rid == self.current_background_id:
-                            self.current_background_shape = None
-                            self.current_background_id = None
-
-                    # 7.f) Traitement des objets
-                    if obj_events:
-                        for ev in obj_events:
-                            if ev["type"] == "background":
-                                continue
-                            name = ev["shape"]
-                            cx, cy = ev["cx"], ev["cy"]
-                            w_box, h_box = ev["w"], ev["h"]
-                            new_id = self.baseline_manager.place_zone(name, cx, cy, w_box, h_box)
-                            new_objects.append({
-                                "id":    new_id,
-                                "type":  "object",
-                                "shape": name,
-                                "cx":    cx,
-                                "cy":    cy,
-                                "w":     w_box,
-                                "h":     h_box,
-                                "angle": ev.get("angle", 0.0),
-                                "scale": ev.get("scale", 1.0),
-                            })
-
-                    # On supprime la skip list **après** cette frame
+                    # 7.e) Après avoir confirmé ou retiré, on peut vider skip_removal_ids si besoin
+                    #      (vous pouvez adapter cette logique pour ne pas vider immédiatement
+                    #       si vous voulez conserver l’ID du fond deux frames de plus, etc.)
                     self.skip_removal_ids.clear()
 
-                # --- 8) Envoi WS des diffs (strokes, backgrounds, objets) ---
+                # --- 8) Envoi WS des diffs (strokes, backgrounds, objects) ---
                 if not self.config.bypass_ws and (
                     new_strokes or removed_strokes or
                     new_backgrounds or removed_backgrounds or
@@ -463,11 +405,10 @@ class MainController:
 
                 remaining_bg_ids = []
                 remaining_obj_ids = []
-                for (name, x0, y0, w, h, unique_id, _orig_patch) in self.baseline_manager.placed_zones:
-                    if name.startswith("landscape_"):
-                        remaining_bg_ids.append(unique_id)
-                    else:
-                        remaining_obj_ids.append(unique_id)
+                if self.active_background is not None:
+                    remaining_bg_ids.append(self.active_background["id"])
+                for obj_id in self.active_objects.keys():
+                    remaining_obj_ids.append(obj_id)
 
                 await self.payload_sender.send_update(
                     new_strokes=[],
@@ -484,153 +425,391 @@ class MainController:
             logger.info("Shutdown complete.")
 
     
-    def _process_channel4(
+    def _blit_zone_on_baseline(
         self,
-        raw_frame: np.ndarray
-    ) -> tuple[
-        list[dict],  # new_backgrounds
-        list[str],   # removed_backgrounds
-        list[dict],  # new_objects
-        list[str]    # removed_objects
-    ]:
-        new_backgrounds: list[dict] = []
-        removed_backgrounds: list[str] = []
-        new_objects: list[dict] = []
-        removed_objects: list[str] = []
+        baseline: np.ndarray,
+        event: dict
+    ) -> np.ndarray:
+        """
+        Colle la silhouette 3D d’un fond ou d’un objet (event) sur la baseline fournie.
+        - `baseline` : np.ndarray 2D de type uint16 (ex. self.baseline_objects)
+        - `event`    : dictionnaire qui contient au moins les clefs :
+              'shape'  → nom de template (p.ex. 'landscape_sea' ou 'medium_lighthouse')
+              'cx','cy'→ coordonnées du centre de la zone dans l’image depth
+              'w','h'  → largeur et hauteur de la bounding box (en pixels dans la depth frame)
+              'angle'  → rotation (en degrés) à appliquer au template
+              'scale'  → facteur d’échelle (1.0 = taille native du template)
+              'id'     → identifiant unique (uuid) de la zone
 
-        # --- 1) Récupérer ou accumuler la baseline-fond ---
-        try:
-            baseline_for_bg = self.baseline_calc.ensure_baseline_ready(raw_frame)
-        except RuntimeError:
-            # on retourne vide : la baseline n'est pas encore prête
-            return [], [], [], []
+        Retourne une NOUVELLE array (copie de baseline) sur laquelle on a « blitté » la forme 3D.
+        """
+        
+        # 1) Récupérer le template de profondeur 3D brut (uint16)
+        shape_name = event["shape"]
+        if shape_name not in self.template_manager.depth_templates:
+            logger.warning(f"Template {shape_name} introuvable dans depth_templates.")
+            return baseline
 
-        # --- 2) Déléguer toute la détection à Channel4Detector ---
-        bg_events, obj_events, cnts_raw = self.channel4_detector.detect(
-            raw_frame,
-            baseline_for_bg
+        template_depth = self.template_manager.depth_templates[shape_name]
+        # template_depth est un np.ndarray 2D dtype=uint16
+
+        # 2) Appliquer l’échelle + rotation
+        #    - On part de la taille native du template (H_t, W_t)
+        H_t, W_t = template_depth.shape
+
+        #    - On calcule la nouvelle taille « wxh » à appliquer, en fonction de event['scale'] et event['w'], event['h']
+        #      Pour être sûr d’avoir exactement la bounding box détectée, on peut forcer :
+        new_w = int(event["w"])
+        new_h = int(event["h"])
+        if new_w <= 0 or new_h <= 0:
+            # pas de zone, on retourne baseline inchangée
+            return baseline
+
+        # 2.a) Resize du template (sans rotation) pour coller à la bbox w×h
+        resized = cv2.resize(
+            template_depth,
+            (new_w, new_h),
+            interpolation=cv2.INTER_NEAREST  # on préserve la quantification profondeur
         )
 
-        # --- 4) Gestion des événements “fond” ---
-        if not self.background_detected and bg_events:
-            bg = bg_events[0]
-            self.current_background_id = bg["id"]
-            self.background_detected = True
+        # 2.b) Rotation autour du centre (cx_template, cy_template) = (new_w/2, new_h/2)
+        angle = float(event.get("angle", 0.0))
+        M = cv2.getRotationMatrix2D(
+            center=(new_w / 2, new_h / 2),
+            angle=angle,
+            scale=1.0
+        )
+        # Calculer bounding box de la rotation pour qu’on ne coupe pas
+        cos = abs(M[0, 0])
+        sin = abs(M[0, 1])
+        bound_w = int((new_h * sin) + (new_w * cos))
+        bound_h = int((new_h * cos) + (new_w * sin))
 
-            logger.info(
-                "Fond initial détecté (3D) : %s (id=%s). Construction de la baseline-objets…",
-                bg["shape"], bg["id"]
-            )
+        # Ajuster la matrice de translation pour centrer
+        M[0, 2] += (bound_w / 2) - (new_w / 2)
+        M[1, 2] += (bound_h / 2) - (new_h / 2)
 
-            # Création de la baseline-objets
-            self.obj_baseline_calc.reset()
-            try:
-                self.obj_baseline_calc.update(raw_frame)
-                self.obj_baseline_ready = True
-                logger.info("obj_baseline initialisée sur le fond détecté.")
-            except RuntimeError as e:
-                logger.warning("Impossible de calculer obj_baseline en une frame : %s", e)
-                self.obj_baseline_ready = False
+        rotated = cv2.warpAffine(
+            resized,
+            M,
+            (bound_w, bound_h),
+            flags=cv2.INTER_NEAREST,
+            borderMode=cv2.BORDER_CONSTANT,
+            borderValue=0  # on considère que le reste est « loin » (valeur grande)
+        )
 
-            new_backgrounds.append({
-                "id":    bg["id"],
+        # 3) Positionner le centre (cx, cy) → on veut que (cx, cy) corresponde au centre de rotated
+        H_b, W_b = baseline.shape
+        cx = int(event["cx"])
+        cy = int(event["cy"])
+        # calculer coin supérieur gauche de la zone où coller `rotated`
+        x0 = cx - (bound_w // 2)
+        y0 = cy - (bound_h // 2)
+        x1 = x0 + bound_w
+        y1 = y0 + bound_h
+
+        # 4) Faire la découpe « ROI » dans la baseline (pénaliser les débordements)
+        x0_clip = max(0, x0)
+        y0_clip = max(0, y0)
+        x1_clip = min(W_b, x1)
+        y1_clip = min(H_b, y1)
+
+        # coordonnées dans le template tourné/resizé à prendre
+        tx0 = x0_clip - x0
+        ty0 = y0_clip - y0
+        tx1 = tx0 + (x1_clip - x0_clip)
+        ty1 = ty0 + (y1_clip - y0_clip)
+
+        # Extraire la zone de baseline sur laquelle on va coller
+        baseline_roi = baseline[y0_clip:y1_clip, x0_clip:x1_clip]
+        template_roi = rotated[ty0:ty1, tx0:tx1]
+
+        # 5) Combinaison des profondeurs :  
+        #    On veut que la zone la plus proche (smallest depth) gagne. Typiquement, le template
+        #    est plus proche (valeur plus petite) que la baseline existante (sable ou ancien objet).
+        #    On prend donc l’opération np.minimum à chaque pixel.
+        merged = np.minimum(baseline_roi, template_roi.astype(baseline_roi.dtype))
+
+        # 6) Réinsérer la zone merge dans la baseline
+        new_baseline = baseline.copy()
+        new_baseline[y0_clip:y1_clip, x0_clip:x1_clip] = merged
+        return new_baseline        
+    
+    
+    def _handle_background_events(
+        self,
+        bg_events: List[dict],
+        frame: np.ndarray,
+    ) -> tuple[list[dict], list[str]]:
+        """
+        bg_events : liste d’événements bruts (dictionnaires) renvoyés par Channel4Detector.
+                    Ex. [{"shape":"landscape_sea","cx":x,"cy":y,"w":w,"h":h,"angle":a,"scale":s}, …]
+
+        On transforme la sortie de Channel4Detector (juste un ensemble de “shapes” + 
+        on retrouve l’event complet dans bg_events) en une confirmation avec UUID via BackgroundTracker.
+        Retourne (new_bgs, removed_bgs) où chaque élément est un dictionnaire complet prêt à envoyer
+        au front (y compris cx, cy, w, h, angle, scale).
+        """
+        new_bgs: list[dict] = []
+        removed_bgs: list[str] = []
+
+        # 1) Extraire simplement la liste des noms de shape détectés
+        shapes = [ev["shape"] for ev in bg_events]
+        new_entries, removed_entries = self.bg_tracker.update(shapes)
+
+        # 2) Pour chaque nouvel entry confirmé, on retrouve l'event complet
+        for entry in new_entries:
+            new_shape = entry["shape"]
+            new_id    = entry["id"]
+
+            # Chercher dans bg_events l'objet complet pour avoir cx, cy, w, h, angle, scale
+            matched_ev = None
+            for ev in bg_events:
+                if ev["shape"] == new_shape:
+                    matched_ev = ev
+                    break
+            if matched_ev is None:
+                # Impossible (en théorie), mais on skip si absent
+                continue
+
+            # 2.a) On met à jour active_background
+            self.active_background = {
+                "shape": new_shape,
+                "id":    new_id,
+                "cx":    matched_ev["cx"],
+                "cy":    matched_ev["cy"],
+                "w":     matched_ev["w"],
+                "h":     matched_ev["h"],
+                "angle": matched_ev.get("angle", 0.0),
+                "scale": matched_ev.get("scale", 1.0)
+            }
+
+            # 2.b) On reconstruit baseline_objects à partir de baseline_sand + active_background + active_objects
+            self._rebuild_baseline_objects()
+
+            # 2.c) On empêche cette zone d'être immédiatement supprimée
+            self.skip_removal_ids.add(new_id)
+
+            # 2.d) Construire le payload complet
+            new_bgs.append({
+                "id":    new_id,
                 "type":  "background",
-                "shape": bg["shape"],
-                "cx":    bg["cx"],
-                "cy":    bg["cy"],
-                "w":     bg["w"],
-                "h":     bg["h"],
-                "angle": bg["angle"],
-                "scale": bg["scale"],
+                "shape": new_shape,
+                "cx":    matched_ev["cx"],
+                "cy":    matched_ev["cy"],
+                "w":     matched_ev["w"],
+                "h":     matched_ev["h"],
+                "angle": matched_ev.get("angle", 0.0),
+                "scale": matched_ev.get("scale", 1.0),
             })
 
-        elif self.background_detected and bg_events:
-            # Remplacement de fond
-            rem = [ev for ev in bg_events if ev["id"] != self.current_background_id]
-            if rem:
-                bg_new = rem[0]
-                old_id = self.current_background_id
-                self.current_background_id = bg_new["id"]
+        # 3) Pour chaque ID supprimé (après Y frames sans detection)
+        for old_id in removed_entries:
+            if self.active_background is not None and self.active_background["id"] == old_id:
+                removed_bgs.append(old_id)
+                self.active_background = None
+                # On reconstruit baseline_objects (retour à un sable pur + objets toujours actifs)
+                self._rebuild_baseline_objects()
 
-                logger.info(
-                    "Remplacement du fond : ancien id=%s → nouveau id=%s (shape=%s)",
-                    old_id, bg_new["id"], bg_new["shape"]
-                )
-                removed_backgrounds.append(old_id)
+        return new_bgs, removed_bgs
 
-                self.obj_baseline_calc.reset()
-                try:
-                    self.obj_baseline_calc.update(raw_frame)
-                    self.obj_baseline_ready = True
-                    logger.info("obj_baseline recalculée sur le nouveau fond.")
-                except RuntimeError as e:
-                    logger.warning("Impossible de recalculer obj_baseline : %s", e)
-                    self.obj_baseline_ready = False
 
-                new_backgrounds.append({
-                    "id":    bg_new["id"],
-                    "type":  "background",
-                    "shape": bg_new["shape"],
-                    "cx":    bg_new["cx"],
-                    "cy":    bg_new["cy"],
-                    "w":     bg_new["w"],
-                    "h":     bg_new["h"],
-                    "angle": bg_new["angle"],
-                    "scale": bg_new["scale"],
+    def _handle_object_events(
+        self,
+        frame: np.ndarray
+    ) -> tuple[list[dict], list[str]]:
+        """
+        Detecte les objets en comparant frame vs self.baseline_objects.
+        -> depth_processor_4 pour extraire les contours d’objets
+        -> classification 3D pour nommer la forme
+        -> tracker/cluster pour ajuster l’ID stable de l’objet
+
+        Retourne (new_objs, removed_objs) pour le front :
+          - new_objs     : liste d’événements complets (avec 'id','shape','cx',…)
+          - removed_objs : liste d’IDs d’objets qui ont été supprimés
+        """
+
+        new_objs: list[dict] = []
+        removed_objs: list[str] = []
+
+        # 1) Si la baseline_objects n’est pas encore prête (ex. on attend que le fond soit confirmé), on stoppe
+        if self.baseline_objects is None:
+            return new_objs, removed_objs
+
+        # 2) On exécute le depth_processor sur la baseline courante
+        try:
+            result_obj = self.depth_processor_4.process(frame, self.baseline_objects)
+        except RuntimeError:
+            return new_objs, removed_objs
+
+        if result_obj is None:
+            return new_objs, removed_objs
+
+
+        # 3) On extrait les contours pour classification 3D
+        cnts_obj = result_obj.contours
+        canvas = cv2.cvtColor(cv2.convertScaleAbs(self.baseline_objects.astype(np.uint8) >> 8), cv2.COLOR_GRAY2BGR)
+        for cnt in cnts_obj:
+            cv2.drawContours(canvas, [cnt], -1, (0,0,255), 2)
+        cv2.imshow("DEBUG – contours objets bruts", canvas)
+        cv2.waitKey(1)
+        dets_for_obj: list[tuple] = []
+        for cnt in cnts_obj:
+            area = float(cv2.contourArea(cnt))
+            if area < self.config.small_area_threshold:
+                continue
+
+            # Maintenant classify_3d attend aussi baseline_objects en 3ᵉ argument
+            shape = self.shape_classifier.classify_3d(cnt, result_obj.mapped, self.baseline_objects)
+            if shape is None:
+                continue
+
+            M = cv2.moments(cnt)
+            if M.get("m00", 0) == 0:
+                continue
+            cx = float(M["m10"] / M["m00"])
+            cy = float(M["m01"] / M["m00"])
+            x, y, w, h = cv2.boundingRect(cnt)
+            dets_for_obj.append((shape, cx, cy, area, 0.0, float(w), float(h)))
+
+        # 4) On met à jour le cluster_tracker pour obtenir des events stables
+        self.cluster_tracker.update(dets_for_obj)
+        evs_obj, removed_ids_obj = self.object_detector.detect()
+
+        # 5) Pour chaque objet détecté (nouveau) :
+        for ev in evs_obj:
+            if ev["type"] == "background":
+                # on ne traite pas ici les bg, c’est _handle_background_events qui s’en charge
+                continue
+
+            obj_id = ev["id"]    # identifiant stable du cluster
+            if obj_id not in self.active_objects:
+                # nouvel objet → on l’ajoute dans active_objects ET on colle dans baseline_objects
+                self.active_objects[obj_id] = ev.copy()
+                self.baseline_objects = self._blit_zone_on_baseline(self.baseline_objects, ev)
+
+                new_objs.append({
+                    "id":    obj_id,
+                    "type":  "object",
+                    "shape": ev["shape"],
+                    "cx":    ev["cx"],
+                    "cy":    ev["cy"],
+                    "w":     ev["w"],
+                    "h":     ev["h"],
+                    "angle": ev.get("angle", 0.0),
+                    "scale": ev.get("scale", 1.0),
                 })
 
-        # 4.1) Disparition effective du fond
-        if self.background_detected and not bg_events:
-            logger.info("Le fond (id=%s) a été retiré.", self.current_background_id)
-            removed_backgrounds.append(self.current_background_id)
-            self.background_detected = False
-            self.obj_baseline_ready = False
-            self.current_background_id = None
-            self.obj_baseline_calc.reset()
+        # 6) Pour chaque ID d’objet que le detector considère comme “supprimé”
+        for rid in removed_ids_obj:
+            if rid in self.active_objects:
+                # on retire cet objet
+                del self.active_objects[rid]
+                removed_objs.append(rid)
 
-        # --- 5) Gestion des objets (après validation du fond et baseline-objets prête) ---
-        if self.background_detected and self.obj_baseline_ready:
-            try:
-                baseline_obj = self.obj_baseline_calc.baseline
-                result_obj = self.depth_processor_4.process(raw_frame, baseline_obj)
-            except RuntimeError:
-                result_obj = None
+        # 7) Si on a retiré un ou plusieurs objets, on reconstruit la baseline_objects
+        if removed_objs:
+            self._rebuild_baseline_objects()
 
-            if result_obj is not None:
-                cnts_obj = result_obj.contours
-                dets_for_obj: list[tuple] = []
-                for cnt in cnts_obj:
-                    area = float(cv2.contourArea(cnt))
-                    if area < self.config.small_area_threshold:
-                        continue
+        return new_objs, removed_objs
 
-                    shape = self.shape_classifier.classify_3d(
-                        cnt,
-                        result_obj.mapped
-                    )
-                    if shape is None:
-                        continue
+    def _rebuild_baseline_objects(self) -> None:
+        """
+        Reconstruit self.baseline_objects **à partir de** self.baseline_sand, puis en
+        « blittant » :  1) le fond actif (s’il existe),  2) chaque objet actif.  
+        On écrit le résultat dans self.baseline_objects.
+        """
+        if self.baseline_sand is None:
+            # pas encore initialisé → on ne fait rien
+            return
 
-                    M = cv2.moments(cnt)
-                    if M.get("m00", 0) == 0:
-                        continue
-                    cx = float(M["m10"] / M["m00"])
-                    cy = float(M["m01"] / M["m00"])
-                    x, y, w, h = cv2.boundingRect(cnt)
-                    dets_for_obj.append((shape, cx, cy, area, 0.0, float(w), float(h)))
+        # 1) repartir du sable pur
+        base = self.baseline_sand.copy()
 
-                self.cluster_tracker.update(dets_for_obj)
+        # 2) si un fond est actif, on le colle en premier
+        if self.active_background is not None:
+            base = self._blit_zone_on_baseline(base, self.active_background)
 
-                evs_obj, removed_ids_obj = self.object_detector.detect()
-                for ev in evs_obj:
-                    if ev["type"] != "background":
-                        new_objects.append(ev)
-                for rid in removed_ids_obj:
-                    if rid not in (self.current_background_id or []):
-                        removed_objects.append(rid)
+        # 3) pour chaque objet encore actif, on colle son masque
+        for obj_id, event in self.active_objects.items():
+            base = self._blit_zone_on_baseline(base, event)
 
-        return new_backgrounds, removed_backgrounds, new_objects, removed_objects
+        # 4) on met à jour l’attribut
+        self.baseline_objects = base
+    
+    def _check_background_presence(
+        self,
+        frame: np.ndarray
+    ) -> bool:
+        """
+        Compare la zone (bounding box) du fond actif entre `frame` et `self.baseline_sand`.
+        Si trop de pixels ont des valeurs très proches → le fond est toujours là.
+        Si tous (ou trop) les pixels tombent sous un seuil → le fond a disparu.
+        Retourne True si le fond est encore présent, False sinon.
+        """
 
+        if self.active_background is None or self.baseline_sand is None:
+            return False
+
+        # 1) On extrait la bounding box du fond
+        ev = self.active_background
+        cx, cy = int(ev["cx"]), int(ev["cy"])
+        w_box, h_box = int(ev["w"]), int(ev["h"])
+
+        # définir les coins de la bbox
+        x0 = max(0, cx - w_box // 2)
+        y0 = max(0, cy - h_box // 2)
+        x1 = min(self.baseline_sand.shape[1], x0 + w_box)
+        y1 = min(self.baseline_sand.shape[0], y0 + h_box)
+
+        # 2) Extraire le patch du frame courant et le patch de la baseline_sand
+        patch_frame = frame[y0:y1, x0:x1].astype(int)
+        patch_sand  = self.baseline_sand[y0:y1, x0:x1].astype(int)
+
+        # 3) Calculer la différence absolue
+        diff = np.abs(patch_frame - patch_sand)
+
+        # 4) Seuil de présence : si trop de pixels ont diff > removal_threshold,
+        #    on déduit que le fond est toujours là. Sinon, il a disparu.
+        mask_present = diff > self.config.removal_threshold
+        # ratio de pixels « toujours présents »
+        taux_present = float(mask_present.sum()) / float(mask_present.size)
+
+        # Si le pourcentage de pixels « proches de la baseline sand » est trop grand,
+        # on estime que le fond a disparu. Sinon, on le considère encore là.
+        if taux_present < self.config.removal_ratio:
+            # La plupart des pixels sont presque identiques à la baseline_sand → fond disparu
+            return False
+        else:
+            return True
+    
+    def _initialize_baseline_for_channel4(self, frame: np.ndarray) -> None:
+        """
+        Appeler cette méthode **une seule fois** dès que l’on détecte le tout premier passage
+        en outil '4' (canal fond+objets). On calcule baseline_sand (sable seul) et on
+        initialise baseline_objects à la même valeur. Ensuite, on remet à zéro tout ce qui
+        concerne le fond/objets actifs.
+        """
+        # 1) calculer baseline “sable seul”
+        baseline_sand = self.baseline_calc.ensure_baseline_ready(frame)
+        self.baseline_sand = baseline_sand.copy()
+
+        # 2) la baseline “sable+fond+objets” de départ est strictement égale à “sable seul”
+        self.baseline_objects = self.baseline_sand.copy()
+
+        # 3) pas encore de fond ni d’objet visible
+        self.active_background = None
+        self.active_objects = {}
+
+        # 4) on autorise immédiatement l’ajout d’un nouveau fond
+        #    (skip_removal_ids vide ou mis à jour plus bas)
+        self.skip_removal_ids.clear()
+
+        # 5) on indique que la baseline de base (sable) est maintenant prête
+        self.baseline_ready = True
+        logger.info("Baseline sand (sable) initialisée pour canal 4.")
+
+    
 if __name__ == '__main__':
 
     logger.setLevel(logging.DEBUG)
