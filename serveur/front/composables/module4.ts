@@ -24,19 +24,17 @@ export interface ArtObject {
 }
 
 export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
-  // ↪ Guard SSR : on ne veut pas exécuter tout le code graphiques en server-side
+  // En SSR, on renvoie des stubs
   if (!process.client) {
-    const stub: any = ref(null)
-    return {
-      strokes: stub as Ref<Stroke[]>,
-      objects: stub as Ref<ArtObject[]>
-    }
+    const stubStrokes: Ref<Stroke[]> = ref([])
+    const stubObjects: Ref<ArtObject[]> = ref([])
+    return { strokes: stubStrokes, objects: stubObjects }
   }
 
-  const moduleId = 4
-  const artClient = useArtineo(moduleId)
+  // Création (et cache) d’un client Artineo unique pour module = 4
+  const artClient = useArtineo(4)
 
-  // 1️⃣ Préchargement des sprites d'objets
+  // Préchargement des sprites d’objets
   const objectImages: Record<string, HTMLImageElement> = {}
   const imgModules = import.meta.glob<string>(
     '~/assets/modules/4/images/objects/*.png',
@@ -50,14 +48,12 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
     objectImages[name] = img
   }
 
-  // 2️⃣ Brushes niveaux de gris
-  const brushCanvases: Record<string, HTMLCanvasElement[]> = {
-    '1': [], '2': [], '3': []
-  }
+  // Chargement des brushes niveaux de gris
+  const brushCanvases: Record<string, HTMLCanvasElement[]> = { '1': [], '2': [], '3': [] }
   const colorMap: Record<string, [number, number, number]> = {
     '1': [255, 0, 0],
     '2': [0, 255, 0],
-    '3': [0, 0, 255]
+    '3': [0, 0, 255],
   }
   const brushModules = import.meta.glob<string>(
     '~/assets/modules/4/images/brushes/*.png',
@@ -98,11 +94,11 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
     )
   }
 
-  // 3️⃣ Stockage local
+  // Référentiels pour dessiner
   const strokes = ref<Stroke[]>([])
   const objects = ref<ArtObject[]>([])
 
-  // 4️⃣ Dessin
+  // Fonctions de dessin
   const scale = 3
   function drawStroke(ctx: CanvasRenderingContext2D, s: Stroke) {
     const canvases = brushCanvases[s.tool_id] || []
@@ -111,8 +107,7 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
     const px = s.x * scale
     const py = s.y * scale
     const size = (s.size || 5) * scale
-    const ang = s.angle || 0
-
+    const ang = s.angle ?? 0
     ctx.save()
     ctx.translate(px, py)
     ctx.rotate(ang)
@@ -123,10 +118,8 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
   function drawObject(ctx: CanvasRenderingContext2D, o: ArtObject) {
     const img = objectImages[o.shape]
     if (img && img.complete) {
-      const w = o.w * scale
-      const h = o.h * scale
-      const x = o.cx * scale - w / 2
-      const y = o.cy * scale - h / 2
+      const w = o.w * scale, h = o.h * scale
+      const x = o.cx * scale - w / 2, y = o.cy * scale - h / 2
       ctx.drawImage(img, x, y, w, h)
     } else {
       ctx.fillStyle = '#000'
@@ -134,7 +127,6 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
     }
   }
 
-  // 5️⃣ Traitement du buffer reçu
   function drawBuffer(buf: {
     newStrokes?: Stroke[]
     removeStrokes?: string[]
@@ -143,10 +135,8 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
   }) {
     if (buf.newStrokes) {
       buf.newStrokes.forEach(s => {
-        if (!strokes.value.some(old => old.id === s.id)) {
-          if (s.angle === undefined) {
-            s.angle = Math.random() * Math.PI * 2
-          }
+        if (!strokes.value.find(prev => prev.id === s.id)) {
+          s.angle = s.angle ?? Math.random() * Math.PI * 2
           strokes.value.push(s)
         }
       })
@@ -155,7 +145,11 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
       strokes.value = strokes.value.filter(s => !buf.removeStrokes!.includes(s.id))
     }
     if (buf.newObjects) {
-      objects.value.push(...buf.newObjects)
+      buf.newObjects.forEach(o => {
+        if (!objects.value.find(prev => prev.id === o.id)) {
+          objects.value.push(o)
+        }
+      })
     }
     if (buf.removeObjects) {
       objects.value = objects.value.filter(o => !buf.removeObjects!.includes(o.id))
@@ -171,49 +165,54 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
     objects.value.forEach(o => drawObject(ctx, o))
   }
 
-  // 6️⃣ Intégration Artineo WS
-  let intervalId: ReturnType<typeof setInterval> | null = null
+  let pollingInterval: ReturnType<typeof setInterval> | null = null
+  let isSubscribed = false
 
   onMounted(() => {
     console.log('Module 4: Kinect')
-    // Préparer les brushes une fois les images chargées
+
+    // Préparer les brushes
     Promise.all(
-      rawBrushImages.map(img => {
-        console.log('Préchargement brush', img.src)
-        return img.complete
-          ? Promise.resolve()
-          : new Promise<void>(res => {
-              img.onload = () => {
-                console.log('Image chargée', img.src)
-                res()
-              }
-            })
-      })
+      rawBrushImages.map(img => 
+        img.complete ? Promise.resolve() : new Promise<void>(res => { img.onload = () => res() })
+      )
     ).then(() => {
-      console.log('✅ Tous les brushes chargés, préparation…')
+      console.log('✅ Tous les brushes chargés')
       prepareBrushes()
     })
 
-    artClient.onMessage(msg => {
-      if (msg.action === 'get_buffer' && msg.buffer) {
-        drawBuffer(msg.buffer)
-      }
-    })
+    // 1) Abonnement WS unique
+    if (!isSubscribed) {
+      isSubscribed = true
+      artClient.onMessage((msg: any) => {
+        if (msg.action === 'get_buffer' && msg.buffer) {
+          drawBuffer(msg.buffer)
+        }
+      })
 
-    artClient.getBuffer()
-      .then(buf => drawBuffer(buf))
-      .catch(() => {})
-
-    intervalId = setInterval(() => {
+      // 2) Récupération initiale
       artClient.getBuffer()
         .then(buf => drawBuffer(buf))
         .catch(() => {})
-    }, 100)
+
+      // 3) Polling régulier toutes les 200 ms
+      pollingInterval = setInterval(() => {
+        artClient.getBuffer()
+          .then(buf => drawBuffer(buf))
+          .catch(() => {})
+      }, 100)
+    }
   })
 
   onBeforeUnmount(() => {
-    if (intervalId !== null) clearInterval(intervalId)
-    // Ne pas fermer artClient : connexion partagée
+    // Arrêt du polling
+    if (pollingInterval) {
+      clearInterval(pollingInterval)
+      pollingInterval = null
+    }
+    // Fermeture propre du client (WS)
+    artClient.close()
+    isSubscribed = false
   })
 
   return { strokes, objects }

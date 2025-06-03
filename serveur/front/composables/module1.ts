@@ -86,6 +86,7 @@ export default function useModule1() {
       if (cfg.background)      backgroundPath.value = cfg.background
       if (typeof cfg.fps === 'number' && cfg.fps > 0) {
         fps.value = cfg.fps
+        console.log(`[Module1] FPS configuré : ${fps.value}`)
       }
     } catch (e) {
       console.error('[Module1] fetchConfig error', e)

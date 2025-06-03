@@ -15,6 +15,8 @@ export default function useModule2(canvasRef: Ref<HTMLCanvasElement | null>) {
   const artClient = useArtineo(2)
   let loadedObject: THREE.Object3D | null = null
   let animationFrameId: number | null = null
+  let pollingInterval: ReturnType<typeof setInterval> | null = null
+  let isSubscribed = false
 
   function applyBuffer(buf: any) {
     if (!loadedObject) return
@@ -29,6 +31,23 @@ export default function useModule2(canvasRef: Ref<HTMLCanvasElement | null>) {
         applyBuffer(msg.buffer)
       }
     })
+  }
+
+  function startPolling(intervalMs: number) {
+    pollingInterval = setInterval(() => {
+      artClient.getBuffer()
+        .then(buf => applyBuffer(buf))
+        .catch(() => {
+          // ignore les erreurs réseau éventuelles
+        })
+    }, intervalMs)
+  }
+
+  function stopPolling() {
+    if (pollingInterval) {
+      clearInterval(pollingInterval)
+      pollingInterval = null
+    }
   }
 
   function initThree(canvas: HTMLCanvasElement) {
@@ -95,18 +114,50 @@ export default function useModule2(canvasRef: Ref<HTMLCanvasElement | null>) {
     animate()
   }
 
-  onMounted(() => {
+  onMounted(async () => {
     const canvas = canvasRef.value
     if (!canvas) return
 
     initThree(canvas)
-    setupWebsocketListener()
+
+    // 1) Abonnement WebSocket (une seule fois)
+    if (!isSubscribed) {
+      isSubscribed = true
+      setupWebsocketListener()
+
+      // 2) Récupération initiale du buffer
+      artClient.getBuffer()
+        .then(buf => applyBuffer(buf))
+        .catch(() => {
+          // ignore
+        })
+
+      // 3) Récupérer le fps depuis la config
+      let fps = 0
+      try {
+        const cfg = await artClient.fetchConfig()
+        if (typeof cfg.fps === 'number' && cfg.fps > 0) {
+          fps = Math.floor(cfg.fps)
+          console.log(`[Module2] FPS configuré : ${fps}`)
+        }
+      } catch (e) {
+        console.warn('[Module2] fetchConfig error', e)
+      }
+
+      // 4) Calculer intervalle : si fps invalide, on prend 20 FPS (50 ms)
+      const intervalMs = fps > 0 ? Math.round(1000 / fps) : 50
+      startPolling(intervalMs)
+    }
   })
 
   onBeforeUnmount(() => {
+    // Arrêt du rendu
     if (animationFrameId !== null) {
       cancelAnimationFrame(animationFrameId)
+      animationFrameId = null
     }
-    // Pas de client.close() car la connexion WS peut être partagée
+    // Arrêt du polling
+    stopPolling()
+    // Pas de artClient.close() ici, car WS peut être partagé
   })
 }
