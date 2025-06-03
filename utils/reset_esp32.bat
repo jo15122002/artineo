@@ -34,6 +34,16 @@ echo ==================================================
 echo.
 
 :: 2) Vérifier qu’on peut appeler esptool via python
+
+pip install esptool >nul 2>&1
+if errorlevel 1 (
+  echo ERREUR : Impossible d'installer esptool.
+  echo Assurez-vous que pip est installé et accessible dans votre PATH.
+  echo Installez-le avec : python -m pip install esptool
+  pause
+  exit /b 1
+)
+
 python -m esptool --help >nul 2>&1
 if errorlevel 1 (
   echo ERREUR : Impossible de lancer esptool via "python -m esptool".
