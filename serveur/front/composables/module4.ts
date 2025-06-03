@@ -1,6 +1,6 @@
-// front/composables/module4.ts
+// File: serveur/front/composables/module4.ts
 import type { Ref } from 'vue'
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useArtineo } from './useArtineo'
 
 export interface Stroke {
@@ -176,7 +176,7 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
 
   onMounted(() => {
     console.log('Module 4: Kinect')
-    // préparer brushes une fois images chargées
+    // Préparer les brushes une fois les images chargées
     Promise.all(
       rawBrushImages.map(img => {
         console.log('Préchargement brush', img.src)
@@ -203,6 +203,7 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
     artClient.getBuffer()
       .then(buf => drawBuffer(buf))
       .catch(() => {})
+
     intervalId = setInterval(() => {
       artClient.getBuffer()
         .then(buf => drawBuffer(buf))
@@ -212,7 +213,7 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
 
   onBeforeUnmount(() => {
     if (intervalId !== null) clearInterval(intervalId)
-    artClient.close()
+    // Ne pas fermer artClient : connexion partagée
   })
 
   return { strokes, objects }
