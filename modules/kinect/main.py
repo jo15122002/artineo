@@ -206,7 +206,17 @@ class MainController:
         # ID des zones fraîchement ajoutées à ignorer pour la détection de retrait
         self.skip_removal_ids: set[str] = set()
         
+        self.bg_detect_count    = 0
+        self.bg_candidate_id    = None
+        self.bg_candidate_shape = None
+        self.bg_missing_count   = 0
+        self.BG_FRAMES_TO_ADD   = 10    # ou  nombre que vous voulez
+        self.BG_FRAMES_TO_REMOVE= 10
         
+        self.obj_detect_counts   = {}
+        self.obj_missing_counts  = {}
+        self.OBJ_FRAMES_TO_ADD   = 10
+        self.OBJ_FRAMES_TO_REMOVE= 10
 
         logger.info("MainController initialized.")
 
@@ -353,9 +363,11 @@ class MainController:
                         frame,
                         self.baseline_sand
                     )
+                    logger.debug(f"[run] bg_events reçus : {bg_events}")
 
                     # 7.c) Traitement des événements “fond” en utilisant BackgroundTracker
                     _new_bgs, _rem_bgs = self._handle_background_events(bg_events, frame)
+                    logger.info(f"[run] _handle_background_events → nouveaux fonds : {_new_bgs}, fonds supprimés : {_rem_bgs}")
                     for ev in _new_bgs:
                         new_backgrounds.append(ev)
                     for rid in _rem_bgs:
@@ -364,6 +376,7 @@ class MainController:
                     # 7.d) Si on a maintenant un fond confirmé, on fait la détection d’objets sur baseline_objects
                     if self.active_background is not None:
                         _new_objs, _rem_objs = self._handle_object_events(frame)
+                        logger.info(f"[run] _handle_object_events → nouveaux objets : {_new_objs}, objets supprimés : {_rem_objs}")
                         for ev in _new_objs:
                             new_objects.append(ev)
                         for oid in _rem_objs:
@@ -388,6 +401,25 @@ class MainController:
                         new_objects=new_objects,
                         remove_objects=removed_objects,
                     )
+                    
+                if self.baseline_sand is not None:
+                    # On normalise la baseline_sand (uint16) en 8 bits pour affichage
+                    sand_norm = cv2.convertScaleAbs(
+                        self.baseline_sand,
+                        alpha=255.0 / (self.baseline_sand.max() or 1)
+                    )
+                    cv2.imshow("Baseline Sand (sable)", sand_norm)
+
+                if self.baseline_objects is not None:
+                    # Même traitement pour sable+fond+objets
+                    obj_norm = cv2.convertScaleAbs(
+                        self.baseline_objects,
+                        alpha=255.0 / (self.baseline_objects.max() or 1)
+                    )
+                    cv2.imshow("Baseline Objects (sable+fond+objets)", obj_norm)
+
+                # pour que les fenêtres se mettent à jour
+                cv2.waitKey(1)
 
                 # --- 9) Petite pause non bloquante pour la boucle asyncio ---
                 await asyncio.sleep(0)
@@ -542,124 +574,202 @@ class MainController:
         frame: np.ndarray,
     ) -> tuple[list[dict], list[str]]:
         """
-        bg_events : liste d’événements bruts (dictionnaires) renvoyés par Channel4Detector.
-                    Ex. [{"shape":"landscape_sea","cx":x,"cy":y,"w":w,"h":h,"angle":a,"scale":s}, …]
-
-        On transforme la sortie de Channel4Detector (juste un ensemble de “shapes” + 
-        on retrouve l’event complet dans bg_events) en une confirmation avec UUID via BackgroundTracker.
-        Retourne (new_bgs, removed_bgs) où chaque élément est un dictionnaire complet prêt à envoyer
-        au front (y compris cx, cy, w, h, angle, scale).
+        Gère l’ajout/suppression du fond après N frames pour éviter le clignotement.
+        On se base sur `shape` (et non `id`) pour suivre la stabilité.
         """
-        new_bgs: list[dict] = []
+
+        new_bgs:     list[dict] = []
         removed_bgs: list[str] = []
 
-        # 1) Extraire simplement la liste des noms de shape détectés
-        shapes = [ev["shape"] for ev in bg_events]
-        new_entries, removed_entries = self.bg_tracker.update(shapes)
+        # --- CAS 1 : aucun fond actif pour le moment ---
+        if self.active_background is None:
+            if not bg_events:
+                # Pas de fond détecté → rien à valider
+                logger.debug("_handle_background_events (CAS 1) : aucun bg_event et pas de active_background")
+                # On remet à zéro le candidat précédent
+                self.bg_candidate_shape = None
+                self.bg_detect_count = 0
+                return new_bgs, removed_bgs
 
-        # 2) Pour chaque nouvel entry confirmé, on retrouve l'event complet
-        for entry in new_entries:
-            new_shape = entry["shape"]
-            new_id    = entry["id"]
+            # Il y a au moins un bg_events
+            cand = bg_events[0]
+            cand_shape = cand["shape"]
 
-            # Chercher dans bg_events l'objet complet pour avoir cx, cy, w, h, angle, scale
-            matched_ev = None
-            for ev in bg_events:
-                if ev["shape"] == new_shape:
-                    matched_ev = ev
-                    break
-            if matched_ev is None:
-                # Impossible (en théorie), mais on skip si absent
-                continue
+            if self.bg_candidate_shape != cand_shape:
+                # Nouveau shape candidat (différent du précédent)
+                self.bg_candidate_shape = cand_shape
+                self.bg_detect_count = 1
+                logger.debug(
+                    f"_handle_background_events (CAS 1) : nouveau candidat de fond '{cand_shape}' "
+                    f"(id temporaire = {cand['id']}). reset bg_detect_count=1."
+                )
+            else:
+                # Même shape que la frame précédente → incrémenter le compteur
+                self.bg_detect_count += 1
+                logger.debug(
+                    f"_handle_background_events (CAS 1) : fond '{cand_shape}' détecté "
+                    f"{self.bg_detect_count} frames de suite."
+                )
 
-            # 2.a) On met à jour active_background
-            self.active_background = {
-                "shape": new_shape,
-                "id":    new_id,
-                "cx":    matched_ev["cx"],
-                "cy":    matched_ev["cy"],
-                "w":     matched_ev["w"],
-                "h":     matched_ev["h"],
-                "angle": matched_ev.get("angle", 0.0),
-                "scale": matched_ev.get("scale", 1.0)
-            }
+            # Si on a vu ce même shape au moins BG_FRAMES_TO_ADD fois de suite => on le valide
+            if self.bg_detect_count >= self.BG_FRAMES_TO_ADD:
+                logger.info(
+                    f"_handle_background_events (CAS 1) : fond '{cand_shape}' confirmé "
+                    f"après {self.bg_detect_count} frames. Ajout du fond."
+                )
+                # 1) on devient actif
+                self.active_background = cand.copy()
+                # 2) on colle la forme du fond dans baseline_objects
+                self.baseline_objects = self._blit_zone_on_baseline(self.baseline_objects, cand)
+                # 3) on empêche une suppression immédiate
+                self.skip_removal_ids.add(cand["id"])
+                # 4) on envoie l’événement vers le front
+                new_bgs.append({
+                    "id":    cand["id"],
+                    "type":  "background",
+                    "shape": cand_shape,
+                    "cx":    cand["cx"],
+                    "cy":    cand["cy"],
+                    "w":     cand["w"],
+                    "h":     cand["h"],
+                    "angle": cand.get("angle", 0.0),
+                    "scale": cand.get("scale", 1.0),
+                })
+                # Réinitialiser les compteurs pour la suite
+                self.bg_candidate_shape = None
+                self.bg_detect_count = 0
+                self.bg_missing_count = 0  # on n’a pas encore besoin de compter les absences
+            return new_bgs, removed_bgs
 
-            # 2.b) On reconstruit baseline_objects à partir de baseline_sand + active_background + active_objects
-            self._rebuild_baseline_objects()
+        # --- CAS 2 : il existe déjà un fond actif ---
+        # 2.a) si on détecte au moins un bg_event
+        if bg_events:
+            # On cherche dans bg_events un event dont le shape == self.active_background["shape"]
+            shapes_detectes = [ev["shape"] for ev in bg_events]
+            if self.active_background["shape"] in shapes_detectes:
+                # Le même fond est toujours présent → on remet à zéro le compteur d’absence
+                self.bg_missing_count = 0
+                logger.debug(
+                    f"_handle_background_events (CAS 2) : fond actif '{self.active_background['shape']}' "
+                    "toujours détecté, reset missing_count."
+                )
+                return new_bgs, removed_bgs
 
-            # 2.c) On empêche cette zone d'être immédiatement supprimée
-            self.skip_removal_ids.add(new_id)
+            # Sinon, on a un « nouveau » shape dans bg_events (remplacement potentiel)
+            cand = bg_events[0]
+            cand_shape = cand["shape"]
 
-            # 2.d) Construire le payload complet
-            new_bgs.append({
-                "id":    new_id,
-                "type":  "background",
-                "shape": new_shape,
-                "cx":    matched_ev["cx"],
-                "cy":    matched_ev["cy"],
-                "w":     matched_ev["w"],
-                "h":     matched_ev["h"],
-                "angle": matched_ev.get("angle", 0.0),
-                "scale": matched_ev.get("scale", 1.0),
-            })
+            if self.bg_candidate_shape != cand_shape:
+                # On change de candidat
+                self.bg_candidate_shape = cand_shape
+                self.bg_detect_count = 1
+                logger.debug(
+                    f"_handle_background_events (CAS 2) : nouveau candidat de remplacement "
+                    f"'{cand_shape}', reset bg_detect_count=1."
+                )
+            else:
+                # Même candidat que la frame précédente → on incrémente
+                self.bg_detect_count += 1
+                logger.debug(
+                    f"_handle_background_events (CAS 2) : remplacement candidat '{cand_shape}' "
+                    f"détecté {self.bg_detect_count} frames de suite."
+                )
 
-        # 3) Pour chaque ID supprimé (après Y frames sans detection)
-        for old_id in removed_entries:
-            if self.active_background is not None and self.active_background["id"] == old_id:
+            if self.bg_detect_count >= self.BG_FRAMES_TO_ADD:
+                # On valide le remplacement
+                old_shape = self.active_background["shape"]
+                old_id    = self.active_background["id"]
+                logger.info(
+                    f"_handle_background_events (CAS 2) : remplacement du fond "
+                    f"'{old_shape}' (id={old_id}) → nouveau '{cand_shape}'."
+                )
+                # 1) on enregistre la suppression de l’ancien
+                removed_bgs.append(old_id)
+                # 2) on reconstruit baseline_objects sans l’ancien fond
+                self._rebuild_baseline_objects()
+                # 3) on colle le nouveau fond
+                self.active_background = cand.copy()
+                self.baseline_objects = self._blit_zone_on_baseline(self.baseline_objects, cand)
+                self.skip_removal_ids.add(cand["id"])
+                # 4) on émet l’événement d’ajout du nouveau fond
+                new_bgs.append({
+                    "id":    cand["id"],
+                    "type":  "background",
+                    "shape": cand_shape,
+                    "cx":    cand["cx"],
+                    "cy":    cand["cy"],
+                    "w":     cand["w"],
+                    "h":     cand["h"],
+                    "angle": cand.get("angle", 0.0),
+                    "scale": cand.get("scale", 1.0),
+                })
+                # Reset des compteurs
+                self.bg_candidate_shape = None
+                self.bg_detect_count = 0
+                self.bg_missing_count = 0
+            return new_bgs, removed_bgs
+
+        # 2.b) il y avait un fond actif, mais plus aucun bg_events → peut-être une suppression
+        if not bg_events:
+            self.bg_missing_count += 1
+            logger.debug(
+                f"_handle_background_events (CAS 2) : plus aucun bg_events, "
+                f"missing_count pour '{self.active_background['shape']}' = {self.bg_missing_count}"
+            )
+            # On vérifie s’il a effectivement disparu
+            if self.bg_missing_count >= self.BG_FRAMES_TO_REMOVE:
+                # On considère que le fond est parti
+                old_id = self.active_background["id"]
+                logger.info(
+                    f"_handle_background_events (CAS 2) : fond '{self.active_background['shape']}' "
+                    f"(id={old_id}) supprimé après {self.bg_missing_count} frames d’absence."
+                )
                 removed_bgs.append(old_id)
                 self.active_background = None
-                # On reconstruit baseline_objects (retour à un sable pur + objets toujours actifs)
+                # On reconstruit baseline_objects sans ce fond
                 self._rebuild_baseline_objects()
+                # Reset des compteurs
+                self.bg_missing_count = 0
+                self.bg_candidate_shape = None
+                self.bg_detect_count = 0
+            return new_bgs, removed_bgs
 
+        # 2.c) cas par défaut (improbable, déjà couvert ci-dessus)
+        logger.debug("_handle_background_events : aucun changement détecté (cas par défaut).")
         return new_bgs, removed_bgs
-
 
     def _handle_object_events(
         self,
         frame: np.ndarray
     ) -> tuple[list[dict], list[str]]:
-        """
-        Detecte les objets en comparant frame vs self.baseline_objects.
-        -> depth_processor_4 pour extraire les contours d’objets
-        -> classification 3D pour nommer la forme
-        -> tracker/cluster pour ajuster l’ID stable de l’objet
+        new_objs: list[dict]     = []
+        removed_objs: list[str]  = []
 
-        Retourne (new_objs, removed_objs) pour le front :
-          - new_objs     : liste d’événements complets (avec 'id','shape','cx',…)
-          - removed_objs : liste d’IDs d’objets qui ont été supprimés
-        """
-
-        new_objs: list[dict] = []
-        removed_objs: list[str] = []
-
-        # 1) Si la baseline_objects n’est pas encore prête (ex. on attend que le fond soit confirmé), on stoppe
+        # 1) Si baseline_objects n'est pas encore prête, on sort
         if self.baseline_objects is None:
+            logger.debug("_handle_object_events : baseline_objects non initialisée, on quitte.")
             return new_objs, removed_objs
 
-        # 2) On exécute le depth_processor sur la baseline courante
+        # 2) Exécuter DepthProcessor pour détecter des contours “autres que le fond”
         try:
-            result_obj = self.depth_processor_4.process(frame, self.baseline_objects)
+            frame_smooth = cv2.medianBlur(frame, 3)
+            result_obj = self.depth_processor_4.process(frame_smooth, self.baseline_objects)
         except RuntimeError:
+            logger.debug("_handle_object_events : DepthProcessor a échoué cette frame.")
             return new_objs, removed_objs
 
         if result_obj is None:
+            logger.debug("_handle_object_events : result_obj est None, rien à faire.")
             return new_objs, removed_objs
 
-
-        # 3) On extrait les contours pour classification 3D
         cnts_obj = result_obj.contours
-        canvas = cv2.cvtColor(cv2.convertScaleAbs(self.baseline_objects.astype(np.uint8) >> 8), cv2.COLOR_GRAY2BGR)
-        for cnt in cnts_obj:
-            cv2.drawContours(canvas, [cnt], -1, (0,0,255), 2)
-        cv2.imshow("DEBUG – contours objets bruts", canvas)
-        cv2.waitKey(1)
+        logger.debug(f"_handle_object_events : {len(cnts_obj)} contours extraits du DepthMask.")
         dets_for_obj: list[tuple] = []
         for cnt in cnts_obj:
             area = float(cv2.contourArea(cnt))
             if area < self.config.small_area_threshold:
                 continue
 
-            # Maintenant classify_3d attend aussi baseline_objects en 3ᵉ argument
             shape = self.shape_classifier.classify_3d(cnt, result_obj.mapped, self.baseline_objects)
             if shape is None:
                 continue
@@ -671,45 +781,62 @@ class MainController:
             cy = float(M["m01"] / M["m00"])
             x, y, w, h = cv2.boundingRect(cnt)
             dets_for_obj.append((shape, cx, cy, area, 0.0, float(w), float(h)))
+            logger.debug(f"  → candidat objet '{shape}' à ({cx:.1f},{cy:.1f}), area={area:.1f}")
 
-        # 4) On met à jour le cluster_tracker pour obtenir des events stables
+        # 3) Mettre à jour le cluster_tracker pour avoir les IDs stables
         self.cluster_tracker.update(dets_for_obj)
         evs_obj, removed_ids_obj = self.object_detector.detect()
+        logger.debug(f"_handle_object_events : object_detector renvoie {len(evs_obj)} évènements, {len(removed_ids_obj)} suppressions potentielles")
 
-        # 5) Pour chaque objet détecté (nouveau) :
+        # 4) Parcourir les événements « arrivés »
         for ev in evs_obj:
-            if ev["type"] == "background":
-                # on ne traite pas ici les bg, c’est _handle_background_events qui s’en charge
-                continue
+            if ev["type"] == "object":
+                oid = ev["id"]
+                if oid not in self.obj_detect_counts:
+                    self.obj_detect_counts[oid]  = 1
+                    self.obj_missing_counts[oid] = 0
+                    logger.debug(f"Object candidat (nouveau) → id={oid}, shape={ev['shape']} (compteur détecté=1)")
+                else:
+                    self.obj_detect_counts[oid] += 1
+                    self.obj_missing_counts[oid] = 0
+                    logger.debug(f"Object '{ev['shape']}' (id={oid}) déjà vu, compteur détecté={self.obj_detect_counts[oid]}")
 
-            obj_id = ev["id"]    # identifiant stable du cluster
-            if obj_id not in self.active_objects:
-                # nouvel objet → on l’ajoute dans active_objects ET on colle dans baseline_objects
-                self.active_objects[obj_id] = ev.copy()
-                self.baseline_objects = self._blit_zone_on_baseline(self.baseline_objects, ev)
+                if oid not in self.active_objects and self.obj_detect_counts[oid] >= self.OBJ_FRAMES_TO_ADD:
+                    # valider l’objet, le blitter, l’envoyer au front
+                    self.active_objects[oid] = ev.copy()
+                    self.baseline_objects   = self._blit_zone_on_baseline(self.baseline_objects, ev)
+                    new_objs.append({
+                        "id":    ev["id"],
+                        "type":  "object",
+                        "shape": ev["shape"],
+                        "cx":    ev["cx"],
+                        "cy":    ev["cy"],
+                        "w":     ev["w"],
+                        "h":     ev["h"],
+                        "angle": ev.get("angle", 0.0),
+                        "scale": ev.get("scale", 1.0),
+                    })
+                    logger.info(f"_handle_object_events : objet validé → {ev['shape']} (id={oid}) ajouté à baseline_objects")
+                    # Réinitialiser
+                    self.obj_detect_counts[oid]  = 0
+                    self.obj_missing_counts[oid] = 0
 
-                new_objs.append({
-                    "id":    obj_id,
-                    "type":  "object",
-                    "shape": ev["shape"],
-                    "cx":    ev["cx"],
-                    "cy":    ev["cy"],
-                    "w":     ev["w"],
-                    "h":     ev["h"],
-                    "angle": ev.get("angle", 0.0),
-                    "scale": ev.get("scale", 1.0),
-                })
+        #  Suppressions potentielles :
+        all_ids = set(self.obj_detect_counts.keys()) | set(self.active_objects.keys())
+        for oid in all_ids:
+            if oid not in [e["id"] for e in evs_obj]:
+                self.obj_missing_counts[oid] = self.obj_missing_counts.get(oid, 0) + 1
+                logger.debug(f"_handle_object_events : objet id={oid} non détecté cette frame (missing_count={self.obj_missing_counts[oid]})")
+            else:
+                self.obj_missing_counts[oid] = 0
 
-        # 6) Pour chaque ID d’objet que le detector considère comme “supprimé”
-        for rid in removed_ids_obj:
-            if rid in self.active_objects:
-                # on retire cet objet
-                del self.active_objects[rid]
-                removed_objs.append(rid)
-
-        # 7) Si on a retiré un ou plusieurs objets, on reconstruit la baseline_objects
-        if removed_objs:
-            self._rebuild_baseline_objects()
+            if oid in self.active_objects and self.obj_missing_counts[oid] >= self.OBJ_FRAMES_TO_REMOVE:
+                logger.info(f"_handle_object_events : objet '{self.active_objects[oid]['shape']}' (id={oid}) supprimé après {self.OBJ_FRAMES_TO_REMOVE} frames manquées")
+                del self.active_objects[oid]
+                removed_objs.append(oid)
+                self._rebuild_baseline_objects()
+                del self.obj_detect_counts[oid]
+                del self.obj_missing_counts[oid]
 
         return new_objs, removed_objs
 

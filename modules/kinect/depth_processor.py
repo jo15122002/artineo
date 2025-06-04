@@ -60,7 +60,6 @@ class DepthProcessor:
         mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, self._kernel)
         
         cv2.imshow("Depth Mask", mask)
-        cv2.imshow("Mapped Depth", mapped)
         cv2.waitKey(1)
 
         # find external contours
