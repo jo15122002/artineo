@@ -28,7 +28,7 @@ class ArtineoClient:
     Client Micropython pour Artineo (module rotation).
     - Tente de se connecter en WS une première fois.
     - Si la connexion tombe, retente toutes les 5 secondes (jusqu’à réussite).
-    - Expose get_latency() (mesure ping-pong) et send_buffer() pour émettre un JSON.
+    - Expose send_buffer() pour émettre un JSON.
     """
 
     def __init__(
@@ -55,13 +55,8 @@ class ArtineoClient:
             log(f"[ArtineoClient] connect_wifi to: {self.ssid}")
             self.connect_wifi()
 
-        # Démarrage de la tâche WS en arrière-plan
-        # (on lance _ws_loop() qui tente de se reconnecter en cas de perte)
-        try:
-            asyncio.create_task(self._ws_loop())
-        except Exception as e:
-            # Sur certaines versions de MicroPython, create_task peut échouer si asyncio n'est pas encore initialisé
-            log("[ArtineoClient] Erreur démarrage tâche WS:", e)
+        # On ne démarre pas la tâche WS ici : on l'appellera explicitement
+        # depuis main.py, une fois que la boucle asyncio est lancée.
 
     def connect_wifi(self, timeout=15):
         log("[ArtineoClient] connect_wifi()")
@@ -79,9 +74,9 @@ class ArtineoClient:
     async def _ws_loop(self):
         """
         Tâche principale pour maintenir la connexion WS :
-        - essaie de se connecter ;
-        - si succès, lance le ping périodique ;
-        - si échec ou déconnexion, attend 5 s puis retente.
+        - Essaie de se connecter ;
+        - Si succès, lance le ping périodique ;
+        - Si échec ou déconnexion, attend 5 s puis retente.
         """
         backoff = 5.0
         while not self._stop_ws:
@@ -92,14 +87,12 @@ class ArtineoClient:
                 log("[ArtineoClient] WS connecté")
                 # Lance le ping périodique
                 asyncio.create_task(self._ws_heartbeat())
-                # On reste « bloqué » en réception tant que WS ouvert
+                # Reste bloqué tant que la WS est ouverte
                 while self.ws and getattr(self.ws, "open", True):
-                    # On peut simplement dormir, car la boucle WS gère ping/pong en _ws_heartbeat
                     await asyncio.sleep(1)
-                log("[ArtineoClient] WS fermé, on va retenter dans 5 s")
+                log("[ArtineoClient] WS fermé, on retente dans 5 s")
             except Exception as e:
-                log("[ArtineoClient] Erreur WS :", e)
-            # On attend un peu avant de retenter
+                log("[ArtineoClient] Exception dans _ws_loop :", e)
             await asyncio.sleep(backoff)
 
     async def _ws_heartbeat(self):
@@ -111,13 +104,13 @@ class ArtineoClient:
                 else:
                     self.ws.send("ping")
             except Exception as e:
-                log("[ArtineoClient] WS heartbeat error:", e)
+                log("[ArtineoClient] WS heartbeat error :", e)
                 break
             await asyncio.sleep(self.ws_ping_interval)
 
     async def send_buffer(self, buf):
         """
-        Envoie simplement le JSON suivant en WS :
+        Envoie le JSON suivant en WS :
           { "module": <module_id>, "action": "set", "data": buf }
         """
         if not self.ws or not getattr(self.ws, "open", False):
@@ -135,22 +128,10 @@ class ArtineoClient:
             else:
                 self.ws.send(msg)
         except Exception as e:
-            log("[ArtineoClient] send_buffer error:", e)
-
-    def get_latency(self, timeout=5.0):
-        """
-        Mesure synchrone du ping-pong WS (RTT en ms).
-        Attention : doit être appelé seulement APRÈS que le WS soit connecté
-        et que la boucle asyncio tourne. Retourne un float.
-        """
-        if not self.ws or not getattr(self.ws, "open", False):
-            raise RuntimeError("WebSocket non connecté")
-        # note : en MicroPython, pas de run_coroutine_threadsafe, on peut simplifier
-        # et juste envoyer un ping/pong de base (non précis). On renvoie 0 pour indiquer « non dispo »
-        return 0.0
+            log("[ArtineoClient] send_buffer error :", e)
 
     def stop(self):
-        """Arrête proprement la tâche WS et ferme la connexion."""
+        """Arrête la tâche WS et ferme la connexion."""
         self._stop_ws = True
         try:
             if self.ws:
