@@ -14,8 +14,16 @@ from fastapi import (
     WebSocketDisconnect
 )
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles        # ← Ajouté ici
+from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+
+# ─── Gestion du mode debug ──────────────────────────────────────────────────
+DEBUG = os.getenv("BACK_DEBUG", "false").lower() in ("1", "true", "yes")
+
+def debug_print(*args, **kwargs):
+    if DEBUG:
+        print(*args, **kwargs)
+# ─────────────────────────────────────────────────────────────────────────────
 
 app = FastAPI()
 
@@ -52,11 +60,11 @@ async def load_default_buffer():
             with open(DEFAULT_BUFFER_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
             buffer = {int(k): v for k, v in data.items()}
-            print(f"[startup] default buffer chargé pour modules: {list(buffer.keys())}")
+            debug_print(f"[startup] default buffer chargé pour modules: {list(buffer.keys())}")
         except Exception as e:
-            print(f"[startup] Erreur en chargeant {DEFAULT_BUFFER_FILE}: {e}")
+            debug_print(f"[startup] Erreur en chargeant {DEFAULT_BUFFER_FILE}: {e}")
     else:
-        print(f"[startup] Aucun default buffer ({DEFAULT_BUFFER_FILE}) trouvé, buffer vide.")
+        debug_print(f"[startup] Aucun default buffer ({DEFAULT_BUFFER_FILE}) trouvé, buffer vide.")
 
 
 @app.get("/config")
@@ -137,7 +145,7 @@ async def get_buffer(module: int = Query(..., description="ID du module")):
     if module not in buffer:
         raise HTTPException(status_code=404, detail=f"Module {module} introuvable")
     # log pour debug
-    print(f"[HTTP] GET /buffer?module={module}  → {buffer[module]!r}")
+    debug_print(f"[HTTP] GET /buffer?module={module}  → {buffer[module]!r}")
     return JSONResponse(
         content={"buffer": buffer[module]},
         media_type="application/json; charset=utf-8"
@@ -243,7 +251,7 @@ async def websocket_endpoint(ws: WebSocket):
     try:
         while True:
             raw = await ws.receive_text()
-            print(f"[WS] Message reçu brut: {raw}")
+            debug_print(f"[WS] Message reçu brut: {raw}")
 
             try:
                 msg = json.loads(raw)
@@ -258,7 +266,7 @@ async def websocket_endpoint(ws: WebSocket):
                     # Met à jour le buffer global et la queue de diffs
                     buffer[module_id] = msg["data"]
                     diff_queues[module_id].append(msg["data"])
-                    print(f"[WS] buffer[{module_id}] ← {msg['data']!r}")
+                    debug_print(f"[WS] buffer[{module_id}] ← {msg['data']!r}")
 
                     resp = {
                       "status": "ok",
@@ -278,7 +286,7 @@ async def websocket_endpoint(ws: WebSocket):
                         "module": module_id,
                         "buffer": payload
                     }
-                    print(f"[WS] get_buffer → {resp}")
+                    debug_print(f"[WS] get_buffer → {resp}")
                     await ws.send_text(json.dumps(resp, ensure_ascii=False))
                     continue
 
