@@ -11,15 +11,12 @@ REM 2. Installer les dépendances si besoin
 echo Vérification et installation des dépendances...
 call npm install
 
-REM 3. Lancer le serveur Nuxt en mode dev dans une nouvelle fenêtre
-echo Démarrage du serveur Nuxt (mode dev)...
-start "Nuxt Dev Server" cmd /k "call npm run dev"
-
-REM 4. Laisser le serveur monter un instant
-timeout /t 2 /nobreak >nul
-
-REM 5. Ouvrir le navigateur par défaut sur l'URL de développement
+REM 3. Ouvrir le navigateur par défaut sur l'URL de développement
 echo Ouverture du navigateur sur http://localhost:3000...
 start "" "http://localhost:3000"
+
+REM 4. Lancer le serveur Nuxt en mode dev dans une nouvelle fenêtre
+echo Démarrage du serveur Nuxt (mode dev)...
+call npm run dev
 
 exit /B
