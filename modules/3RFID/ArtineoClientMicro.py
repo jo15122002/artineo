@@ -1,5 +1,8 @@
 # modules/2rotation/ArtineoClientMicro.py
 
+import sys
+sys.path.insert(0, '/lib')
+
 import network
 import uasyncio as asyncio
 import ujson

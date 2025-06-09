@@ -4,12 +4,17 @@ Websockets client for micropython
 Based very heavily off
 https://github.com/aaugustin/websockets/blob/master/websockets/client.py
 """
+import sys
+sys.path.insert(0, 'lib')
 
 import logging
 import usocket as socket
 import ubinascii as binascii
 import urandom as random
-import ussl
+try:
+    import ussl
+except ImportError:
+    import ssl as ussl
 
 from .protocol import Websocket, urlparse
 

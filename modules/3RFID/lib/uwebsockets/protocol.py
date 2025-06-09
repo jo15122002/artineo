@@ -2,6 +2,9 @@
 Websockets protocol
 """
 
+import sys
+sys.path.insert(0, 'lib')
+
 import logging
 import ure as re
 import ustruct as struct
