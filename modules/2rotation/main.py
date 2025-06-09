@@ -34,7 +34,7 @@ def normalize(raw):
 
 # —————— 3) Paramètres du filtre + zone morte ——————
 ALPHA      = 0.1     # coeff passe-bas
-DEADZONE   = 0.05    # zone morte ±0.05
+DEADZONE   = 0.33    # zone morte ±0.33
 SENSITIVITY = 0.02   # incrément par itération
 
 # Valeurs filtrées initiales
