@@ -17,19 +17,13 @@ RST_PINS            = [4, 16, 25]
 LED_PINS            = [15, 18, 19]
 BUTTON_PIN          = 14
 
-# Ruban timer et barre de progression
 TIMER_LED_PIN       = 21
 TIMER_LED_COUNT     = 22
 TIMER_COLOR         = (0, 0, 255)
 TIMER_DURATION      = 60
 
-# Couleur de la barre de progression de démarrage
 PROGRESS_COLOR      = (0, 255, 0)
-
-# Intensité des LEDs
 INTENSITY           = 0.1
-
-# Pause après validation
 COOLDOWN            = 2
 
 MAX_ATTEMPTS        = 2
@@ -121,11 +115,9 @@ def setup_hardware():
         rdr.SAM_configuration()
         rdrs.append(rdr)
         led = neopixel.NeoPixel(Pin(led_pin), 1)
-        # allume LED validation dès init
         led[0] = scale_color((0,255,0))
         led.write()
         leds.append(led)
-    # bouton
     btn = Pin(BUTTON_PIN, Pin.IN, Pin.PULL_UP)
     btn.irq(handler=button_irq, trigger=Pin.IRQ_FALLING)
     log("[main] hardware initialized")
@@ -172,12 +164,9 @@ async def next_set(timeout=False):
     global current_set, attempt_count, button_pressed
     attempt_count = 0
     button_pressed = False
-    # incrément ou wrap
-    current_set += 1
-    if current_set > total_sets:
-        current_set = 1
+    current_set = current_set + 1 if current_set < total_sets else 1
     log(f"[main] next_set → {current_set} (by {'timeout' if timeout else 'manual'})")
-    await _client.set_buffer({
+    await _client.send_buffer({
         "uid1": None, "uid2": None, "uid3": None,
         "current_set": current_set,
         "button_pressed": False
@@ -190,10 +179,10 @@ async def async_main():
     log("[main] async_main start")
     setup_hardware()
 
-    # startup animation example
+    # startup animation
     setProgressBar(25)
 
-    # websocket
+    # —————— WebSocket Artineo ——————
     _client = ArtineoClient(
         module_id=3,
         host="artineo.local",
@@ -201,7 +190,10 @@ async def async_main():
         ssid="Bob_bricolo",
         password="bobbricolo"
     )
-    await _client.connect_ws()
+    # on lance les boucles WS en tâche de fond
+    await asyncio.sleep(0)
+    asyncio.create_task(_client._ws_loop())
+    asyncio.create_task(_client._ws_receiver())
     setProgressBar(50)
 
     # fetch config
@@ -211,7 +203,7 @@ async def async_main():
     setProgressBar(75)
 
     # initial buffer
-    await _client.set_buffer({
+    await _client.send_buffer({
         "uid1": None, "uid2": None, "uid3": None,
         "current_set": current_set,
         "button_pressed": False
@@ -229,7 +221,7 @@ async def async_main():
         u3 = await read_uid(rdrs[2])
         log(f"[main] UIDs: {u1}, {u2}, {u3}")
 
-        await _client.set_buffer({
+        await _client.send_buffer({
             "uid1": u1, "uid2": u2, "uid3": u3,
             "current_set": current_set,
             "button_pressed": button_pressed
@@ -237,7 +229,6 @@ async def async_main():
 
         if button_pressed:
             button_pressed = False
-            start = ticks_ms()
             correct = check_answers([u1, u2, u3])
             attempt_count += 1
             if correct or attempt_count >= MAX_ATTEMPTS:

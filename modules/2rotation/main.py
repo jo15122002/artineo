@@ -34,7 +34,7 @@ def normalize(raw):
 
 # —————— 3) Paramètres du filtre + zone morte ——————
 ALPHA      = 0.1     # coeff passe-bas
-DEADZONE   = 0.05    # zone morte ±0.05
+DEADZONE   = 0.33    # zone morte ±0.33
 SENSITIVITY = 0.02   # incrément par itération
 
 # Valeurs filtrées initiales
@@ -63,6 +63,8 @@ async def async_main():
     print("Démarrage module KY-023 → Artineo rotation…")
 
     # a) Connexion Wi-Fi
+    # (tu peux laisser cette partie ou bien laisser ArtineoClient s’en charger,
+    #  peu importe)
     sta = network.WLAN(network.STA_IF)
     sta.active(True)
     if not sta.isconnected():
@@ -74,16 +76,17 @@ async def async_main():
         raise OSError("Impossible de se connecter au Wi-Fi")
     print("[WiFi] Connecté :", sta.ifconfig())
 
-    # b) Initialisation du client Artineo et démarrage WS
+    # b) Client Artineo
     client = ArtineoClient(
         module_id=MODULE_ID,
         host=HOST,
         port=PORT,
         ssid=SSID,
-        password=PASSWORD
+        password=PASSWORD,
     )
-    # On lance la tâche WebSocket dès que la boucle tourne
+    # on insère un petit yield pour garantir qu’on est bien dans la boucle asyncio
     await asyncio.sleep(0)
+    # on crée la tâche WS
     asyncio.create_task(client._ws_loop())
     print("[Artineo] Tâche WS démarrée")
 
