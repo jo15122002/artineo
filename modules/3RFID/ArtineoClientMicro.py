@@ -7,6 +7,7 @@ import network
 import uasyncio as asyncio
 import ujson
 from utime import sleep, ticks_diff, ticks_ms
+import urequests
 
 # on importe les constantes de protocole
 from uwebsockets.protocol import OP_PING, OP_PONG
@@ -40,6 +41,7 @@ class ArtineoClient:
     ):
         log("[ArtineoClient] __init__")
         self.module_id        = module_id
+        self.base_url         = f"http://{host}:{port}"
         self.ws_url           = f"ws://{host}:{port}/ws"
         self.ssid             = ssid
         self.password         = password
@@ -136,6 +138,23 @@ class ArtineoClient:
             self.ws.send(msg)
         except Exception as e:
             log("[ArtineoClient] send_buffer error :", e)
+
+    async def fetch_config(self):
+        """
+        Récupère la configuration du module depuis le serveur HTTP.
+        Doit renvoyer un dict équivalent à { "answers": […] , … }.
+        """
+        url = f"{self.base_url}/config/{self.module_id}"
+        log(f"[ArtineoClient] fetch_config GET {url}")
+        try:
+            resp = urequests.get(url)
+            data = resp.json()
+            resp.close()
+            log(f"[ArtineoClient] config reçue:", data)
+            return data
+        except Exception as e:
+            log("[ArtineoClient] Erreur fetch_config :", e)
+            raise
 
     def stop(self):
         """Arrête la tâche WS et ferme la connexion."""
