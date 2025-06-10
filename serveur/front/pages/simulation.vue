@@ -273,7 +273,7 @@ onMounted(async () => {
       () => streaming[id],
       enabled => {
         if (enabled) {
-          intervals[id] = window.setInterval(() => sendById(id), 50)
+          intervals[id] = window.setInterval(() => sendById(id), 100)
         } else {
           if (intervals[id] !== null) {
             clearInterval(intervals[id]!)
