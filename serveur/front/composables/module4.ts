@@ -219,6 +219,109 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
     ctx.fillRect(0, 0, canvas.width, canvas.height)
   }
 
+
+    // ─────────────── 9️⃣ fonction d’ajout d’image ───────────────
+  /**
+   * Ajoute sur le canvas, à la position (cx, cy), l’image `shape`.
+   * @param shape  Nom de l’image (clé dans objectImages)
+   * @param cx     Abscisse en coordonnées art (non-scalées)
+   * @param cy     Ordonnée en coordonnées art (non-scalées)
+   * @param w      Largeur en coordonnées art (optionnel, défaut = largeur naturelle/scale)
+   * @param h      Hauteur en coordonnées art (optionnel, défaut = hauteur naturelle/scale)
+   * @param angle  Rotation en radians (optionnel)
+   * @param scale  Facteur de mise à l’échelle interne (optionnel)
+   */
+  function addImage(
+    shape: string,
+    cx: number,
+    cy: number,
+    w?: number,
+    h?: number,
+    angle = 0,
+    scale = 1
+  ) {
+    const img = objectImages[shape];
+    // dimensions par défaut en « unités art »
+    const defaultW = img ? img.naturalWidth / (scale * 3) : 50;
+    const defaultH = img ? img.naturalHeight / (scale * 3) : 50;
+
+    const newObj: ArtObject = {
+      id: crypto.randomUUID(),  // ou Date.now() + Math.random()
+      shape,
+      cx,
+      cy,
+      w: w ?? defaultW,
+      h: h ?? defaultH,
+      angle,
+      scale
+    };
+
+    if (shape.startsWith('landscape_')) {
+      // si c'est un background, on le remplace
+      const existingIndex = backgrounds.value.findIndex(b => b.shape === shape);
+      if (existingIndex !== -1) {
+        backgrounds.value[existingIndex] = newObj;
+      } else {
+        backgrounds.value.push(newObj);
+      }
+    }
+    else {
+      objects.value.push(newObj);
+    }
+
+    // on redessine immédiatement
+    // on passe un buffer vide pour ne rien supprimer…
+    drawBuffer({});
+  }
+
+  const keyBindings: Record<string, 
+    { shape: string | undefined; 
+      cx: number | undefined; 
+      cy: number | undefined, 
+      w: number | undefined, 
+      h: number | undefined, 
+      button: number  | undefined }
+    > = {
+    a: {
+      shape: 'landscape_fields', cx: 50, cy: 80,
+      w: undefined,
+      h: undefined,
+      button: undefined
+    },
+    p: {
+      shape: 'landscape_sea', cx: 200, cy: 150,
+      w: undefined,
+      h: undefined,
+      button: undefined
+    },
+    o: {
+      shape: 'medium_lighthouse', cx: 250, cy: 60, w: 90, h: 100,
+      button: undefined
+    },
+    z: {
+      shape: 'medium_mill', cx: 150, cy: 67, w: 90, h: 90,
+      button: undefined
+    },
+    i: {
+      shape: 'small_boat', cx: 60, cy: 100, w: 80, h: 60,
+      button: undefined
+    },
+    1: { shape: undefined, cx: undefined, cy: undefined, w: undefined, h: undefined, button: 1 },
+    2: { shape: undefined, cx: undefined, cy: undefined, w: undefined, h: undefined, button: 2 }
+  };
+
+  function onKeydown(ev: KeyboardEvent) {
+    const binding = keyBindings[ev.key];
+    if (binding.shape) {
+      ev.preventDefault();
+      addImage(binding.shape, binding.cx!, binding.cy!, binding.w, binding.h);
+    } else if (binding.button) {
+      ev.preventDefault();
+      currentButton = binding.button;
+      drawBuffer({ button: currentButton });  // redessine avec la nouvelle couleur
+    }
+  }
+
   // 8️⃣ WebSocket + HTTP fallback polling
   let pollingIntervalKinect: ReturnType<typeof setInterval> | null = null
   let pollingIntervalButton: ReturnType<typeof setInterval> | null = null
@@ -266,6 +369,8 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
           .catch(() => {})
       }, 100)
     }
+
+    window.addEventListener('keydown', onKeydown);
   })
 
   onBeforeUnmount(() => {
@@ -282,6 +387,8 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
 
     artClientButton.close()
     isButtonSubscribed = false
+
+    window.removeEventListener('keydown', onKeydown);
   })
 
   return { strokes, objects, backgrounds }
