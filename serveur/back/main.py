@@ -14,8 +14,16 @@ from fastapi import (
     WebSocketDisconnect
 )
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles        # ← Ajouté ici
+from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+
+# ─── Gestion du mode debug ──────────────────────────────────────────────────
+DEBUG = os.getenv("BACK_DEBUG", "false").lower() in ("1", "true", "yes")
+
+def debug_print(*args, **kwargs):
+    if DEBUG:
+        print(*args, **kwargs)
+# ─────────────────────────────────────────────────────────────────────────────
 
 app = FastAPI()
 
@@ -52,11 +60,11 @@ async def load_default_buffer():
             with open(DEFAULT_BUFFER_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
             buffer = {int(k): v for k, v in data.items()}
-            print(f"[startup] default buffer chargé pour modules: {list(buffer.keys())}")
+            debug_print(f"[startup] default buffer chargé pour modules: {list(buffer.keys())}")
         except Exception as e:
-            print(f"[startup] Erreur en chargeant {DEFAULT_BUFFER_FILE}: {e}")
+            debug_print(f"[startup] Erreur en chargeant {DEFAULT_BUFFER_FILE}: {e}")
     else:
-        print(f"[startup] Aucun default buffer ({DEFAULT_BUFFER_FILE}) trouvé, buffer vide.")
+        debug_print(f"[startup] Aucun default buffer ({DEFAULT_BUFFER_FILE}) trouvé, buffer vide.")
 
 
 @app.get("/config")
@@ -137,7 +145,7 @@ async def get_buffer(module: int = Query(..., description="ID du module")):
     if module not in buffer:
         raise HTTPException(status_code=404, detail=f"Module {module} introuvable")
     # log pour debug
-    print(f"[HTTP] GET /buffer?module={module}  → {buffer[module]!r}")
+    debug_print(f"[HTTP] GET /buffer?module={module}  → {buffer[module]!r}")
     return JSONResponse(
         content={"buffer": buffer[module]},
         media_type="application/json; charset=utf-8"
@@ -163,6 +171,39 @@ async def get_asset(
 
     media_type, _ = mimetypes.guess_type(full_path)
     return FileResponse(full_path, media_type=media_type)
+
+MEDIA_EXTENSIONS = ('.mp3', '.wav', '.ogg', '.mp4', '.webm', '.mov')
+
+@app.get("/media")
+async def get_media(module: int = Query(..., description="ID du module")):
+    """
+    Retourne la liste des médias (audio / vidéo) disponibles pour un module donné.
+    On suppose que les fichiers sont dans assets/module{module}/
+    """
+    base_dir = os.path.join("assets", f"module{module}")
+    if not os.path.isdir(base_dir):
+        # si le dossier assets/module{module} n’existe pas, levons un 404
+        raise HTTPException(status_code=404, detail=f"Dossier assets/module{module} introuvable")
+    
+    medias = []
+    for filename in os.listdir(base_dir):
+        # Ne lister que les fichiers audio ou vidéo (extensions courantes)
+        if filename.lower().endswith((".mp3", ".wav", ".ogg", ".mp4", ".webm", ".m4a")):
+            # Déduit le mime-type du fichier (audio/mpeg, video/mp4, etc.)
+            mime_type, _ = mimetypes.guess_type(filename)
+            if not mime_type:
+                # Si on n’arrive pas à deviner, passer au suivant
+                continue
+
+            medias.append({
+                "title": filename,
+                "type": mime_type,
+                # L’URL qu’on renverra sera récupérable via l’endpoint statique `/assets/…`
+                # C’est-à-dire : /assets/module{module}/{filename}
+                "url": f"/assets/module{module}/{filename}"
+            })
+
+    return JSONResponse(content={"medias": medias})
 
 
 # --------------------------------------------------
@@ -210,7 +251,7 @@ async def websocket_endpoint(ws: WebSocket):
     try:
         while True:
             raw = await ws.receive_text()
-            print(f"[WS] Message reçu brut: {raw}")
+            debug_print(f"[WS] Message reçu brut: {raw}")
 
             try:
                 msg = json.loads(raw)
@@ -225,7 +266,7 @@ async def websocket_endpoint(ws: WebSocket):
                     # Met à jour le buffer global et la queue de diffs
                     buffer[module_id] = msg["data"]
                     diff_queues[module_id].append(msg["data"])
-                    print(f"[WS] buffer[{module_id}] ← {msg['data']!r}")
+                    debug_print(f"[WS] buffer[{module_id}] ← {msg['data']!r}")
 
                     resp = {
                       "status": "ok",
@@ -245,7 +286,7 @@ async def websocket_endpoint(ws: WebSocket):
                         "module": module_id,
                         "buffer": payload
                     }
-                    print(f"[WS] get_buffer → {resp}")
+                    debug_print(f"[WS] get_buffer → {resp}")
                     await ws.send_text(json.dumps(resp, ensure_ascii=False))
                     continue
 

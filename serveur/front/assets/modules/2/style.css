@@ -1,0 +1,15 @@
+/* assets/modules/2/style.css */
+.module2-container {
+  width: 100vw;
+  height: 100vh;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+/* s’assurer que le canvas prend bien tout l’espace : */
+canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}

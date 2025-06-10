@@ -1,19 +1,29 @@
-# artineo_client_micropy.py
-import random
+# modules/2rotation/ArtineoClientMicro.py
+
+import sys
+sys.path.insert(0, '/lib')
 
 import network
 import uasyncio as asyncio
-import ujson as json
-import urequests as requests
+import ujson
 from utime import sleep, ticks_diff, ticks_ms
+import urequests
 
-# essaie uwebsockets, sinon fallback synchrone
+# on importe les constantes de protocole
+from uwebsockets.protocol import OP_PING, OP_PONG
+
+# Essaie notre client uwebsockets
 try:
     import uwebsockets.client as ws_client
-    ASYNC_WS = True
+    print("[ArtineoClient] Using uwebsockets.client for WebSocket")
 except ImportError:
-    import websocket_client as ws_client
-    ASYNC_WS = False
+    import websocket_client as ws_client  # fallback
+    print("[ArtineoClient] Using websocket_client fallback")
+
+DEBUG_LOGS = False
+def log(*args, **kwargs):
+    if DEBUG_LOGS:
+        print(*args, **kwargs)
 
 class ArtineoAction:
     SET = "set"
@@ -22,188 +32,135 @@ class ArtineoAction:
 class ArtineoClient:
     def __init__(
         self,
-        module_id=None,
+        module_id,
         host="artineo.local",
         port=8000,
         ssid=None,
         password=None,
-        http_retries=3,
-        http_backoff=0.5,
-        ws_retries=5,
-        ws_backoff=1.0,
         ws_ping_interval=20.0,
     ):
-        self.module_id      = module_id
-        self.host           = host
-        self.port           = port
-        self.base_url       = f"http://{host}:{port}"
-        self.ws_url         = f"ws://{host}:{port}/ws"
-        self.ssid           = ssid
-        self.password       = password
-        self.http_retries   = http_retries
-        self.http_backoff   = http_backoff
-        self.ws_retries     = ws_retries
-        self.ws_backoff     = ws_backoff
+        log("[ArtineoClient] __init__")
+        self.module_id        = module_id
+        self.base_url         = f"http://{host}:{port}"
+        self.ws_url           = f"ws://{host}:{port}/ws"
+        self.ssid             = ssid
+        self.password         = password
         self.ws_ping_interval = ws_ping_interval
 
-        self._handler  = None
-        self._stop     = False
-        self._send_q   = asyncio.Queue()
-        self.ws        = None
+        self.ws = None
+        self._stop_ws = False
 
-        if ssid and password:
-            self.connect_wifi(ssid, password)
+        if self.ssid and self.password:
+            self.connect_wifi()
 
-    def connect_wifi(self, ssid, password, timeout=15):
+    def connect_wifi(self, timeout=15):
+        log("[ArtineoClient] connect_wifi()")
         sta = network.WLAN(network.STA_IF)
         sta.active(True)
         if not sta.isconnected():
-            sta.connect(ssid, password)
+            sta.connect(self.ssid, self.password)
             start = ticks_ms()
-            while (
-                not sta.isconnected()
-                and ticks_diff(ticks_ms(), start) < timeout * 1000
-            ):
+            while not sta.isconnected() and ticks_diff(ticks_ms(), start) < timeout * 1000:
                 sleep(0.5)
         if not sta.isconnected():
             raise OSError("Impossible de se connecter au Wi-Fi")
-        print("Wi-Fi OK:", sta.ifconfig())
+        log("[ArtineoClient] Wi-Fi OK:", sta.ifconfig())
 
-    async def _http_request(self, method, path, json_payload=None):
-        url = f"{self.base_url}{path}"
-        if self.module_id:
-            sep = "&" if "?" in url else "?"
-            url += f"{sep}module={self.module_id}"
-        last_exc = None
-        delay = self.http_backoff
-        for attempt in range(1, self.http_retries + 1):
+    async def _ws_loop(self):
+        backoff = 5.0
+        while not self._stop_ws:
             try:
-                if method == "GET":
-                    resp = requests.get(url)
-                else:
-                    resp = requests.post(url, json=json_payload)
-                return resp.json()
+                log("[ArtineoClient] Tentative WS →", self.ws_url)
+                # uwebsockets.client.connect n'est pas un coroutine
+                self.ws = ws_client.connect(self.ws_url)
+                log("[ArtineoClient] WS connecté")
+
+                # lance heartbeat et réception
+                asyncio.create_task(self._ws_heartbeat())
+                asyncio.create_task(self._ws_receiver())
+
+                # on reste bloqué tant que c'est ouvert
+                while self.ws.open:
+                    await asyncio.sleep(1)
+
+                log("[ArtineoClient] WS fermée, on retente dans 5 s")
             except Exception as e:
-                last_exc = e
-                if attempt < self.http_retries:
-                    await asyncio.sleep(delay)
-                    delay *= 2
-                else:
-                    raise RuntimeError(
-                        f"HTTP {method} {url} échoué après {attempt} tentatives"
-                    ) from last_exc
-
-    async def fetch_config(self):
-        data = await self._http_request("GET", "/config")
-        return data.get("config") or data.get("configurations")
-
-    async def set_config(self, new_config):
-        return await self._http_request("POST", "/config", json_payload=new_config)
-
-    async def _ws_handler(self):
-        attempt = 0
-        backoff = self.ws_backoff
-        while not self._stop:
-            try:
-                conn = ws_client.connect(self.ws_url)
-                self.ws = await conn if ASYNC_WS else conn
-                # on a réussi à se connecter
-                attempt = 0
-                backoff = self.ws_backoff
-
-                sender = asyncio.create_task(self._ws_sender())
-                pinger = asyncio.create_task(self._ws_heartbeat())
-
-                async for raw in self.ws:
-                    if raw == "ping":
-                        if ASYNC_WS:
-                            await self.ws.send("pong")
-                        else:
-                            self.ws.send("pong")
-                        continue
-                    try:
-                        msg = json.loads(raw)
-                    except:
-                        msg = raw
-                    if self._handler:
-                        self._handler(msg)
-
-                sender.cancel()
-                pinger.cancel()
-
-            except Exception as e:
-                print(f"[ArtineoClient] WS erreur: {e}")
-                attempt += 1
-                if attempt > self.ws_retries:
-                    print("[ArtineoClient] Abandon WS")
-                    break
-                await asyncio.sleep(backoff)
-                backoff *= 2
-
-        print("[ArtineoClient] WS stopped")
-
-    async def _ws_sender(self):
-        while not self._stop:
-            payload = await self._send_q.get()
-            try:
-                if ASYNC_WS:
-                    await self.ws.send(payload)
-                else:
-                    self.ws.send(payload)
-            except Exception:
-                # remettre en queue pour réessayer plus tard
-                await self._send_q.put(payload)
-                raise
+                log("[ArtineoClient] Exception dans _ws_loop :", e)
+            await asyncio.sleep(backoff)
 
     async def _ws_heartbeat(self):
-        while not self._stop:
+        """Envoie périodiquement un frame PING pour tenir la connexion."""
+        while self.ws and getattr(self.ws, "open", False):
             try:
-                if ASYNC_WS:
-                    await self.ws.ping()
-                else:
-                    # certains clients sync ne supportent pas ping(), on envoie juste un "ping"
-                    self.ws.send("ping")
-            except Exception:
-                raise
+                # write_frame(OP_PING) envoie un vrai ping
+                self.ws.write_frame(OP_PING)
+                log("[ArtineoClient] Heartbeat → PING")
+            except Exception as e:
+                log("[ArtineoClient] WS heartbeat error :", e)
+                break
             await asyncio.sleep(self.ws_ping_interval)
 
-    def on_message(self, handler):
+    async def _ws_receiver(self):
         """
-        handler(msg) => appelé à chaque message reçu (dict ou raw)
+        Tâche non-bloquante pour lire les frames WS sans bloquer uasyncio.
         """
-        self._handler = handler
+        while self.ws and getattr(self.ws, "open", False):
+            try:
+                # passe en mode timeout court pour ne pas bloquer indéfiniment
+                self.ws.settimeout(0.01)            
+                msg = self.ws.recv()             
+                if msg:
+                    log("[ArtineoClient] reçu :", msg)
+            except OSError:
+                # pas de frame dispo → on rend la main
+                pass
+            except Exception as e:
+                log("[ArtineoClient] _ws_receiver error :", e)
+                break
+            # on laisse tourner les autres tâches
+            await asyncio.sleep_ms(50)
 
-    async def send_ws(self, action, data):
-        """
-        Envoie un message JSON via WebSocket (même si hors-ligne, on le queue).
-        """
-        msg = {"module": self.module_id, "action": action, "data": data}
-        payload = json.dumps(msg)
-        await self._send_q.put(payload)
 
-    async def get_buffer(self):
-        return await self.send_ws("get", None)
+    async def send_buffer(self, buf):
+        """
+        Envoie un JSON { module, action:set, data } si la WS est ouverte.
+        """
+        if not self.ws or not getattr(self.ws, "open", False):
+            log("[ArtineoClient] send_buffer : WS non connecté, skip.")
+            return
+        msg = ujson.dumps({
+            "module": self.module_id,
+            "action": ArtineoAction.SET,
+            "data": buf
+        })
+        log("[ArtineoClient] send :", msg)
+        try:
+            self.ws.send(msg)
+        except Exception as e:
+            log("[ArtineoClient] send_buffer error :", e)
 
-    async def set_buffer(self, buf):
-        return await self.send_ws("set", buf)
+    async def fetch_config(self):
+        """
+        Récupère la configuration du module depuis le serveur HTTP.
+        Doit renvoyer un dict équivalent à { "answers": […] , … }.
+        """
+        url = f"{self.base_url}/config/{self.module_id}"
+        log(f"[ArtineoClient] fetch_config GET {url}")
+        try:
+            resp = urequests.get(url)
+            data = resp.json()
+            resp.close()
+            log(f"[ArtineoClient] config reçue:", data)
+            return data
+        except Exception as e:
+            log("[ArtineoClient] Erreur fetch_config :", e)
+            raise
 
-    def start(self):
-        """
-        Lancer la supervision WS en tâche de fond.
-        Appeler ensuite asyncio.run_forever() ou similar.
-        """
-        self._stop = False
-        asyncio.create_task(self._ws_handler())
-
-    async def stop(self):
-        """
-        Arrêter proprement la connexion WS.
-        """
-        self._stop = True
-        if self.ws:
-            if ASYNC_WS:
-                await self.ws.close()
-            else:
+    def stop(self):
+        """Arrête la tâche WS et ferme la connexion."""
+        self._stop_ws = True
+        try:
+            if self.ws:
                 self.ws.close()
-        # laisser le temps aux coroutines de se terminer
-        await asyncio.sleep(0)
+        except:
+            pass

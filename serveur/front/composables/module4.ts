@@ -1,6 +1,6 @@
-// front/composables/module4.ts
+// File: serveur/front/composables/module4.ts
 import type { Ref } from 'vue'
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useArtineo } from './useArtineo'
 
 export interface Stroke {
@@ -115,10 +115,8 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
   function drawObject(ctx: CanvasRenderingContext2D, o: ArtObject) {
     const img = objectImages[o.shape]
     if (img && img.complete) {
-      const w = o.w * scale
-      const h = o.h * scale
-      const x = o.cx * scale - w / 2
-      const y = o.cy * scale - h / 2
+      const w = o.w * scale, h = o.h * scale
+      const x = o.cx * scale - w / 2, y = o.cy * scale - h / 2
       ctx.drawImage(img, x, y, w, h)
     } else {
       // fallback: small dot
@@ -192,7 +190,11 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
 
     // 7.5) objects
     if (buf.newObjects) {
-      objects.value.push(...buf.newObjects)
+      buf.newObjects.forEach(o => {
+        if (!objects.value.find(prev => prev.id === o.id)) {
+          objects.value.push(o)
+        }
+      })
     }
     if (buf.removeObjects) {
       objects.value = objects.value.filter(o => !buf.removeObjects!.includes(o.id))
@@ -222,56 +224,68 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
   }
 
   // 8️⃣ WebSocket + HTTP fallback polling
-  let intervalId: number | null = null
+  let pollingIntervalKinect: ReturnType<typeof setInterval> | null = null
+  let pollingIntervalButton: ReturnType<typeof setInterval> | null = null
+  let isKinectSubscribed = false
+  let isButtonSubscribed = false
 
   onMounted(async () => {
+    console.log('Module 4: Kinect + Button')
     // subscribe to Kinect updates
-    artClientKinect.onMessage(msg => {
-      if (msg.action === 'get_buffer' && msg.buffer) {
-        drawBuffer(msg.buffer)
-      }
-    })
-    // subscribe to button updates
-    artClientButton.onMessage(msg => {
-      if (msg.action === 'get_buffer' && msg.buffer) {
-        drawBuffer(msg.buffer)
-      }
-    })
+    if (!isKinectSubscribed) {
+      isKinectSubscribed = true
+      artClientKinect.onMessage(msg => {
+        if (msg.action === 'get_buffer' && msg.buffer) {
+          drawBuffer(msg.buffer)
+        }
+      })
 
-    // initial fetch both
-    await Promise.all([
       artClientKinect.getBuffer()
         .then(buf => drawBuffer(buf))
-        .catch(e => console.error('[Artineo][Kinect] init error', e)),
+        .catch(e => console.error('[Artineo][Kinect] init error', e))
+
+      pollingIntervalKinect = setInterval(() => {
+        artClientKinect.getBuffer()
+          .then(buf => drawBuffer(buf))
+          .catch(() => {})
+      }, 100)
+    }
+
+    // subscribe to Button updates
+    if (!isButtonSubscribed) {
+      isButtonSubscribed = true
+      artClientButton.onMessage(msg => {
+        if (msg.action === 'get_buffer' && msg.buffer) {
+          drawBuffer(msg.buffer)
+        }
+      })
+
       artClientButton.getBuffer()
         .then(buf => drawBuffer(buf))
         .catch(e => console.error('[Artineo][Button] init error', e))
-    ])
 
-    // polling fallback
-    intervalId = window.setInterval(async () => {
-      try {
-        const bufK = await artClientKinect.getBuffer()
-        drawBuffer(bufK)
-      } catch (e) {
-        console.error('[Artineo][Kinect] poll error', e)
-      }
-      try {
-        const bufB = await artClientButton.getBuffer()
-        drawBuffer(bufB)
-      } catch (e) {
-        console.error('[Artineo][Button] poll error', e)
-      }
-    }, 100)
+      pollingIntervalButton = setInterval(() => {
+        artClientButton.getBuffer()
+          .then(buf => drawBuffer(buf))
+          .catch(() => {})
+      }, 100)
+    }
   })
 
   onBeforeUnmount(() => {
-    if (intervalId !== null) {
-      clearInterval(intervalId)
-      intervalId = null
+    if (pollingIntervalKinect) {
+      clearInterval(pollingIntervalKinect)
+      pollingIntervalKinect = null
+    }
+    if (pollingIntervalButton) {
+      clearInterval(pollingIntervalButton)
+      pollingIntervalButton = null
     }
     artClientKinect.close()
+    isKinectSubscribed = false
+
     artClientButton.close()
+    isButtonSubscribed = false
   })
 
   return { strokes, objects, backgrounds }

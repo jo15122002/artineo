@@ -86,7 +86,7 @@ export DISPLAY=:0
 xset s off
 xset -dpms
 xset s noblank
-/usr/bin/chromium-browser --noerrdialogs --disable-infobars --kiosk http://artineo.local:3000/modules/module1
+/usr/bin/chromium-browser --noerrdialogs --disable-infobars --kiosk http://artineo.local:3000/modules/module1 --autoplay-policy=no-user-gesture-required
 echo "Chromium terminé (\$?) à \$(date)"
 EOF
 chown "${OWNER}:${OWNER}" "$WRAPPER_SCRIPT"
