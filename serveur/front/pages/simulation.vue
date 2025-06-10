@@ -88,10 +88,21 @@
         </label>
       </div>
 
-      <!-- MODULE 4 -->
+      <!-- MODULE 4 : Sandbox avec palette d'objets -->
       <div v-else class="controls module4-controls">
-        <label>Payload JSON :</label>
-        <textarea v-model="payloads[mod]" rows="4" placeholder='{"foo":"bar"}'></textarea>
+        <div class="module4-container">
+          <div class="sandbox" @click="onSandboxClick">
+            <img v-for="(obj, i) in placedObjects" :key="i" :src="obj.src" class="placed-object"
+              :style="{ left: obj.x + 'px', top: obj.y + 'px' }" />
+          </div>
+          <div class="object-palette">
+            <button v-for="obj in objects" :key="obj.src" @click="selectObject(obj)"
+              :class="{ selected: selectedObject === obj.src }">
+              <img :src="obj.src" alt="" class="object-icon" />
+              {{ obj.name }}
+            </button>
+          </div>
+        </div>
       </div>
 
       <!-- Toggle Envoi continu -->
@@ -103,8 +114,13 @@
 
       <!-- Boutons d'action -->
       <div class="button-row">
-        <button
-          @click="mod === 1 ? sendModule1() : mod === 2 ? sendModule2() : mod === 3 ? sendModule3() : sendBuffer(mod)">
+        <button @click="mod === 1
+          ? sendModule1()
+          : mod === 2
+            ? sendModule2()
+            : mod === 3
+              ? sendModule3()
+              : sendModule4()">
           Envoyer buffer
         </button>
         <button @click="retrieveBuffer(mod)">
@@ -122,7 +138,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted, reactive, watch } from 'vue'
+import { onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useArtineo } from '~/composables/useArtineo'
 
 const moduleIds = [1, 2, 3, 4]
@@ -130,7 +146,7 @@ const clients = reactive<Record<number, ReturnType<typeof useArtineo>>>({})
 const payloads = reactive<Record<number, string>>({ 2: '{}', 4: '{}' })
 const buffers = reactive<Record<number, string>>({ 2: '{}', 4: '{}' })
 
-// MODULE 1 fields (ajout de isDragging)
+// MODULE 1 fields
 const module1Fields = reactive({
   x: 0,
   y: 0,
@@ -168,7 +184,29 @@ const module3Config = reactive<{
   assignments: { lieux: {}, couleurs: {}, emotions: {} }
 })
 
-// Toggle & timers
+// MODULE 4 – import des PNG SSR-compatible
+const objectModules = import.meta.glob<string>(
+  '~/assets/modules/4/images/objects/*.png',
+  { eager: true, as: 'url' }
+)
+const objects = Object.entries(objectModules).map(([path, url]) => ({
+  name: path.split('/').pop()!.replace('.png', ''),
+  src: url as string
+}))
+const selectedObject = ref<string | null>(null)
+const placedObjects = reactive<{ src: string; x: number; y: number }[]>([])
+function selectObject(obj: { name: string; src: string }) {
+  selectedObject.value = obj.src
+}
+function onSandboxClick(evt: MouseEvent) {
+  if (!selectedObject.value) return
+  const rect = (evt.currentTarget as HTMLElement).getBoundingClientRect()
+  const x = Math.round(evt.clientX - rect.left)
+  const y = Math.round(evt.clientY - rect.top)
+  placedObjects.push({ src: selectedObject.value, x, y })
+}
+
+// Streaming toggles & timers
 const streaming = reactive<Record<number, boolean>>({
   1: false,
   2: false,
@@ -187,25 +225,108 @@ function sendById(id: number) {
   if (id === 1) return sendModule1()
   if (id === 2) return sendModule2()
   if (id === 3) return sendModule3()
-  return sendBuffer(id)
+  if (id === 4) return sendModule4()
 }
 
-// Fonctions pour la zone IR (module 1)
+// MODULE 4 : envoyez les objets placés structurés pour use4kinect
+function sendModule4() {
+  const scale = 3; // même coefficient que pour le rendu canvas
+  const newObjects = placedObjects.map((o, i) => {
+    const shape = o.src.split('/').pop()!.replace(/\.png$/, '');
+    return {
+      id: `${shape}-${i}-${Date.now()}`,
+      type: 'object',
+      shape,
+      cx: o.x / scale,
+      cy: o.y / scale,
+      w: 50 / scale,
+      h: 50 / scale,
+      angle: 0.0,
+      scale: 1.0
+    };
+  });
+
+  const payload = {
+    module: 4,
+    action: 'set',
+    data: {
+      newStrokes: [],
+      removeStrokes: [],
+      newObjects,
+      removeObjects: [],
+      newBackgrounds: [],
+      removeBackgrounds: []
+    }
+  };
+
+  // Envoi via Artineo
+  clients[4].setBuffer(payload)
+    .then(() => {
+      console.log('Module 4 buffer envoyé avec succès', payload);
+    })
+    .catch(err => {
+      console.error('Erreur lors de l’envoi du buffer pour le module 4 :', err);
+    });
+}
+
+// Fonctions Modules 1 à 3
+function sendModule1() {
+  clients[1].setBuffer({
+    x: module1Fields.x,
+    y: module1Fields.y,
+    diameter: module1Fields.diameter
+  })
+}
+
+function sendModule2() {
+  clients[2].setBuffer({
+    rotX: module2Fields.rotX,
+    rotY: module2Fields.rotY,
+    rotZ: module2Fields.rotZ
+  })
+}
+
+function sendModule3() {
+  clients[3].setBuffer({
+    uid1: module3Fields.uid1,
+    uid2: module3Fields.uid2,
+    uid3: module3Fields.uid3,
+    current_set: module3Fields.current_set,
+    button_pressed: module3Fields.button_pressed
+  })
+}
+
+// Fallback JSON send (non utilisé pour mod 4)
+function sendBuffer(mod: number) {
+  try {
+    const raw = payloads[mod].trim()
+    const data = raw ? JSON.parse(raw) : {}
+    clients[mod].setBuffer(data)
+  } catch (err) {
+    alert(`JSON invalide : ${err}`)
+  }
+}
+
+async function retrieveBuffer(mod: number) {
+  try {
+    const buf = await clients[mod].getBuffer()
+    buffers[mod] = JSON.stringify(buf, null, 2)
+  } catch (err) {
+    buffers[mod] = `Erreur : ${err}`
+  }
+}
+
+// Gestion zone IR (module 1)
 function onIrAreaMouseDown(evt: MouseEvent) {
   module1Fields.isDragging = true
   updateIrPosition(evt)
 }
-
 function onIrAreaMouseUp() {
   module1Fields.isDragging = false
 }
-
 function onIrAreaMouseMove(evt: MouseEvent) {
-  if (module1Fields.isDragging) {
-    updateIrPosition(evt)
-  }
+  if (module1Fields.isDragging) updateIrPosition(evt)
 }
-
 function updateIrPosition(evt: MouseEvent) {
   const area = evt.currentTarget as HTMLElement
   const rect = area.getBoundingClientRect()
@@ -264,7 +385,7 @@ onMounted(async () => {
     }
     module3Fields.current_set = 1
   } catch (e) {
-    console.error('fetchConfig module 3:', e)
+    console.error('fetchConfig module 3 :', e)
   }
 
   // Watchers pour le toggle streaming
@@ -273,7 +394,7 @@ onMounted(async () => {
       () => streaming[id],
       enabled => {
         if (enabled) {
-          intervals[id] = window.setInterval(() => sendById(id), 50)
+          intervals[id] = window.setInterval(() => sendById(id), 2000)
         } else {
           if (intervals[id] !== null) {
             clearInterval(intervals[id]!)
@@ -293,51 +414,6 @@ onUnmounted(() => {
     }
   })
 })
-
-function sendModule1() {
-  clients[1].setBuffer({
-    x: module1Fields.x,
-    y: module1Fields.y,
-    diameter: module1Fields.diameter
-  })
-}
-
-function sendModule2() {
-  clients[2].setBuffer({
-    rotX: module2Fields.rotX,
-    rotY: module2Fields.rotY,
-    rotZ: module2Fields.rotZ
-  })
-}
-
-function sendModule3() {
-  clients[3].setBuffer({
-    uid1: module3Fields.uid1,
-    uid2: module3Fields.uid2,
-    uid3: module3Fields.uid3,
-    current_set: module3Fields.current_set,
-    button_pressed: module3Fields.button_pressed
-  })
-}
-
-function sendBuffer(mod: number) {
-  try {
-    const raw = payloads[mod].trim()
-    const data = raw ? JSON.parse(raw) : {}
-    clients[mod].setBuffer(data)
-  } catch (err) {
-    alert(`JSON invalide : ${err}`)
-  }
-}
-
-async function retrieveBuffer(mod: number) {
-  try {
-    const buf = await clients[mod].getBuffer()
-    buffers[mod] = JSON.stringify(buf, null, 2)
-  } catch (err) {
-    buffers[mod] = `Erreur : ${err}`
-  }
-}
 </script>
 
 <style scoped>
@@ -414,7 +490,7 @@ async function retrieveBuffer(mod: number) {
   font-family: monospace;
 }
 
-/* MODULE GÉNÉRAL */
+/* MODULE 3, 4 Général */
 .controls {
   display: flex;
   flex-direction: column;
@@ -503,5 +579,54 @@ async function retrieveBuffer(mod: number) {
 
 .switch .slider.round::before {
   border-radius: 50%;
+}
+
+/* MODULE 4 : sandbox & palette */
+.module4-container {
+  display: flex;
+  align-items: flex-start;
+}
+
+.sandbox {
+  position: relative;
+  width: 320px;
+  height: 240px;
+  background: #f0f0f0;
+  border: 1px solid #333;
+  cursor: pointer;
+}
+
+.placed-object {
+  position: absolute;
+  width: 50px;
+  height: 50px;
+  pointer-events: none;
+}
+
+.object-palette {
+  display: flex;
+  flex-direction: column;
+  margin-left: 1rem;
+}
+
+.object-palette button {
+  display: flex;
+  align-items: center;
+  margin-bottom: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid #ccc;
+  background: white;
+  cursor: pointer;
+}
+
+.object-palette button.selected {
+  border-color: #4caf50;
+}
+
+.object-icon {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+  margin-right: 0.5rem;
 }
 </style>
