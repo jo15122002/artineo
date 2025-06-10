@@ -49,12 +49,18 @@ class DepthProcessor:
         # compute signed difference and map to 0-255
         diff = frame.astype(int) - baseline.astype(int)
         mapped = np.clip(128 + diff * self._scale, 0, 255).astype(np.uint8)
+        
+        # min_val, max_val, _, _ = cv2.minMaxLoc(mapped)
+        # print(f"[DEBUG DepthProc4] mapped_blur   min={min_val:.1f}, max={max_val:.1f}")
 
         # binary mask: objects appear darker than background
         _, mask = cv2.threshold(mapped, self._mask_threshold, 255, cv2.THRESH_BINARY_INV)
         # clean up noise
         mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, self._kernel)
         mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, self._kernel)
+        
+        cv2.imshow("Depth Mask", mask)
+        cv2.waitKey(1)
 
         # find external contours
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)

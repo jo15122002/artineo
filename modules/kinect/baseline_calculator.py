@@ -23,6 +23,18 @@ class BaselineCalculator:
             self.logger.setLevel(logging.DEBUG)
             logger.debug("BaselineCalculator created with n_profile=%d", config.n_profile)
 
+    def ensure_baseline_ready(self, frame: np.ndarray) -> np.ndarray:
+        """
+        1) Si la baseline n'est pas encore prête (RuntimeError), on accumule cette frame
+        et on relance l'exception pour signaler « pas encore prêt ».
+        2) Sinon, on retourne directement self.baseline.
+        """
+        try:
+            return self.baseline
+        except RuntimeError:
+            self.update(frame)
+            raise
+
     def update(self, frame: np.ndarray) -> None:
         """
         Add a new frame to the accumulator.

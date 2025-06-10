@@ -13,15 +13,15 @@ class Config(BaseModel):
         frozen=True        # make config immutable
     )
 
-    # ─────────── ROI ────────────
-    roi_x0: int = Field(160, ge=0, description="Left X coordinate of ROI")
-    roi_y0: int = Field(130, ge=0, description="Top Y coordinate of ROI")
-    roi_x1: int = Field(410, gt=0, description="Right X coordinate of ROI")
-    roi_y1: int = Field(300, gt=0, description="Bottom Y coordinate of ROI")
+    # ─────────── ROI SIZE ────────────
+    roi_x0: int = Field(125, ge=0, description="Left X coordinate of ROI")
+    roi_y0: int = Field(90, ge=0, description="Top Y coordinate of ROI")
+    roi_x1: int = Field(400, gt=0, description="Right X coordinate of ROI")
+    roi_y1: int = Field(265, gt=0, description="Bottom Y coordinate of ROI")
 
     # ───────── Templates ─────────
     template_dir: str = Field(
-        "images/templates/", description="Directory containing shape/background templates"
+        "templates/", description="Directory containing shape/background templates"
     )
 
     # ─── Shape matching thresholds ───
@@ -29,10 +29,19 @@ class Config(BaseModel):
         True, description="Use cv2.matchShapes vs. Hu moments"
     )
     area_threshold: float = Field(
-        2000.0, gt=0, description="Area threshold for background vs. shape classification"
+        15000.0, gt=0, description="Area threshold for background vs. shape classification"
     )
     small_area_threshold: float = Field(
-        250.0, gt=0, description="Area threshold for small-shape classification"
+        500.0, gt=0, description="Area threshold for small-shape classification"
+    )
+    removal_threshold: float = Field(
+        2.0, gt=0, description="Area threshold for removing small shapes"
+    )
+    removal_ratio: float = Field(
+        0.2, ge=0.0, le=1.0, description="Ratio of pixels above removal_threshold to remove shape"
+    )
+    match_threshold: float = Field(
+        100.0, gt=0, description="Maximum MSE threshold for shape matching"
     )
 
     # ─── Background profiling ───
@@ -64,13 +73,16 @@ class Config(BaseModel):
     )
 
     # ─── Network / WS client ───
-    host: str = Field("artineo.local", description="Artineo server host")
+    host: str = Field("localhost", description="Artineo server host")
     port: int = Field(8000, ge=0, description="Artineo server port")
     module_id: int = Field(4, ge=0, description="Unique module identifier for ArtineoClient")
 
     # ─── Computed read-only fields ───
     roi_width: int | None = Field(None, description="Computed width of ROI")
     roi_height: int | None = Field(None, description="Computed height of ROI")
+    calibrate_roi: bool = Field(
+        False, description="If true, add a window to calibrate ROI dimensions"
+    )
 
     # ─── Mode debug / bypass WS ───
     debug_mode: bool = Field(

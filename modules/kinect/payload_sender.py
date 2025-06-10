@@ -1,6 +1,6 @@
 # backend/payload_sender.py
 import logging
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 import json
 import asyncio
 from pathlib import Path
@@ -27,7 +27,7 @@ class PayloadSender:
     def __init__(
         self,
         client: ArtineoClient,
-        logger: logging.Logger = None,
+        logger: Optional[logging.Logger] = None,
     ):
         self.client = client
         self.logger = logger or logging.getLogger(__name__)
@@ -45,26 +45,46 @@ class PayloadSender:
 
     async def send_update(
         self,
-        new_strokes: List[Dict[str, Any]],
-        remove_strokes: List[str],
-        new_objects: List[Dict[str, Any]],
-        remove_objects: List[str],
+        new_strokes: Optional[List[Dict[str, Any]]] = None,
+        remove_strokes: Optional[List[str]] = None,
+        new_objects: Optional[List[Dict[str, Any]]] = None,
+        remove_objects: Optional[List[str]] = None,
+        new_backgrounds: Optional[List[Dict[str, Any]]] = None,
+        remove_backgrounds: Optional[List[str]] = None,
+        button: Optional[int] = None,
     ) -> None:
         """
         Construit le message SET et l'enqueue pour envoi.
+        Les arguments new_backgrounds, remove_backgrounds et button sont facultatifs.
         """
+        # éviter les None
+        new_strokes = new_strokes or []
+        remove_strokes = remove_strokes or []
+        new_objects = new_objects or []
+        remove_objects = remove_objects or []
+
+        data: Dict[str, Any] = {
+            "newStrokes":    new_strokes,
+            "removeStrokes": remove_strokes,
+            "newObjects":    new_objects,
+            "removeObjects": remove_objects,
+        }
+
+        if new_backgrounds is not None:
+            data["newBackgrounds"] = new_backgrounds
+        if remove_backgrounds is not None:
+            data["removeBackgrounds"] = remove_backgrounds
+        if button is not None:
+            data["button"] = button
+
         payload = {
             "module": self.client.module_id,
             "action": ArtineoAction.SET,
-            "data": {
-                "newStrokes":    new_strokes,
-                "removeStrokes": remove_strokes,
-                "newObjects":    new_objects,
-                "removeObjects": remove_objects,
-            }
+            "data": data
         }
+
         msg = json.dumps(payload, ensure_ascii=False)
-        # On protège l'enqueue au cas où plusieurs coroutines appellent en même temps
+        # on protège l'enqueue si plusieurs coroutines appellent en même temps
         async with self._lock:
             try:
                 self.client.send_ws(msg)

@@ -1,4 +1,4 @@
-// front/composables/module2.ts
+// File: serveur/front/composables/module2.ts
 import * as THREE from 'three'
 import { MTLLoader } from 'three/examples/jsm/loaders/MTLLoader.js'
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js'
@@ -7,24 +7,22 @@ import { onBeforeUnmount, onMounted } from 'vue'
 import { useArtineo } from './useArtineo'
 
 export default function useModule2(canvasRef: Ref<HTMLCanvasElement | null>) {
+  // Guard SSR : rien à faire côté serveur
+  if (!process.client) {
+    return
+  }
+
   const artClient = useArtineo(2)
   let loadedObject: THREE.Object3D | null = null
-  let intervalId: ReturnType<typeof setInterval> | null = null
   let animationFrameId: number | null = null
+  let pollingInterval: ReturnType<typeof setInterval> | null = null
+  let isSubscribed = false
 
-  // Applique au modèle les valeurs reçues dans le buffer
   function applyBuffer(buf: any) {
     if (!loadedObject) return
     if (typeof buf.rotX === 'number') loadedObject.rotation.x = buf.rotX
     if (typeof buf.rotY === 'number') loadedObject.rotation.y = buf.rotY
     if (typeof buf.rotZ === 'number') loadedObject.rotation.z = buf.rotZ
-  }
-
-  async function pollBuffer() {
-    try {
-      const buf = await artClient.getBuffer()
-      applyBuffer(buf)
-    } catch { /* ignore */ }
   }
 
   function setupWebsocketListener() {
@@ -33,6 +31,23 @@ export default function useModule2(canvasRef: Ref<HTMLCanvasElement | null>) {
         applyBuffer(msg.buffer)
       }
     })
+  }
+
+  function startPolling(intervalMs: number) {
+    pollingInterval = setInterval(() => {
+      artClient.getBuffer()
+        .then(buf => applyBuffer(buf))
+        .catch(() => {
+          // ignore les erreurs réseau éventuelles
+        })
+    }, intervalMs)
+  }
+
+  function stopPolling() {
+    if (pollingInterval) {
+      clearInterval(pollingInterval)
+      pollingInterval = null
+    }
   }
 
   function initThree(canvas: HTMLCanvasElement) {
@@ -49,14 +64,12 @@ export default function useModule2(canvasRef: Ref<HTMLCanvasElement | null>) {
     const renderer = new THREE.WebGLRenderer({ antialias: true, canvas })
     renderer.setSize(canvas.clientWidth, canvas.clientHeight)
 
-    // Lumières basiques
     const ambient = new THREE.AmbientLight(0xffffff, 0.8)
     scene.add(ambient)
     const dirLight = new THREE.DirectionalLight(0xffffff, 0.5)
     dirLight.position.set(5, 10, 7.5)
     scene.add(dirLight)
 
-    // Chargement MTL puis OBJ
     const mtlLoader = new MTLLoader()
     mtlLoader.setPath('/models/module2/')
     mtlLoader.load(
@@ -69,23 +82,16 @@ export default function useModule2(canvasRef: Ref<HTMLCanvasElement | null>) {
         objLoader.load(
           'Enter a title.obj',
           object => {
-            // 1) On recalcule le box du modèle pour trouver son centre
             const bbox = new THREE.Box3().setFromObject(object)
             const center = new THREE.Vector3()
             bbox.getCenter(center)
 
-            // 2) On crée un container pour recentrer le modèle
             const container = new THREE.Group()
-            // 2a) On décale l’objet afin que son centre devienne (0,0,0)
             object.position.sub(center)
-            // 2b) On ajoute l’objet dans le container
             container.add(object)
 
-            // 3) On ajoute ensuite ce container à la scène
             scene.add(container)
-
-            loadedObject = container  // on fait tourner le container plutôt que l’objet brut
-            //    → le container est déjà centré sur l’origine
+            loadedObject = container
           },
           undefined,
           err => console.error('Erreur OBJ :', err)
@@ -101,28 +107,57 @@ export default function useModule2(canvasRef: Ref<HTMLCanvasElement | null>) {
       renderer.setSize(canvas.clientWidth, canvas.clientHeight)
     })
 
-    // Boucle d’animation
     function animate() {
       animationFrameId = requestAnimationFrame(animate)
-      // Pas besoin de repositionner ici : on applique la rotation via applyBuffer
       renderer.render(scene, camera)
     }
     animate()
   }
 
-  onMounted(() => {
+  onMounted(async () => {
     const canvas = canvasRef.value
     if (!canvas) return
 
     initThree(canvas)
-    setupWebsocketListener()
-    pollBuffer()
-    intervalId = setInterval(pollBuffer, Math.round(1000 / 20)) // 20 FPS
+
+    // 1) Abonnement WebSocket (une seule fois)
+    if (!isSubscribed) {
+      isSubscribed = true
+      setupWebsocketListener()
+
+      // 2) Récupération initiale du buffer
+      artClient.getBuffer()
+        .then(buf => applyBuffer(buf))
+        .catch(() => {
+          // ignore
+        })
+
+      // 3) Récupérer le fps depuis la config
+      let fps = 0
+      try {
+        const cfg = await artClient.fetchConfig()
+        if (typeof cfg.fps === 'number' && cfg.fps > 0) {
+          fps = Math.floor(cfg.fps)
+          console.log(`[Module2] FPS configuré : ${fps}`)
+        }
+      } catch (e) {
+        console.warn('[Module2] fetchConfig error', e)
+      }
+
+      // 4) Calculer intervalle : si fps invalide, on prend 20 FPS (50 ms)
+      const intervalMs = fps > 0 ? Math.round(1000 / fps) : 50
+      startPolling(intervalMs)
+    }
   })
 
   onBeforeUnmount(() => {
-    if (intervalId !== null) clearInterval(intervalId)
-    if (animationFrameId !== null) cancelAnimationFrame(animationFrameId)
-    artClient.close()
+    // Arrêt du rendu
+    if (animationFrameId !== null) {
+      cancelAnimationFrame(animationFrameId)
+      animationFrameId = null
+    }
+    // Arrêt du polling
+    stopPolling()
+    // Pas de artClient.close() ici, car WS peut être partagé
   })
 }
