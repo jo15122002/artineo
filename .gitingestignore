@@ -1,0 +1,173 @@
+# Lock files
+*lock.json
+package-lock.json
+yarn.lock
+
+# Documentation
+*.md
+README.md
+
+# Python
+*__init__.py
+
+# Scripts
+*.bash
+*.sh
+*.bat
+
+# Git
+*.gitignore
+
+# Configuration files
+*.yml
+*.yaml
+*.json
+*.conf
+*.env.example
+
+# IDE/Editor
+*.vscode/
+.vscode/
+
+# Binary files
+*.bin
+*.woff2
+*.JPG
+*.jpg
+*.png
+*.gif
+*.ico
+*.webm
+*.mp4
+*.avi
+
+# 3D files
+*.mtl
+*.obj
+
+# Directories
+*images/
+images/
+*.github/
+.github/
+
+# JavaScript modules
+*.mjs
+
+# Web files
+*robots.txt
+robots.txt
+
+# Specific libraries
+*pykinect2*
+
+# Text files
+*.txt
+
+# Log files
+*.log
+
+# Cache directories
+node_modules/
+.cache/
+dist/
+build/
+
+node_modules/
+.cache/
+dist/
+build/
+
+# Additional exclusions to reduce file count
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE files
+.idea/
+*.iml
+.eclipse/
+.settings/
+
+# Dependencies and vendors
+vendor/
+bower_components/
+jspm_packages/
+
+# Build outputs
+*.o
+*.a
+*.so
+*.dll
+*.exe
+
+# Test outputs
+coverage/
+.nyc_output/
+test-results/
+
+# Logs and databases
+*.sqlite
+*.sqlite3
+*.db
+
+# Logs and databases
+*.sqlite
+*.sqlite3
+*.db
+
+# Additional aggressive exclusions
+*.min.js
+*.min.css
+*.map
+*.d.ts
+*.tsbuildinfo
+
+# All JSON files (more aggressive)
+*.json
+
+# All image directories and files
+**/images/
+**/img/
+**/assets/
+**/static/
+**/public/
+
+# All test files
+*test*
+*spec*
+*.test.*
+*.spec.*
+**/tests/
+**/test/
+
+# All documentation
+**/docs/
+**/doc/
+
+# Version control
+.git/
+.svn/
+.hg/
+
+# Large directories that might have many files
+**/uploads/
+**/downloads/
+**/tmp/
+**/temp/
+**/cache/
