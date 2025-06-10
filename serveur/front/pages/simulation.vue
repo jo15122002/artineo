@@ -7,7 +7,8 @@
       <!-- MODULE 1 -->
       <div v-if="mod === 1" class="controls module1-controls">
         <div class="ir-area-container">
-          <div class="ir-area" @click="onIrAreaClick">
+          <div class="ir-area" @mousedown="onIrAreaMouseDown" @mouseup="onIrAreaMouseUp" @mouseleave="onIrAreaMouseUp"
+            @mousemove="onIrAreaMouseMove">
             <div v-if="module1Fields.clicked" class="ir-marker"
               :style="{ left: module1Fields.x + 'px', top: module1Fields.y + 'px' }"></div>
           </div>
@@ -129,12 +130,13 @@ const clients = reactive<Record<number, ReturnType<typeof useArtineo>>>({})
 const payloads = reactive<Record<number, string>>({ 2: '{}', 4: '{}' })
 const buffers = reactive<Record<number, string>>({ 2: '{}', 4: '{}' })
 
-// MODULE 1 fields
+// MODULE 1 fields (ajout de isDragging)
 const module1Fields = reactive({
   x: 0,
   y: 0,
   diameter: 10,
-  clicked: false
+  clicked: false,
+  isDragging: false
 })
 
 // MODULE 2 fields
@@ -186,6 +188,32 @@ function sendById(id: number) {
   if (id === 2) return sendModule2()
   if (id === 3) return sendModule3()
   return sendBuffer(id)
+}
+
+// Fonctions pour la zone IR (module 1)
+function onIrAreaMouseDown(evt: MouseEvent) {
+  module1Fields.isDragging = true
+  updateIrPosition(evt)
+}
+
+function onIrAreaMouseUp() {
+  module1Fields.isDragging = false
+}
+
+function onIrAreaMouseMove(evt: MouseEvent) {
+  if (module1Fields.isDragging) {
+    updateIrPosition(evt)
+  }
+}
+
+function updateIrPosition(evt: MouseEvent) {
+  const area = evt.currentTarget as HTMLElement
+  const rect = area.getBoundingClientRect()
+  const x = Math.round(evt.clientX - rect.left)
+  const y = Math.round(evt.clientY - rect.top)
+  module1Fields.x = Math.min(Math.max(x, 0), rect.width)
+  module1Fields.y = Math.min(Math.max(y, 0), rect.height)
+  module1Fields.clicked = true
 }
 
 onMounted(async () => {
@@ -245,7 +273,7 @@ onMounted(async () => {
       () => streaming[id],
       enabled => {
         if (enabled) {
-          intervals[id] = window.setInterval(() => sendById(id), 100)
+          intervals[id] = window.setInterval(() => sendById(id), 50)
         } else {
           if (intervals[id] !== null) {
             clearInterval(intervals[id]!)
@@ -265,15 +293,6 @@ onUnmounted(() => {
     }
   })
 })
-
-function onIrAreaClick(evt: MouseEvent) {
-  const rect = (evt.currentTarget as HTMLElement).getBoundingClientRect()
-  const x = Math.round(evt.clientX - rect.left)
-  const y = Math.round(evt.clientY - rect.top)
-  module1Fields.x = Math.min(Math.max(x, 0), rect.width)
-  module1Fields.y = Math.min(Math.max(y, 0), rect.height)
-  module1Fields.clicked = true
-}
 
 function sendModule1() {
   clients[1].setBuffer({
