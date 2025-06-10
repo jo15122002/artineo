@@ -81,11 +81,7 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
   // 3️⃣ map button IDs to RGBA overlays
   const buttonColors: Record<number, string> = {
     1: 'rgba(83, 160, 236, 0.2)',
-    2: 'rgba(0, 255, 0, 0.3)',
-    3: 'rgba(0, 0, 255, 0.3)',
-    4: 'rgba(255, 255, 0, 0.3)',
-    5: 'rgba(255, 0, 255, 0.3)',
-    6: 'rgba(0, 255, 255, 0.3)',
+    2: 'rgba(252, 191, 0, 0.2)',
   }
   let currentButton = 1  // default
 
@@ -234,19 +230,19 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
     // subscribe to Kinect updates
     if (!isKinectSubscribed) {
       isKinectSubscribed = true
-      artClientKinect.onMessage(msg => {
+      artClientKinect.onMessage((msg: any) => {
         if (msg.action === 'get_buffer' && msg.buffer) {
           drawBuffer(msg.buffer)
         }
       })
 
       artClientKinect.getBuffer()
-        .then(buf => drawBuffer(buf))
-        .catch(e => console.error('[Artineo][Kinect] init error', e))
+        .then((buf: any) => drawBuffer(buf))
+        .catch((e: any) => console.error('[Artineo][Kinect] init error', e))
 
       pollingIntervalKinect = setInterval(() => {
         artClientKinect.getBuffer()
-          .then(buf => drawBuffer(buf))
+          .then((buf: any) => drawBuffer(buf))
           .catch(() => {})
       }, 100)
     }
@@ -254,19 +250,19 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
     // subscribe to Button updates
     if (!isButtonSubscribed) {
       isButtonSubscribed = true
-      artClientButton.onMessage(msg => {
+      artClientButton.onMessage((msg: any) => {
         if (msg.action === 'get_buffer' && msg.buffer) {
           drawBuffer(msg.buffer)
         }
       })
 
       artClientButton.getBuffer()
-        .then(buf => drawBuffer(buf))
-        .catch(e => console.error('[Artineo][Button] init error', e))
+        .then((buf: any) => drawBuffer(buf))
+        .catch((e: any) => console.error('[Artineo][Button] init error', e))
 
       pollingIntervalButton = setInterval(() => {
         artClientButton.getBuffer()
-          .then(buf => drawBuffer(buf))
+          .then((buf: any) => drawBuffer(buf))
           .catch(() => {})
       }, 100)
     }
