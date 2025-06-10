@@ -85,7 +85,7 @@ export default function useModule1() {
       const cfg = await client.fetchConfig()
       if (cfg.background)      backgroundPath.value = cfg.background
       if (typeof cfg.fps === 'number' && cfg.fps > 0) {
-        fps.value = cfg.fps
+        fps.value = cfg.fps + 1
         console.log(`[Module1] FPS configuré : ${fps.value}`)
       }
     } catch (e) {
