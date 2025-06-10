@@ -4,8 +4,8 @@
     <div v-for="mod in moduleIds" :key="mod" class="simulator-card">
       <h2>Module {{ mod }}</h2>
 
+      <!-- MODULE 1 -->
       <div v-if="mod === 1" class="controls module1-controls">
-        <!-- MODULE 1 : zone cliquable + slider diamètre -->
         <div class="ir-area-container">
           <div class="ir-area" @click="onIrAreaClick">
             <div v-if="module1Fields.clicked" class="ir-marker"
@@ -20,14 +20,10 @@
           <input type="range" v-model.number="module1Fields.diameter" min="1" max="200" />
           <span>{{ module1Fields.diameter }} px</span>
         </label>
-        <div class="button-row">
-          <button @click="sendModule1()">Envoyer buffer</button>
-          <button @click="retrieveBuffer(1)">Récupérer buffer</button>
-        </div>
       </div>
 
+      <!-- MODULE 2 -->
       <div v-else-if="mod === 2" class="controls module2-controls">
-        <!-- MODULE 2 : sliders rotX / rotY / rotZ -->
         <label>
           rotX :
           <input type="range" v-model.number="module2Fields.rotX" :min="-6.28" :max="6.28" :step="0.01" />
@@ -43,14 +39,10 @@
           <input type="range" v-model.number="module2Fields.rotZ" :min="-6.28" :max="6.28" :step="0.01" />
           <span>{{ module2Fields.rotZ.toFixed(2) }}</span>
         </label>
-        <div class="button-row">
-          <button @click="sendModule2()">Envoyer rotation</button>
-          <button @click="retrieveBuffer(2)">Récupérer buffer</button>
-        </div>
       </div>
 
-      <div v-else-if="mod === 3" class="controls">
-        <!-- MODULE 3 : listes déroulantes dynamiques -->
+      <!-- MODULE 3 -->
+      <div v-else-if="mod === 3" class="controls module3-controls">
         <label>
           Lieu :
           <select v-model="module3Fields.uid1">
@@ -93,22 +85,33 @@
           Bouton pressé :
           <input type="checkbox" v-model="module3Fields.button_pressed" />
         </label>
-        <div class="button-row">
-          <button @click="sendModule3()">Envoyer buffer</button>
-          <button @click="retrieveBuffer(3)">Récupérer buffer</button>
-        </div>
       </div>
 
-      <div v-else class="controls">
-        <!-- MODULE 4 : JSON libre -->
+      <!-- MODULE 4 -->
+      <div v-else class="controls module4-controls">
         <label>Payload JSON :</label>
         <textarea v-model="payloads[mod]" rows="4" placeholder='{"foo":"bar"}'></textarea>
-        <div class="button-row">
-          <button @click="sendBuffer(mod)">Envoyer buffer</button>
-          <button @click="retrieveBuffer(mod)">Récupérer buffer</button>
-        </div>
       </div>
 
+      <!-- Toggle Envoi continu -->
+      <label class="switch">
+        Envoi continu
+        <input type="checkbox" v-model="streaming[mod]" />
+        <span class="slider round"></span>
+      </label>
+
+      <!-- Boutons d'action -->
+      <div class="button-row">
+        <button
+          @click="mod === 1 ? sendModule1() : mod === 2 ? sendModule2() : mod === 3 ? sendModule3() : sendBuffer(mod)">
+          Envoyer buffer
+        </button>
+        <button @click="retrieveBuffer(mod)">
+          Récupérer buffer
+        </button>
+      </div>
+
+      <!-- Affichage du dernier buffer -->
       <div class="output">
         <h3>Dernier buffer reçu</h3>
         <pre>{{ buffers[mod] }}</pre>
@@ -118,7 +121,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive } from 'vue'
+import { onMounted, onUnmounted, reactive, watch } from 'vue'
 import { useArtineo } from '~/composables/useArtineo'
 
 const moduleIds = [1, 2, 3, 4]
@@ -126,7 +129,7 @@ const clients = reactive<Record<number, ReturnType<typeof useArtineo>>>({})
 const payloads = reactive<Record<number, string>>({ 2: '{}', 4: '{}' })
 const buffers = reactive<Record<number, string>>({ 2: '{}', 4: '{}' })
 
-// MODULE 1
+// MODULE 1 fields
 const module1Fields = reactive({
   x: 0,
   y: 0,
@@ -134,14 +137,14 @@ const module1Fields = reactive({
   clicked: false
 })
 
-// MODULE 2 (avec sliders)
+// MODULE 2 fields
 const module2Fields = reactive({
   rotX: 0,
   rotY: 0,
   rotZ: 0
 })
 
-// MODULE 3
+// MODULE 3 fields & config
 const module3Fields = reactive({
   uid1: '',
   uid2: '',
@@ -150,14 +153,40 @@ const module3Fields = reactive({
   button_pressed: false
 })
 const module3Config = reactive<{
-  answers: any[],
-  wanted_assignments: { lieux: string[], couleurs: string[], emotions: string[] },
-  assignments: { lieux: Record<string, string>, couleurs: Record<string, string>, emotions: Record<string, string> }
+  answers: any[]
+  wanted_assignments: { lieux: string[]; couleurs: string[]; emotions: string[] }
+  assignments: {
+    lieux: Record<string, string>
+    couleurs: Record<string, string>
+    emotions: Record<string, string>
+  }
 }>({
   answers: [],
   wanted_assignments: { lieux: [], couleurs: [], emotions: [] },
   assignments: { lieux: {}, couleurs: {}, emotions: {} }
 })
+
+// Toggle & timers
+const streaming = reactive<Record<number, boolean>>({
+  1: false,
+  2: false,
+  3: false,
+  4: false
+})
+const intervals = reactive<Record<number, number | null>>({
+  1: null,
+  2: null,
+  3: null,
+  4: null
+})
+
+// Helper: envoie selon l'ID du module
+function sendById(id: number) {
+  if (id === 1) return sendModule1()
+  if (id === 2) return sendModule2()
+  if (id === 3) return sendModule3()
+  return sendBuffer(id)
+}
 
 onMounted(async () => {
   moduleIds.forEach(id => {
@@ -195,12 +224,46 @@ onMounted(async () => {
   try {
     const cfg = await clients[3].fetchConfig()
     module3Config.answers = cfg.answers || []
-    module3Config.wanted_assignments = cfg.wanted_assignments || { lieux: [], couleurs: [], emotions: [] }
-    module3Config.assignments = cfg.assignments || { lieux: {}, couleurs: {}, emotions: {} }
+    module3Config.wanted_assignments = cfg.wanted_assignments || {
+      lieux: [],
+      couleurs: [],
+      emotions: []
+    }
+    module3Config.assignments = cfg.assignments || {
+      lieux: {},
+      couleurs: {},
+      emotions: {}
+    }
     module3Fields.current_set = 1
   } catch (e) {
-    console.error("fetchConfig module 3:", e)
+    console.error('fetchConfig module 3:', e)
   }
+
+  // Watchers pour le toggle streaming
+  moduleIds.forEach(id => {
+    watch(
+      () => streaming[id],
+      enabled => {
+        if (enabled) {
+          intervals[id] = window.setInterval(() => sendById(id), 100)
+        } else {
+          if (intervals[id] !== null) {
+            clearInterval(intervals[id]!)
+            intervals[id] = null
+          }
+        }
+      }
+    )
+  })
+})
+
+onUnmounted(() => {
+  moduleIds.forEach(id => {
+    if (intervals[id] !== null) {
+      clearInterval(intervals[id]!)
+      intervals[id] = null
+    }
+  })
 })
 
 function onIrAreaClick(evt: MouseEvent) {
@@ -211,6 +274,7 @@ function onIrAreaClick(evt: MouseEvent) {
   module1Fields.y = Math.min(Math.max(y, 0), rect.height)
   module1Fields.clicked = true
 }
+
 function sendModule1() {
   clients[1].setBuffer({
     x: module1Fields.x,
@@ -219,7 +283,6 @@ function sendModule1() {
   })
 }
 
-// MODULE 2
 function sendModule2() {
   clients[2].setBuffer({
     rotX: module2Fields.rotX,
@@ -228,7 +291,6 @@ function sendModule2() {
   })
 }
 
-// MODULE 3
 function sendModule3() {
   clients[3].setBuffer({
     uid1: module3Fields.uid1,
@@ -248,6 +310,7 @@ function sendBuffer(mod: number) {
     alert(`JSON invalide : ${err}`)
   }
 }
+
 async function retrieveBuffer(mod: number) {
   try {
     const buf = await clients[mod].getBuffer()
@@ -309,8 +372,8 @@ async function retrieveBuffer(mod: number) {
   align-items: center;
 }
 
-.slider-label input[type="range"] {
-  margin: 0 .5rem;
+.slider-label input[type='range'] {
+  margin: 0 0.5rem;
 }
 
 /* MODULE 2 */
@@ -320,7 +383,7 @@ async function retrieveBuffer(mod: number) {
   margin: 0.5rem 0;
 }
 
-.module2-controls input[type="range"] {
+.module2-controls input[type='range'] {
   margin-left: 0.5rem;
   flex: 1;
 }
@@ -332,7 +395,7 @@ async function retrieveBuffer(mod: number) {
   font-family: monospace;
 }
 
-/* MODULES GÉNÉRAL */
+/* MODULE GÉNÉRAL */
 .controls {
   display: flex;
   flex-direction: column;
@@ -345,7 +408,7 @@ async function retrieveBuffer(mod: number) {
 }
 
 .controls select,
-.controls input[type="checkbox"] {
+.controls input[type='checkbox'] {
   margin-left: 0.5rem;
 }
 
@@ -367,5 +430,59 @@ async function retrieveBuffer(mod: number) {
   white-space: pre-wrap;
   word-break: break-word;
   margin: 0;
+}
+
+/* SWITCH TOGGLE */
+.switch {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  user-select: none;
+  margin: 0.5rem 0;
+  font-size: 0.9rem;
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.switch .slider {
+  position: relative;
+  width: 40px;
+  height: 20px;
+  margin-left: 0.5rem;
+  background-color: #ccc;
+  border-radius: 34px;
+  transition: background-color 0.2s;
+}
+
+.switch .slider::before {
+  content: "";
+  position: absolute;
+  height: 16px;
+  width: 16px;
+  left: 2px;
+  top: 2px;
+  background-color: white;
+  border-radius: 50%;
+  transition: transform 0.2s;
+}
+
+.switch input:checked+.slider {
+  background-color: #4caf50;
+}
+
+.switch input:checked+.slider::before {
+  transform: translateX(20px);
+}
+
+.switch .slider.round {
+  border-radius: 34px;
+}
+
+.switch .slider.round::before {
+  border-radius: 50%;
 }
 </style>

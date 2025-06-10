@@ -58,16 +58,17 @@ export default function useModule2(canvasRef: Ref<HTMLCanvasElement | null>) {
       0.1,
       1000
     )
-    camera.position.set(0, 0, 5)
+    camera.position.set(0, 0, 4)
     camera.lookAt(0, 0, 0)
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, canvas })
     renderer.setSize(canvas.clientWidth, canvas.clientHeight)
 
-    const ambient = new THREE.AmbientLight(0xffffff, 0.8)
+    const ambient = new THREE.AmbientLight(0xffffff, 1)
     scene.add(ambient)
-    const dirLight = new THREE.DirectionalLight(0xffffff, 0.5)
-    dirLight.position.set(5, 10, 7.5)
+    const dirLight = new THREE.SpotLight(0xffffff, 450)
+    dirLight.angle = Math.PI / 3; // cone angle
+    dirLight.position.set(0, 0, 5)
     scene.add(dirLight)
 
     const mtlLoader = new MTLLoader()
