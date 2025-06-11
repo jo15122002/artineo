@@ -188,7 +188,7 @@ async def get_media(module: int = Query(..., description="ID du module")):
     medias = []
     for filename in os.listdir(base_dir):
         # Ne lister que les fichiers audio ou vidéo (extensions courantes)
-        if filename.lower().endswith((".mp3", ".wav", ".ogg", ".mp4", ".webm", ".m4a")):
+        if filename.lower().endswith(MEDIA_EXTENSIONS):
             # Déduit le mime-type du fichier (audio/mpeg, video/mp4, etc.)
             mime_type, _ = mimetypes.guess_type(filename)
             if not mime_type:
@@ -239,9 +239,15 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
-# file de queues de diffs
+# ─── file de queues de diffs ────────────────────────────────────────────────
 diff_queues: Dict[int, deque] = {
-    1: deque(), 2: deque(), 3: deque(), 4: deque(), 41: deque()
+    # modules 1,2,3 : un seul buffer (maxlen=1)
+    1: deque(maxlen=1),
+    2: deque(maxlen=1),
+    3: deque(maxlen=1),
+    # module 4 : stacking illimité
+    41: deque(),
+    4: deque()
 }
 
 
