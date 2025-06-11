@@ -94,6 +94,7 @@ export default function useModule1() {
 
     // b) gestion WebSocket push
     client.onMessage((msg: any) => {
+      console.log(`[Module1] WebSocket message: ${msg.action}`, msg.buffer)
       if (msg.action === 'get_buffer') {
         const buf = msg.buffer as BufferPayload
         x.value      = buf.x      ?? x.value

@@ -231,32 +231,47 @@ function sendById(id: number) {
 // MODULE 4 : envoyez les objets placés structurés pour use4kinect
 function sendModule4() {
   const scale = 3; // même coefficient que pour le rendu canvas
+
+  // Backgrounds : placedObjects but name contains "landscape", same fields as objects otherwise
+  const newBackgrounds = placedObjects.filter(o => o.src.includes('landscape')).map((o, i) => {
+    const shape = o.src.split('/').pop()!.replace(/\.png$/, '');
+    placedObjects.splice(placedObjects.indexOf(o), 1); // Remove from placedObjects
+    return {
+      id: `background-${Date.now()}`,
+      type: 'background',
+      shape,
+      cx: o.x,
+      cy: o.y,
+      w: 320 / scale,
+      h: 240 / scale,
+      angle: 0.0,
+      scale: 1.0
+    }
+  });
+
+
   const newObjects = placedObjects.map((o, i) => {
     const shape = o.src.split('/').pop()!.replace(/\.png$/, '');
     return {
       id: `${shape}-${i}-${Date.now()}`,
       type: 'object',
       shape,
-      cx: o.x / scale,
-      cy: o.y / scale,
-      w: 50 / scale,
-      h: 50 / scale,
+      cx: o.x,
+      cy: o.y,
+      w: 50,
+      h: 50,
       angle: 0.0,
       scale: 1.0
     };
   });
 
   const payload = {
-    module: 4,
-    action: 'set',
-    data: {
       newStrokes: [],
       removeStrokes: [],
       newObjects,
       removeObjects: [],
-      newBackgrounds: [],
+      newBackgrounds,
       removeBackgrounds: []
-    }
   };
 
   // Envoi via Artineo
