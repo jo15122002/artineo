@@ -231,8 +231,8 @@ async def async_main():
             button_pressed = False
             correct = check_answers([u1, u2, u3])
             attempt_count += 1
-            if correct or attempt_count >= MAX_ATTEMPTS:
-                await next_set(timeout=False)
+            # if correct or attempt_count >= MAX_ATTEMPTS:
+            #     await next_set(timeout=False)
             await asyncio.sleep(COOLDOWN)
 
         await asyncio.sleep_ms(50)
