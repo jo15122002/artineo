@@ -13,7 +13,7 @@
 
 <script setup lang="ts">
 import { useRuntimeConfig } from '#app'
-import { computed, onMounted, ref, reactive } from 'vue'    // ajout de reactive
+import { computed, onMounted, reactive, ref } from 'vue'; // ajout de reactive
 import useModule1 from '~/composables/module1.ts'
 
 definePageMeta({ layout: 'module' })
@@ -30,7 +30,7 @@ const goodResponseZoneSize = 30
 
 onMounted(() => {
   const params = new URLSearchParams(window.location.search)
-  showDebug.value = params.get('debug') === 'true'
+  showDebug.value = params.get('debug') === 'true' || params.get('debug') === '1'
 
   // génération aléatoire dans [0,320]×[0,240]
   goodResponsePosition.x = Math.random() * 320
