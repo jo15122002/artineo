@@ -65,8 +65,11 @@ export default function useModule1() {
     if (hueVal < -180) hueVal = -180
 
     // Calcul de la saturation
-    let satVal = 100 + (dy / goodResponsePosition.y) * 100
-    if (satVal < 0) satVal = 0
+    const refDiam = 40  // diamètre en px pour lequel on veut sat=100%
+
+    let satVal = 100 + ((diamPx.value - refDiam) / refDiam) * 100
+    // clamp entre 0 et 200
+    if (satVal < 0)   satVal = 0
     if (satVal > 200) satVal = 200
 
     // Calcul de la brightness
