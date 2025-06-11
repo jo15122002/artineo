@@ -246,7 +246,7 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
     const defaultH = img ? img.naturalHeight / (scale * 3) : 50;
 
     const newObj: ArtObject = {
-      id: crypto.randomUUID(),  // ou Date.now() + Math.random()
+      id: Date.now().toString() + Math.random().toString(),  // ou Date.now() + Math.random()
       shape,
       cx,
       cy,
