@@ -38,7 +38,7 @@ def find_brightest_circle(gray, clean):
         minDist=80,
         param1=100,
         param2=30,
-        minRadius=15,
+        minRadius=10,
         maxRadius=80
     )
     if circles is None:
