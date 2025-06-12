@@ -1,6 +1,12 @@
 <template>
   <div class="page-3rfid">
-    <img v-if="backgroundUrl" :src="backgroundUrl" alt="painting" class="painting" />
+    <div class="painting-frame-with-shadow">
+      <div class="painting-frame">
+        <div class="painting-container">
+          <img v-if="backgroundUrl" :src="backgroundUrl" alt="painting" class="painting" />
+        </div>
+      </div>
+    </div>
 
     <ArtyPlayer ref="player3" :module="3" @ready="onPlayerReady" class="arty-player" />
 
