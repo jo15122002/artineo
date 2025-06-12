@@ -59,18 +59,6 @@
   object-fit: contain;
 }
 
-.arty {
-  position: absolute;
-  bottom: -1%;
-  left: 0%;
-}
-
-.arty img {
-  width: 75%;
-  height: auto;
-  max-width: 100%;
-  max-height: 100%;
-}
 
 /* ----- ZONE DES BOUTONS ------------------------------------------------- */
 .choices {
@@ -136,4 +124,48 @@
 /* ----- EFFET “PRESSÉ” --------------------------------------------------- */
 .choice:not(.pressed) {
   transform: translateY(-28px);
+}
+
+/* ----- UI ---------------------------------------------------------------- */
+.arty {
+  position: absolute;
+  bottom: -1%;
+  left: 0%;
+}
+
+.arty img {
+  width: 75%;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.timer{
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 90%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: "CheeseSauce", cursive;
+  flex-direction: row;
+  justify-content: flex-end;
+}
+
+.timer-text {
+  position: absolute;
+  top: 51.5%;
+  right: -2%;
+  transform: translate(-50%, -50%);
+  color: #FFF;
+  z-index: 1;
+  font-size: 4.8rem;
+}
+
+.timer img {
+  width: 75%;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
 }

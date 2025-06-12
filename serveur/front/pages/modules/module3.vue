@@ -18,6 +18,11 @@
       </button>
     </section>
 
+    <div class="timer">
+      <img src="~/assets/modules/3/timer_splat.svg" alt="">
+      <span class="timer-text">1:00</span>
+    </div>
+
     <div class="arty">
       <img src="~/assets/modules/3/arty.png" alt="">
     </div>
