@@ -2,6 +2,25 @@
 import { computed, onBeforeUnmount, onMounted, ref, type Ref } from 'vue'
 import { useArtineo } from './useArtineo'
 
+function hexToRgb(hex: string) {
+  const h = hex.replace('#','')
+  const bigint = parseInt(h, 16)
+  return {
+    r: (bigint >> 16) & 0xFF,
+    g: (bigint >> 8)  & 0xFF,
+    b:  bigint        & 0xFF,
+  }
+}
+function rgbToHex(r: number, g: number, b: number) {
+  const hr = r.toString(16).padStart(2, '0')
+  const hg = g.toString(16).padStart(2, '0')
+  const hb = b.toString(16).padStart(2, '0')
+  return `#${hr}${hg}${hb}`
+}
+function lerp(a: number, b: number, t: number) {
+  return a + (b - a) * t
+}
+
 export default function useModule3(
   playerRef: Ref<InstanceType<typeof import('~/components/ArtyPlayer.vue').default> | null>
 ) {
@@ -46,18 +65,34 @@ export default function useModule3(
     return m * 60 + s;
   });
 
-  // % restant
-  const timerPercent = computed(() =>
-    (timerSeconds.value / TIMER_DURATION) * 100
-  );
+ const colorStops = [
+    { p: 1.0, color: '#2626FF' },
+    { p: 0.6, color: '#FA81C3' },
+    { p: 0.3, color: '#FA4923' }
+  ] as const
 
-  // couleur en fonction du % restant
   const timerColor = computed(() => {
-    if (timerPercent.value > 60) return '#2626FF';
-    if (timerPercent.value > 30) return '#FA81C3';
-    if (timerPercent.value > 0)  return '#FA4923';
-    return '#FFD73A';
-  });
+    // ratio entre 0 et 1
+    const pct = timerSeconds.value / TIMER_DURATION
+    // on parcourt chaque segment [i]→[i+1]
+    for (let i = 0; i < colorStops.length - 1; i++) {
+      const { p: p0, color: c0 } = colorStops[i]
+      const { p: p1, color: c1 } = colorStops[i+1]
+      if (pct <= p0 && pct >= p1) {
+        // t = 0 à p0  → couleur c0
+        // t = 1 à p1  → couleur c1
+        const t = (p0 - pct) / (p0 - p1)
+        const rgb0 = hexToRgb(c0)
+        const rgb1 = hexToRgb(c1)
+        const r = Math.round(lerp(rgb0.r, rgb1.r, t))
+        const g = Math.round(lerp(rgb0.g, rgb1.g, t))
+        const b = Math.round(lerp(rgb0.b, rgb1.b, t))
+        return rgbToHex(r, g, b)
+      }
+    }
+    // fallback
+    return colorStops[colorStops.length - 1].color
+  })
 
   function lookupLabel(map: Record<string,string>, code: string): string {
     const inv: Record<string,string> = {}
