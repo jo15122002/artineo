@@ -10,6 +10,9 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+# Zoom numérique : facteur >1 pour agrandir (ex: 2.0 pour zoom ×2)
+ZOOM_FACTOR = 2.0
+
 # On ajoute ../../serveur au path pour importer ArtineoClient
 sys.path.insert(
     0,
@@ -69,7 +72,7 @@ def main():
     )
     args = parser.parse_args()
     debug = args.debug
-    
+
     if debug:
         print("Mode debug activé. Affichage des logs et de la fenêtre vidéo.")
     else:
@@ -80,6 +83,7 @@ def main():
         if debug:
             print(msg)
 
+    # résolution d’entrée après redimensionnement ffmpeg
     width, height = 320, 240
     frame_size = width * height * 3  # bgr24
 
@@ -125,6 +129,16 @@ def main():
         if len(raw) < frame_size:
             break  # fin du flux
         frame = np.frombuffer(raw, dtype=np.uint8).reshape((height, width, 3))
+
+        # --- Zoom numérique via crop + resize ---
+        if ZOOM_FACTOR > 1.0:
+            h, w = frame.shape[:2]
+            new_w = int(w / ZOOM_FACTOR)
+            new_h = int(h / ZOOM_FACTOR)
+            x0 = (w - new_w) // 2
+            y0 = (h - new_h) // 2
+            cropped = frame[y0:y0+new_h, x0:x0+new_w]
+            frame = cv2.resize(cropped, (w, h), interpolation=cv2.INTER_LINEAR)
 
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         clean = preprocess(gray)
