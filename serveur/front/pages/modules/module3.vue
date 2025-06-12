@@ -17,6 +17,10 @@
         </span>
       </button>
     </section>
+
+    <div class="arty">
+      <img src="~/assets/modules/3/arty.png" alt="">
+    </div>
   </div>
 </template>
 
