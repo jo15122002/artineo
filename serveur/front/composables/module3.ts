@@ -47,6 +47,7 @@ export default function useModule3(
   }
 
   function updateFromBuffer(buf: any) {
+    console.log('[useModule3] updateFromBuffer', buf)
     if (buf.current_set && buf.current_set !== backgroundSet.value) {
       backgroundSet.value  = buf.current_set
       states.value         = ['default','default','default']
