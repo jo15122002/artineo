@@ -19,3 +19,102 @@
 ::-webkit-scrollbar {
   display: none;
 }
+
+/* ----- UI ---------------------------------------------------------------- */
+.arty {
+  position: absolute;
+  top: -1%;
+  left: 0%;
+}
+
+.arty img {
+  width: 75%;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.timer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 90%;
+  width: 15vw;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: "CheeseSauce", cursive;
+  flex-direction: row;
+  --timer-color: #2626FF; /* valeur par défaut */
+}
+
+.timer-text {
+  position: absolute;
+  top: 51.5%;
+  right: -20%;
+  transform: translate(-50%, -50%);
+  color: #FFF;
+  z-index: 1;
+  font-size: 4.8rem;
+}
+
+.timer-splat {
+  width: 100%;
+  height: 100%;
+  background-color: var(--timer-color);
+  transition: background-color 0.99s ease;
+
+  /* mask standard + webkit */
+  mask-image: url('timer_splat.svg');
+  mask-repeat: no-repeat;
+  mask-position: center;
+  mask-size: contain;
+
+  -webkit-mask-image: url('timer_splat.svg');
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  -webkit-mask-size: contain;
+}
+
+/* ----- IMAGE + CADRE + OMBRE -------------------------------------------- */
+.painting-frame-with-shadow {
+  position: relative;        /* pour les enfants en absolute */
+  flex: none;                /* ne s'étire plus */
+  width: 100%;
+  max-height: 70vh;
+  aspect-ratio: 16 / 9;      /* remplace le padding-top hack */
+  margin-top: 6vh;
+  background: url("cadre_shadow.svg") center / contain no-repeat;
+}
+
+/* cadre en superposition exacte */
+.painting-frame {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 97%;
+  height: 93%;
+  background: url("cadre.svg") center / contain no-repeat;
+}
+
+/* zone interne, centrée puis scalée */
+.painting-container {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: translate(-50%, -50%) scale(0.87);
+  transform-origin: center center;
+}
+
+/* l’image maximise sans déformer */
+.painting {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
