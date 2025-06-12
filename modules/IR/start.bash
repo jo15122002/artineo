@@ -74,7 +74,8 @@ libcamera-hello -t 2000 --nopreview || echo "⚠️  libcamera-hello a échoué"
 echo "🚀 Démarrage de libcamera-vid → FIFO"
 libcamera-vid \
   -t 0 --nopreview \
-  --width 640 --height 480 \
+  --width 1920 --height 1080 \            # mode 1080p full-res
+  --roi 0.25,0.25,0.5,0.5 \                # garde le centre 50 %×50 % (zoom ×2)  
   --inline --codec yuv420 --output - \
   > "$FIFO" 2>/dev/null &
 VID_PID=$!
