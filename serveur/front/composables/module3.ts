@@ -88,15 +88,15 @@ export default function useModule3(
       )
       pressedStates.value = [true, true, true]
 
-      if (typeof buf.timer === 'string') {
-        console.log('[useModule3] timer received:', buf.timer)
-        timerText.value = buf.timer
-      }
-
       setTimeout(() => {
         states.value        = states.value.map(s => s === 'wrong' ? 'default' : s)
         pressedStates.value = states.value.map(s => s === 'correct')
       }, 2000)
+    }
+
+    if (typeof buf.timer === 'string') {
+        console.log('[useModule3] timer received:', buf.timer)
+        timerText.value = buf.timer
     }
 
     prevPressed = !!buf.button_pressed
