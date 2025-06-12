@@ -83,9 +83,11 @@ VID_PID=$!
 # 5️⃣ Lance ffmpeg → main.py
 echo "🔄 Démarrage de ffmpeg → main.py${DEBUG_FLAG:+ (mode debug)}"
 ffmpeg -loglevel error \
-       -f rawvideo -pix_fmt yuv420p -s 1296x972 -r 30 -i "$FIFO" \
-       -f rawvideo -vf "scale=320:240" -pix_fmt bgr24 -r 15 - \
-  | python3 "$WORKDIR/main.py" $DEBUG_FLAG
+  -f rawvideo -pix_fmt yuv420p -s 1296x972 -r 30 -i "$FIFO" \
+  -vf "crop=648:486:324:243, scale=320:240" \
+  -f rawvideo -pix_fmt bgr24 -r 15 - \
+| python3 "$WORKDIR/main.py" $DEBUG_FLAG
+
 
 # 6️⃣ Nettoyage si jamais main.py termine
 cleanup
