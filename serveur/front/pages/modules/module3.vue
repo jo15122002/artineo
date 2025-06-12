@@ -18,8 +18,8 @@
       </button>
     </section>
 
-    <div class="timer">
-      <img src="~/assets/modules/3/timer_splat.svg" alt="">
+    <div class="timer" :style="{ '--timer-color': timerColor }">
+      <div class="timer-splat"></div>
       <span class="timer-text">{{ timerText }}</span>
     </div>
 
@@ -42,7 +42,8 @@ const {
   stateClasses,
   pressedStates,
   backgroundUrl,
-  timerText
+  timerText,
+  timerColor
 } = useModule3(player3)
 
 function onPlayerReady() {

@@ -30,6 +30,8 @@ export default function useModule3(
   const pressedStates = ref<boolean[]>([false,false,false])
   let prevPressed     = false
 
+  const TIMER_DURATION = 60; // duree en secondes
+
   const timerText = ref<string>('1:00')
 
   const pluralMap: Record<string,string> = {
@@ -37,6 +39,25 @@ export default function useModule3(
     couleur: 'couleurs',
     emotion: 'emotions'
   }
+
+  // calcule les secondes restantes
+  const timerSeconds = computed(() => {
+    const [m, s] = timerText.value.split(':').map(v => parseInt(v, 10));
+    return m * 60 + s;
+  });
+
+  // % restant
+  const timerPercent = computed(() =>
+    (timerSeconds.value / TIMER_DURATION) * 100
+  );
+
+  // couleur en fonction du % restant
+  const timerColor = computed(() => {
+    if (timerPercent.value > 60) return '#2626FF';
+    if (timerPercent.value > 30) return '#FA81C3';
+    if (timerPercent.value > 0)  return '#FA4923';
+    return '#FFD73A';
+  });
 
   function lookupLabel(map: Record<string,string>, code: string): string {
     const inv: Record<string,string> = {}
@@ -153,6 +174,7 @@ export default function useModule3(
     stateClasses,
     pressedStates,
     backgroundUrl,
-    timerText
+    timerText,
+    timerColor
   }
 }
