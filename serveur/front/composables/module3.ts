@@ -136,7 +136,7 @@ export default function useModule3(
       } catch {
         // ignore
       }
-    }, 1000)
+    }, 500)
   })
 
   onBeforeUnmount(() => {
