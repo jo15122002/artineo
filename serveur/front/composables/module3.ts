@@ -88,6 +88,7 @@ export default function useModule3(
       pressedStates.value = [true, true, true]
 
       if (typeof buf.timer === 'string') {
+        console.log('[useModule3] timer received:', buf.timer)
         timerText.value = buf.timer
       }
 
