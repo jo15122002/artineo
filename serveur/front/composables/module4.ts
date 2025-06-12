@@ -80,19 +80,21 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
 
   // 2️⃣bis load mask image
   const maskModules = import.meta.glob<string>(
-    '~/assets/modules/4/images/masks/mask.jpg',
+    '~/assets/modules/4/images/masks/mask.png',
     { eager: true, as: 'url' }
   )
-  const maskPath = maskModules['~/assets/modules/4/images/masks/mask.jpg']!
+
+  // on récupère la première (et seule) URL disponible :
+  const maskPaths = Object.values(maskModules)
+  if (maskPaths.length === 0) {
+    console.error('[Module4] Aucun mask trouvé via glob')
+  } 
+  const maskPath = maskPaths[0]!
+
   const maskImage = new Image()
   maskImage.src = maskPath
-
-  maskImage.onload = () => {
-    console.log('[Module4] Mask loaded:', maskPath)
-  }
-  maskImage.onerror = (e) => {
-    console.error('[Module4] Failed to load mask image:', maskPath, e)
-  }
+  maskImage.onload = () => console.log('[Module4] Mask loaded:', maskPath)
+  maskImage.onerror = e => console.error('[Module4] Failed to load mask image:', maskPath, e)
 
   // 3️⃣ map button IDs to RGBA overlays
   const buttonColors: Record<number, string> = {
