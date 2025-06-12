@@ -20,7 +20,7 @@ BUTTON_PIN          = 14
 TIMER_LED_PIN       = 21
 TIMER_LED_COUNT     = 22
 TIMER_COLOR         = (0, 0, 255)
-TIMER_DURATION      = 60
+TIMER_DURATION      = 60  # en secondes
 
 PROGRESS_COLOR      = (0, 255, 0)
 INTENSITY           = 0.1
@@ -30,7 +30,7 @@ MAX_ATTEMPTS        = 2
 READ_TRIES          = 2
 READ_DELAY_MS       = 50
 
-DEBUG_LOGS          = False
+DEBUG_LOGS          = True
 # —————————————————————————————————————————————————————————————————————————————
 
 # —————————————————————————————————————————————————————————————————————————————
@@ -46,6 +46,7 @@ total_sets     = 1       # sera initialisé avec len(config["answers"])
 config         = {}
 _client        = None
 _timer_task    = None
+_timer_start   = 0       # timestamp du début du timer
 # —————————————————————————————————————————————————————————————————————————————
 
 def log(*args, **kwargs):
@@ -138,12 +139,25 @@ def endStartAnimation():
     timer_strip.write()
     log("[main] start animation ended")
 
+def format_timer():
+    """
+    Retourne le timer restant sous la forme "M:SS".
+    """
+    elapsed = ticks_diff(ticks_ms(), _timer_start)
+    rem_ms = max(0, TIMER_DURATION * 1000 - elapsed)
+    total_sec = rem_ms // 1000
+    m = total_sec // 60
+    s = total_sec % 60
+    return "{}:{:02d}".format(m, s)
+
 async def timer_coroutine():
     log("[main] timer start")
     step = TIMER_DURATION / TIMER_LED_COUNT
+    # allume tout
     for i in range(TIMER_LED_COUNT):
         timer_strip[i] = scale_color(TIMER_COLOR)
     timer_strip.write()
+    # éteint un à un
     for j in range(TIMER_LED_COUNT):
         idx = TIMER_LED_COUNT - 1 - j
         timer_strip[idx] = (0,0,0)
@@ -153,10 +167,17 @@ async def timer_coroutine():
     await next_set(timeout=True)
 
 def reset_timer():
-    global _timer_task
+    """
+    Annule l'ancienne tâche, mémorise l'heure de départ,
+    et relance le compte à rebours.
+    """
+    global _timer_task, _timer_start
     if _timer_task:
-        try: _timer_task.cancel()
-        except: pass
+        try:
+            _timer_task.cancel()
+        except:
+            pass
+    _timer_start = ticks_ms()
     _timer_task = asyncio.create_task(timer_coroutine())
     log("[main] timer reset")
 
@@ -169,7 +190,8 @@ async def next_set(timeout=False):
     await _client.send_buffer({
         "uid1": None, "uid2": None, "uid3": None,
         "current_set": current_set,
-        "button_pressed": False
+        "button_pressed": False,
+        "timer": format_timer()
     })
     reset_timer()
 
@@ -190,7 +212,7 @@ async def async_main():
         ssid="Bob_bricolo",
         password="bobbricolo"
     )
-    # on lance les boucles WS en tâche de fond
+    # on lance les boucles WS
     await asyncio.sleep(0)
     asyncio.create_task(_client._ws_loop())
     asyncio.create_task(_client._ws_receiver())
@@ -202,11 +224,12 @@ async def async_main():
     log(f"[main] total_sets = {total_sets}")
     setProgressBar(75)
 
-    # initial buffer
+    # initial buffer (timer démarré ensuite)
     await _client.send_buffer({
         "uid1": None, "uid2": None, "uid3": None,
         "current_set": current_set,
-        "button_pressed": False
+        "button_pressed": False,
+        "timer": "{}:{:02d}".format(TIMER_DURATION//60, TIMER_DURATION%60)
     })
     setProgressBar(100)
     await asyncio.sleep(1)
@@ -221,18 +244,20 @@ async def async_main():
         u3 = await read_uid(rdrs[2])
         log(f"[main] UIDs: {u1}, {u2}, {u3}")
 
+        # envoi régulier du buffer AVEC le timer
         await _client.send_buffer({
-            "uid1": u1, "uid2": u2, "uid3": u3,
+            "uid1": u1,
+            "uid2": u2,
+            "uid3": u3,
             "current_set": current_set,
-            "button_pressed": button_pressed
+            "button_pressed": button_pressed,
+            "timer": format_timer()
         })
 
         if button_pressed:
             button_pressed = False
             correct = check_answers([u1, u2, u3])
             attempt_count += 1
-            # if correct or attempt_count >= MAX_ATTEMPTS:
-            #     await next_set(timeout=False)
             await asyncio.sleep(COOLDOWN)
 
         await asyncio.sleep_ms(50)
