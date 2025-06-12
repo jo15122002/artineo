@@ -20,7 +20,7 @@
 
     <div class="timer">
       <img src="~/assets/modules/3/timer_splat.svg" alt="">
-      <span class="timer-text">1:00</span>
+      <span class="timer-text">{{ timerText }}</span>
     </div>
 
     <div class="arty">
@@ -41,7 +41,8 @@ const {
   blobTexts,
   stateClasses,
   pressedStates,
-  backgroundUrl
+  backgroundUrl,
+  timerText
 } = useModule3(player3)
 
 function onPlayerReady() {

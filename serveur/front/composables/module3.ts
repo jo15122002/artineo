@@ -30,6 +30,8 @@ export default function useModule3(
   const pressedStates = ref<boolean[]>([false,false,false])
   let prevPressed     = false
 
+  const timerText = ref<string>('1:00')
+
   const pluralMap: Record<string,string> = {
     lieu:    'lieux',
     couleur: 'couleurs',
@@ -84,6 +86,10 @@ export default function useModule3(
         : 'default'
       )
       pressedStates.value = [true, true, true]
+
+      if (typeof buf.timer === 'string') {
+        timerText.value = buf.timer
+      }
 
       setTimeout(() => {
         states.value        = states.value.map(s => s === 'wrong' ? 'default' : s)
@@ -144,6 +150,7 @@ export default function useModule3(
     blobTexts,
     stateClasses,
     pressedStates,
-    backgroundUrl
+    backgroundUrl,
+    timerText
   }
 }
