@@ -8,7 +8,7 @@ export default function useModule3(
   // Guard SSR : rien à faire côté serveur
   if (!process.client) {
     const backgroundSet  = ref<number>(1)
-    const blobTexts      = ref<string[]>(['Aucun','Aucun','Aucun'])
+    const blobTexts      = ref<string[]>(['Lieu','Couleur','Émotion'])
     const states         = ref<Array<'default'|'correct'|'wrong'>>(['default','default','default'])
     const stateClasses   = computed(() => states.value.map(s => `state-${s}`))
     const pressedStates  = ref<boolean[]>([false,false,false])
@@ -24,7 +24,7 @@ export default function useModule3(
   const client   = useArtineo(moduleId)
 
   const backgroundSet = ref<number>(1)
-  const blobTexts     = ref<string[]>(['Aucun','Aucun','Aucun'])
+  const blobTexts     = ref<string[]>(['Lieu','Couleur','Émotion'])
   const states        = ref<Array<'default'|'correct'|'wrong'>>(['default','default','default'])
   const stateClasses  = computed(() => states.value.map(s => `state-${s}`))
   const pressedStates = ref<boolean[]>([false,false,false])
@@ -52,7 +52,7 @@ export default function useModule3(
       prevPressed          = false
     }
 
-    const texts   = ['Aucun','Aucun','Aucun']
+    const texts   = ['Lieu','Couleur','Émotion']
     const colors  = ['#FFA500','#FFA500','#FFA500']
     const keys    = ['lieu','couleur','emotion'] as const
     const uidKeys = ['uid1','uid2','uid3']      as const
