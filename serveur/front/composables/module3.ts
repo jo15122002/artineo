@@ -8,7 +8,7 @@ export default function useModule3(
   // Guard SSR : rien à faire côté serveur
   if (!process.client) {
     const backgroundSet  = ref<number>(1)
-    const blobTexts      = ref<string[]>(['Aucun','Aucun','Aucun'])
+    const blobTexts      = ref<string[]>(['Lieu','Couleur','Émotion'])
     const states         = ref<Array<'default'|'correct'|'wrong'>>(['default','default','default'])
     const stateClasses   = computed(() => states.value.map(s => `state-${s}`))
     const pressedStates  = ref<boolean[]>([false,false,false])
@@ -24,11 +24,13 @@ export default function useModule3(
   const client   = useArtineo(moduleId)
 
   const backgroundSet = ref<number>(1)
-  const blobTexts     = ref<string[]>(['Aucun','Aucun','Aucun'])
+  const blobTexts     = ref<string[]>(['Lieu','Couleur','Émotion'])
   const states        = ref<Array<'default'|'correct'|'wrong'>>(['default','default','default'])
   const stateClasses  = computed(() => states.value.map(s => `state-${s}`))
   const pressedStates = ref<boolean[]>([false,false,false])
   let prevPressed     = false
+
+  const timerText = ref<string>('1:00')
 
   const pluralMap: Record<string,string> = {
     lieu:    'lieux',
@@ -45,6 +47,7 @@ export default function useModule3(
   }
 
   function updateFromBuffer(buf: any) {
+    console.log('[useModule3] updateFromBuffer', buf)
     if (buf.current_set && buf.current_set !== backgroundSet.value) {
       backgroundSet.value  = buf.current_set
       states.value         = ['default','default','default']
@@ -52,7 +55,7 @@ export default function useModule3(
       prevPressed          = false
     }
 
-    const texts   = ['Aucun','Aucun','Aucun']
+    const texts   = ['Lieu','Couleur','Émotion']
     const colors  = ['#FFA500','#FFA500','#FFA500']
     const keys    = ['lieu','couleur','emotion'] as const
     const uidKeys = ['uid1','uid2','uid3']      as const
@@ -89,6 +92,11 @@ export default function useModule3(
         states.value        = states.value.map(s => s === 'wrong' ? 'default' : s)
         pressedStates.value = states.value.map(s => s === 'correct')
       }, 2000)
+    }
+
+    if (typeof buf.timer === 'string') {
+        console.log('[useModule3] timer received:', buf.timer)
+        timerText.value = buf.timer
     }
 
     prevPressed = !!buf.button_pressed
@@ -128,7 +136,7 @@ export default function useModule3(
       } catch {
         // ignore
       }
-    }, 1000)
+    }, 500)
   })
 
   onBeforeUnmount(() => {
@@ -144,6 +152,7 @@ export default function useModule3(
     blobTexts,
     stateClasses,
     pressedStates,
-    backgroundUrl
+    backgroundUrl,
+    timerText
   }
 }

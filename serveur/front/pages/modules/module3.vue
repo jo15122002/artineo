@@ -1,6 +1,12 @@
 <template>
   <div class="page-3rfid">
-    <img v-if="backgroundUrl" :src="backgroundUrl" alt="painting" class="painting" />
+    <div class="painting-frame-with-shadow">
+      <div class="painting-frame">
+        <div class="painting-container">
+          <img v-if="backgroundUrl" :src="backgroundUrl" alt="painting" class="painting" />
+        </div>
+      </div>
+    </div>
 
     <ArtyPlayer ref="player3" :module="3" @ready="onPlayerReady" class="arty-player" />
 
@@ -11,6 +17,15 @@
         </span>
       </button>
     </section>
+
+    <div class="timer">
+      <img src="~/assets/modules/3/timer_splat.svg" alt="">
+      <span class="timer-text">{{ timerText }}</span>
+    </div>
+
+    <div class="arty">
+      <img src="~/assets/modules/3/arty.png" alt="">
+    </div>
   </div>
 </template>
 
@@ -26,7 +41,8 @@ const {
   blobTexts,
   stateClasses,
   pressedStates,
-  backgroundUrl
+  backgroundUrl,
+  timerText
 } = useModule3(player3)
 
 function onPlayerReady() {
