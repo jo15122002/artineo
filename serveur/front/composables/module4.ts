@@ -78,6 +78,22 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
     }
   }
 
+  // 2️⃣bis load mask image
+  const maskModules = import.meta.glob<string>(
+    '~/assets/modules/4/images/masks/mask.jpg',
+    { eager: true, as: 'url' }
+  )
+  const maskPath = maskModules['~/assets/modules/4/images/masks/mask.jpg']!
+  const maskImage = new Image()
+  maskImage.src = maskPath
+
+  maskImage.onload = () => {
+    console.log('[Module4] Mask loaded:', maskPath)
+  }
+  maskImage.onerror = (e) => {
+    console.error('[Module4] Failed to load mask image:', maskPath, e)
+  }
+
   // 3️⃣ map button IDs to RGBA overlays
   const buttonColors: Record<number, string> = {
     1: 'rgba(83, 160, 236, 0.2)',
@@ -206,11 +222,26 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
     ctx.fillStyle = '#fff'
     ctx.fillRect(0, 0, canvas.width, canvas.height)
 
+    if (maskImage.complete && maskImage.naturalWidth > 0) {
+      ctx.save()
+      ctx.beginPath()
+      strokes.value.forEach(s => {
+        const px   = s.x * scale
+        const py   = s.y * scale
+        const size = (s.size ?? 5) * scale
+        ctx.moveTo(px + size/2, py)
+        ctx.arc(px, py, size/2, 0, Math.PI * 2)
+      })
+      ctx.clip()
+      ctx.drawImage(maskImage, 0, 0, canvas.width, canvas.height)
+      ctx.restore()
+    }
+
     // 7.6.1) draw backgrounds **plein écran**, aligné en bas
     backgrounds.value.forEach(b => drawBackground(ctx, b))
 
     // 7.6.2) draw strokes & objects
-    strokes.value.forEach(s => drawStroke(ctx, s))
+    // strokes.value.forEach(s => drawStroke(ctx, s))
     objects.value.forEach(o => drawObject(ctx, o))
 
     // 7.6.3) finally overlay color rectangle

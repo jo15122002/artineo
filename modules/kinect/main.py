@@ -947,7 +947,7 @@ if __name__ == '__main__':
     logger.info("Starting Artineo Kinect module...")
 
     # Fetch config from remote
-    client = ArtineoClient(module_id=4, host="artineo.local", port=8000)
+    client = ArtineoClient(module_id=4, host="localhost", port=8000)
     raw_conf = client.fetch_config()
 
     controller = MainController(
