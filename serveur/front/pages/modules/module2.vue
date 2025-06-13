@@ -30,6 +30,15 @@
 
       </div>
     </div>
+
+    <div class="timer" :style="{ '--timer-color': timerColor }">
+      <div class="timer-splat"></div>
+      <span class="timer-text">{{ timerText }}</span>
+    </div>
+
+    <div class="arty">
+      <img src="~/assets/modules/2/arty.png" alt="">
+    </div>
   </div>
 </template>
 
@@ -39,7 +48,7 @@ import useModule2 from '~/composables/module2'
 
 // 1) récupère rotX/Y/Z
 const canvas = ref<HTMLCanvasElement | null>(null)
-const { rotX, rotY, rotZ } = useModule2(canvas)
+const { rotX, rotY, rotZ, timerColor, timerText } = useModule2(canvas)
 
 // 2) bornes ±2π
 const inf = -2 * Math.PI
