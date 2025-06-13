@@ -65,7 +65,7 @@ export default function useModule3(
     return m * 60 + s;
   });
 
- const colorStops = [
+  const colorStops = [
     { p: 1.0, color: '#2626FF' },
     { p: 0.6, color: '#FA81C3' },
     { p: 0.3, color: '#FA4923' }

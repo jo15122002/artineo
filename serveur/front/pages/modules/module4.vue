@@ -1,6 +1,21 @@
 <template>
   <div class="module4-container">
-    <canvas ref="canvas" />
+    <div class="painting-frame-with-shadow">
+      <div class="painting-frame">
+        <div class="painting-container">
+          <canvas ref="canvas" />
+        </div>
+      </div>
+    </div>
+
+    <div class="timer" :style="{ '--timer-color': timerColor }">
+      <div class="timer-splat"></div>
+      <span class="timer-text">{{ timerText }}</span>
+    </div>
+
+    <div class="arty">
+      <img src="~/assets/modules/4/images/arty.png" alt="">
+    </div>
   </div>
 </template>
 
@@ -14,7 +29,7 @@ definePageMeta({ layout: 'module' })
 const canvas = ref<HTMLCanvasElement | null>(null)
 
 // 2️⃣ Appel du composable AU TOP-LEVEL
-const { strokes, objects } = use4kinect(canvas)
+const { strokes, objects, timerColor, timerText } = use4kinect(canvas)
 
 // 3️⃣ Initialisation de la taille après montage
 onMounted(() => {
