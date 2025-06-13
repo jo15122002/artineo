@@ -23,7 +23,7 @@
         <!-- Knob Z -->
         <div class="button circle-button">
           <img src="~/assets/modules/2/circle.svg" alt="Knob Z" />
-          <div class="rect-selector" :style="{ 'rotate': rotZDeg + 'deg' }" />
+          <div class="rect-selector" :style="{ transform: `rotate(${rotZDeg}deg) translateY(-115px)` }" />
         </div>
 
       </div>

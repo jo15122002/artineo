@@ -95,6 +95,7 @@ canvas {
 
 .circle-button > .rect-selector {
   transform-origin: center center;
+  transition: transform 0.2s ease-out;
 }
 
 .button .rect-selector {
