@@ -15,7 +15,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 24px;
+  /* gap: 24px; */
 }
 
 .frame-shadow {
@@ -25,6 +25,7 @@
   background: #F3E9E4;
   position: relative;
   clip-path: polygon(0 0, 94% 0, 100% 8.5%, 100% 100%, 6% 100%, 0% 91.5%);
+  margin-top: 40px;
 }
 
 .frame {
@@ -48,8 +49,9 @@ canvas {
 .buttons-wrapper {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: space-around;
   gap: 24px;
+  width: 100%;
 }
 
 .rect-selector {
@@ -69,6 +71,7 @@ canvas {
   display: flex;
   align-items: center;
   justify-content: center;
+  scale: 0.8;
 }
 
 .rectX-button {
@@ -106,19 +109,20 @@ canvas {
   /* on part de l’extrême gauche du parent */
   left: 0;
   /* d’abord on décale la moitié du sélecteur, puis on ajoute la translation */
-  transform:
-    translateY(-50%)
-    translateX(calc(var(--pct) * 100%));
+  translate: var(--t-x) 0;
+  transition: translate .15s ease-out;
 }
 
 /* Slider vertical (Y) */
 .rectY-button .rect-selector {
-  /* on part du coin supérieur */
+  width: 70px;
+  height: 14px;
+  left: 50%;
   top: 0;
-  /* on décale la moitié du sélecteur, puis on translate verticalement */
-  transform:
-    translateX(-50%)
-    translateY(calc(var(--pct) * 100%));
+
+  /* 50% pour centrer horizontalement */
+  translate: -50% var(--t-y);
+  transition: translate .15s ease-out;
 }
 
 /* ----- UI ---------------------------------------------------------------- */
@@ -152,7 +156,7 @@ canvas {
 .timer-text {
   position: absolute;
   top: 51.5%;
-  right: -2%;
+  right: -16%;
   transform: translate(-50%, -50%);
   color: #FFF;
   z-index: 1;

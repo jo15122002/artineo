@@ -6,26 +6,24 @@
           <canvas ref="canvas" />
         </div>
       </div>
-      <div class="buttons-wrapper">
+      <div class="buttons-wrapper" ref="buttonsWrapper">
 
-        <!-- Bouton X -->
+        <!-- Slider X -->
         <div class="button rectX-button" ref="rectXBtn">
-          <img src="~/assets/modules/2/rectX.svg" alt="Rect X Button" />
-          <div class="rect-selector" ref="rectXSel" :style="{ transform: `translateX(${translateX}px)` }" />
+          <img src="~/assets/modules/2/rectX.svg" alt="Slider X" />
+          <div class="rect-selector" ref="rectXSel" :style="{ '--t-x': translateX + 'px' }" />
         </div>
 
-        <!-- Bouton Y -->
+        <!-- Slider Y -->
         <div class="button rectY-button" ref="rectYBtn">
-          <img src="~/assets/modules/2/rectY.svg" alt="Rect Y Button" />
-          <div class="rect-selector" ref="rectYSel"
-            :style="{ transform: `translateY(${translateY}px) rotate(90deg)` }" />
+          <img src="~/assets/modules/2/rectY.svg" alt="Slider Y" />
+          <div class="rect-selector" ref="rectYSel" :style="{ '--t-y': translateY + 'px' }" />
         </div>
 
-        <!-- Cercle inchangé… -->
+        <!-- Knob Z -->
         <div class="button circle-button">
-          <img src="~/assets/modules/2/circle.svg" alt="Circle Button" />
-          <div class="rect-selector"
-            :style="{ transform: `translateY(-115px)`, rotate: `calc(${percentageRotate} * 180deg)` }" />
+          <img src="~/assets/modules/2/circle.svg" alt="Knob Z" />
+          <div class="rect-selector" :style="{ 'rotate': rotZDeg + 'deg' }" />
         </div>
 
       </div>
@@ -37,57 +35,77 @@
     </div>
 
     <div class="arty">
-      <img src="~/assets/modules/2/arty.png" alt="">
+      <img src="~/assets/modules/2/arty.png" alt="Arty Mascotte" />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { useResizeObserver } from '@vueuse/core'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import useModule2 from '~/composables/module2'
 
-// 1) récupère rotX/Y/Z
+// Canvas + rotations
 const canvas = ref<HTMLCanvasElement | null>(null)
 const { rotX, rotY, rotZ, timerColor, timerText } = useModule2(canvas)
 
-// 2) bornes ±2π
+// Convert rotZ to degrees for CSS
+const rotZDeg = computed(() => (rotZ.value * 180) / Math.PI)
+
+// Percentage normalization (±2π → 0–1)
 const inf = -2 * Math.PI
 const sup = 2 * Math.PI
 const span = sup - inf
 const norm = (v: number) => (v - inf) / span
+const pctX = computed(() => norm(rotX.value))
+const pctY = computed(() => norm(rotY.value))
 
-const percentageX = computed(() => norm(rotX.value))
-const percentageY = computed(() => norm(rotY.value))
-const percentageRotate = computed(() => norm(rotZ.value))
-
-// 3) refs vers les parents et sélecteurs
+// Refs to DOM
 const rectXBtn = ref<HTMLElement | null>(null)
 const rectXSel = ref<HTMLElement | null>(null)
 const rectYBtn = ref<HTMLElement | null>(null)
 const rectYSel = ref<HTMLElement | null>(null)
 
-// 4) dims mesurées
+// Measured dims
 const parentWidthX = ref(0)
 const selectorWidth = ref(0)
 const parentHeightY = ref(0)
 const selectorHeight = ref(0)
 
-onMounted(() => {
-  // X
-  if (rectXBtn.value) parentWidthX.value = rectXBtn.value.clientWidth
-  if (rectXSel.value) selectorWidth.value = rectXSel.value.offsetWidth
-  // Y
-  if (rectYBtn.value) parentHeightY.value = rectYBtn.value.clientHeight
-  if (rectYSel.value) selectorHeight.value = rectYSel.value.offsetHeight
-})
-
-// 5) calculs px
+// Compute translations (%)
 const translateX = computed(() =>
-  percentageX.value * (parentWidthX.value - selectorWidth.value)
+  pctX.value * (parentWidthX.value - selectorWidth.value)
 )
 const translateY = computed(() =>
-  percentageY.value * (parentHeightY.value - selectorHeight.value)
+  pctY.value * (parentHeightY.value - selectorHeight.value)
 )
+
+let roX: ReturnType<typeof useResizeObserver>
+let roY: ReturnType<typeof useResizeObserver>
+
+onMounted(() => {
+  // mesure initiale + création des observers
+  const measure = () => {
+    if (rectXBtn.value) parentWidthX.value = rectXBtn.value.clientWidth
+    if (rectXSel.value) selectorWidth.value = rectXSel.value.offsetWidth
+    if (rectYBtn.value) parentHeightY.value = rectYBtn.value.clientHeight
+    if (rectYSel.value) selectorHeight.value = rectYSel.value.offsetHeight
+  }
+
+  measure()
+
+  if (rectXBtn.value) {
+    roX = useResizeObserver(rectXBtn, measure)
+  }
+  if (rectYBtn.value) {
+    roY = useResizeObserver(rectYBtn, measure)
+  }
+})
+
+onBeforeUnmount(() => {
+  roX?.stop()
+  roY?.stop()
+})
 </script>
 
 <style scoped src="~/assets/modules/2/style.css"></style>
