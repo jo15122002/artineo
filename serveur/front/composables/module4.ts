@@ -88,8 +88,12 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
   const maskPaths = Object.values(maskModules)
   if (maskPaths.length === 0) {
     console.error('[Module4] Aucun mask trouvé via glob')
-  } 
+  }
   const maskPath = maskPaths[0]!
+
+  // offscreen pour le mask
+  const maskCanvas = document.createElement('canvas')
+  let maskCtx: CanvasRenderingContext2D | null = null
 
   const maskImage = new Image()
   maskImage.src = maskPath
@@ -111,10 +115,11 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
   // 5️⃣ draw a stroke using its fixed brush
   const scale = 3
   function drawStroke(ctx: CanvasRenderingContext2D, s: Stroke) {
-    const img = brushImages[s.tool_id]
-    if (!img || !img.complete) return
     const px = s.x * scale
     const py = s.y * scale
+    const img = brushImages[s.tool_id]
+    if (!img || !img.complete) return
+
     const size = (s.size ?? 5) * scale
     const ang = s.angle ?? 0
 
@@ -170,6 +175,19 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
   }) {
     if (!buf) return
 
+    const canvas = canvasRef.value!
+    const ctx = canvas.getContext('2d')!
+
+    // initialise / recalcule la taille du maskCanvas
+    if (!maskCtx
+      || maskCanvas.width !== canvas.width
+      || maskCanvas.height !== canvas.height
+    ) {
+      maskCanvas.width = canvas.width
+      maskCanvas.height = canvas.height
+      maskCtx = maskCanvas.getContext('2d')
+    }
+
     // 7.1) button event
     if (typeof buf.button === 'number') {
       currentButton = buf.button
@@ -215,45 +233,116 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
     }
 
     // 7.6) render everything
-    const canvas = canvasRef.value
-    if (!canvas) return
-    const ctx = canvas.getContext('2d')!
+    // const canvas = canvasRef.value
+    // if (!canvas) return
+    // const ctx = canvas.getContext('2d')!
     // clear
+    // ctx.clearRect(0, 0, canvas.width, canvas.height)
+    // // optional background fill
+    // ctx.fillStyle = '#fff'
+    // ctx.fillRect(0, 0, canvas.width, canvas.height)
+
+    // if (
+    //   maskImage.complete &&
+    //   maskImage.naturalWidth > 0 &&
+    //   strokes.value.length > 0
+    // ) {
+    //   // ctx.save()
+    //   // // 1️⃣ on dessine la mask image plein canvas
+    //   // ctx.drawImage(maskImage, 0, 0, canvas.width, canvas.height)
+    //   // // 2️⃣ on ne conserve que ce qui recouvre nos brushes
+    //   // ctx.globalCompositeOperation = 'destination-in'
+    //   // // 3️⃣ on dessine chaque brush pour tailler la mask
+    //   // strokes.value.forEach(s => {
+    //   //   console.log('drawStroke', s);
+    //   //   drawStroke(ctx, s);
+    //   // });
+    //   // ctx.fillRect(100, 100, 100, 100);
+    //   // // 4️⃣ on rétablit l'état normal (source-over)
+    //   // ctx.restore()
+    //   ctx.save();
+    //   ctx.drawImage(maskImage, 0, 0, canvas.width, canvas.height);
+    //   ctx.globalCompositeOperation = 'destination-in';
+    //   strokes.value.forEach(s => {
+    //     drawStroke(ctx, s);
+    //   });
+    //   ctx.restore();
+    // }
+
+    // // 7.6.1) draw backgrounds **plein écran**, aligné en bas
+    // backgrounds.value.forEach(b => drawBackground(ctx, b))
+
+    // // 7.6.2) draw strokes & objects
+    // // strokes.value.forEach(s => drawStroke(ctx, s))
+    // objects.value.forEach(o => drawObject(ctx, o))
+
+    // // 7.6.3) finally overlay color rectangle
+    // const overlay = buttonColors[currentButton] || buttonColors[1]
+    // ctx.fillStyle = overlay
+    // ctx.fillRect(0, 0, canvas.width, canvas.height)
+
+    // 1️⃣ clear + fond blanc
     ctx.clearRect(0, 0, canvas.width, canvas.height)
-    // optional background fill
     ctx.fillStyle = '#fff'
     ctx.fillRect(0, 0, canvas.width, canvas.height)
 
-    if (maskImage.complete && maskImage.naturalWidth > 0) {
-      ctx.save()
-      ctx.beginPath()
+    // 3️⃣ mask découpé aux brushes, sur offscreen
+    if (maskCtx && maskImage.complete && strokes.value.length > 0) {
+      // a) clear
+      maskCtx.clearRect(0, 0, maskCanvas.width, maskCanvas.height)
+
+      // b) draw all your brushes in source-over
+      maskCtx.globalCompositeOperation = 'source-over'
+      const mCtx = maskCtx!
       strokes.value.forEach(s => {
-        const px   = s.x * scale
-        const py   = s.y * scale
+        const img = brushImages[s.tool_id]
+        if (!img || !img.complete) return
+        const px = s.x * scale
+        const py = s.y * scale
         const size = (s.size ?? 5) * scale
-        ctx.moveTo(px + size/2, py)
-        ctx.arc(px, py, size/2, 0, Math.PI * 2)
+        const ang = s.angle ?? 0
+
+        mCtx.save()
+        mCtx.translate(px, py)
+        mCtx.rotate(ang)
+        mCtx.drawImage(img, -size / 2, -size / 2, size, size)
+        mCtx.restore()
       })
-      ctx.clip()
-      ctx.drawImage(maskImage, 0, 0, canvas.width, canvas.height)
-      ctx.restore()
+
+      // c) passe en source-in et dessine le mask image
+      maskCtx.globalCompositeOperation = 'source-in'
+      maskCtx.drawImage(maskImage, 0, 0, maskCanvas.width, maskCanvas.height)
+
+      // d) reviens en source-over
+      maskCtx.globalCompositeOperation = 'source-over'
+
+      // e) colle le résultat sur le canvas principal
+      ctx.drawImage(maskCanvas, 0, 0)
     }
 
-    // 7.6.1) draw backgrounds **plein écran**, aligné en bas
+
+    console.log(
+      '[Module4] maskCanvas size', maskCanvas.width, maskCanvas.height,
+      'strokes:', strokes.value.length,
+      'maskCtx?', !!maskCtx,
+      'maskImage.complete?', maskImage.complete
+    )
+
+
+    // 2️⃣ backgrounds
     backgrounds.value.forEach(b => drawBackground(ctx, b))
 
-    // 7.6.2) draw strokes & objects
-    // strokes.value.forEach(s => drawStroke(ctx, s))
+    // 4️⃣ objets
     objects.value.forEach(o => drawObject(ctx, o))
 
-    // 7.6.3) finally overlay color rectangle
+    // 5️⃣ overlay couleur
     const overlay = buttonColors[currentButton] || buttonColors[1]
     ctx.fillStyle = overlay
     ctx.fillRect(0, 0, canvas.width, canvas.height)
   }
 
 
-    // ─────────────── 9️⃣ fonction d’ajout d’image ───────────────
+  // ─────────────── 9️⃣ fonction d’ajout d’image ───────────────
   /**
    * Ajoute sur le canvas, à la position (cx, cy), l’image `shape`.
    * @param shape  Nom de l’image (clé dans objectImages)
@@ -307,14 +396,16 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
     drawBuffer({});
   }
 
-  const keyBindings: Record<string, 
-    { shape: string | undefined; 
-      cx: number | undefined; 
-      cy: number | undefined, 
-      w: number | undefined, 
-      h: number | undefined, 
-      button: number  | undefined }
-    > = {
+  const keyBindings: Record<string,
+    {
+      shape: string | undefined;
+      cx: number | undefined;
+      cy: number | undefined,
+      w: number | undefined,
+      h: number | undefined,
+      button: number | undefined
+    }
+  > = {
     a: {
       shape: 'landscape_fields', cx: 50, cy: 80,
       w: undefined,
@@ -379,7 +470,7 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
       pollingIntervalKinect = setInterval(() => {
         artClientKinect.getBuffer()
           .then((buf: any) => drawBuffer(buf))
-          .catch(() => {})
+          .catch(() => { })
       }, 100)
     }
 
@@ -399,7 +490,7 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
       pollingIntervalButton = setInterval(() => {
         artClientButton.getBuffer()
           .then((buf: any) => drawBuffer(buf))
-          .catch(() => {})
+          .catch(() => { })
       }, 100)
     }
 
