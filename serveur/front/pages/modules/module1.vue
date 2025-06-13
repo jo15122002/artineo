@@ -1,8 +1,22 @@
 <template>
   <div class="module1-container">
-    <img v-if="backgroundPath" :src="`${apiUrl}/getAsset?module=1&path=${backgroundPath}`" class="fullscreen-img"
-      :style="{ filter: filterStyle }" />
+    <div class="painting-frame-with-shadow">
+      <div class="painting-frame">
+        <div class="painting-container">
+          <img v-if="backgroundPath" :src="`${apiUrl}/getAsset?module=1&path=${backgroundPath}`" class="fullscreen-img"
+            :style="{ filter: filterStyle }" />
+        </div>
+      </div>
+    </div>
 
+    <div class="timer" :style="{ '--timer-color': timerColor }">
+      <div class="timer-splat"></div>
+      <span class="timer-text">{{ timerText }}</span>
+    </div>
+
+    <div class="arty">
+      <img src="~/assets/modules/1/arty.png" alt="">
+    </div>
     <!-- Zone cible (si debug=true) -->
     <div v-if="showDebug" class="debug-zone" :style="zoneStyle"></div>
 
@@ -12,14 +26,14 @@
 </template>
 
 <script setup lang="ts">
-import { useRuntimeConfig } from '#app'
+import { useRuntimeConfig } from '#app';
 import { computed, onMounted, reactive, ref } from 'vue'; // ajout de reactive
-import useModule1 from '~/composables/module1.ts'
+import useModule1 from '~/composables/module1.ts';
 
 definePageMeta({ layout: 'module' })
 
 const { public: { apiUrl } } = useRuntimeConfig()
-const { backgroundPath, filterStyle, x, y, diamPx } = useModule1()
+const { backgroundPath, filterStyle, x, y, diamPx, timerColor, timerText } = useModule1()
 
 // debug flag
 const showDebug = ref(false)
