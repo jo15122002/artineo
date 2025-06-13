@@ -7,41 +7,78 @@
         </div>
       </div>
       <div class="buttons-wrapper">
-        <div class="button rectX-button">
+
+        <!-- Bouton X -->
+        <div class="button rectX-button" ref="rectXBtn">
           <img src="~/assets/modules/2/rectX.svg" alt="Rect X Button" />
-          <div class="rect-selector" :style="{ transform: `translateX(calc(${percentageX} * 193px))` }" />
+          <div class="rect-selector" ref="rectXSel" :style="{ transform: `translateX(${translateX}px)` }" />
         </div>
-        <div class="button rectY-button">
+
+        <!-- Bouton Y -->
+        <div class="button rectY-button" ref="rectYBtn">
           <img src="~/assets/modules/2/rectY.svg" alt="Rect Y Button" />
-          <div class="rect-selector" :style="{ transform: `translateX(calc(${percentageY} * -143px))` }" />
+          <div class="rect-selector" ref="rectYSel"
+            :style="{ transform: `translateY(${translateY}px) rotate(90deg)` }" />
         </div>
+
+        <!-- Cercle inchangé… -->
         <div class="button circle-button">
           <img src="~/assets/modules/2/circle.svg" alt="Circle Button" />
           <div class="rect-selector"
             :style="{ transform: `translateY(-115px)`, rotate: `calc(${percentageRotate} * 180deg)` }" />
         </div>
+
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-// On importe uniquement la ref et le composable
-import { ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import useModule2 from '~/composables/module2'
 
-definePageMeta({ layout: 'module' })
-
-// 1) On crée la ref vers le <canvas>
+// 1) récupère rotX/Y/Z
 const canvas = ref<HTMLCanvasElement | null>(null)
+const { rotX, rotY, rotZ } = useModule2(canvas)
 
-const percentageX = ref(0.2) // Valeur entre -1 et 1 pour la position X du rectangle
-const percentageY = ref(0.2) // Valeur entre -1 et 1 pour la position Y du rectangle
-const percentageRotate = ref(0.2) // Valeur entre -1 et 1 pour la rotation du cercle
+// 2) bornes ±2π
+const inf = -2 * Math.PI
+const sup = 2 * Math.PI
+const span = sup - inf
+const norm = (v: number) => (v - inf) / span
 
-// 2) On appelle le composable :
-//    il va initialiser Three.js, charger OBJ/MTL, démarrer WS/polling, etc.
-useModule2(canvas)
+const percentageX = computed(() => norm(rotX.value))
+const percentageY = computed(() => norm(rotY.value))
+const percentageRotate = computed(() => norm(rotZ.value))
+
+// 3) refs vers les parents et sélecteurs
+const rectXBtn = ref<HTMLElement | null>(null)
+const rectXSel = ref<HTMLElement | null>(null)
+const rectYBtn = ref<HTMLElement | null>(null)
+const rectYSel = ref<HTMLElement | null>(null)
+
+// 4) dims mesurées
+const parentWidthX = ref(0)
+const selectorWidth = ref(0)
+const parentHeightY = ref(0)
+const selectorHeight = ref(0)
+
+onMounted(() => {
+  // X
+  if (rectXBtn.value) parentWidthX.value = rectXBtn.value.clientWidth
+  if (rectXSel.value) selectorWidth.value = rectXSel.value.offsetWidth
+  // Y
+  if (rectYBtn.value) parentHeightY.value = rectYBtn.value.clientHeight
+  if (rectYSel.value) selectorHeight.value = rectYSel.value.offsetHeight
+})
+
+// 5) calculs px
+const translateX = computed(() =>
+  percentageX.value * (parentWidthX.value - selectorWidth.value)
+)
+const translateY = computed(() =>
+  percentageY.value * (parentHeightY.value - selectorHeight.value)
+)
 </script>
 
 <style scoped src="~/assets/modules/2/style.css"></style>

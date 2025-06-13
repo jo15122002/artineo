@@ -90,13 +90,33 @@ canvas {
   min-width: 272px;
 }
 
-.rectX-button > .rect-selector {
-}
-
-.rectY-button > .rect-selector {
-  rotate: 90deg;
-}
-
 .circle-button > .rect-selector {
   transform-origin: center center;
+}
+
+.button .rect-selector {
+  position: absolute;
+  /* taille fixe (au cas où) */
+  width: 14px;
+  height: 70px;
+}
+
+/* Slider horizontal (X) */
+.rectX-button .rect-selector {
+  /* on part de l’extrême gauche du parent */
+  left: 0;
+  /* d’abord on décale la moitié du sélecteur, puis on ajoute la translation */
+  transform:
+    translateY(-50%)
+    translateX(calc(var(--pct) * 100%));
+}
+
+/* Slider vertical (Y) */
+.rectY-button .rect-selector {
+  /* on part du coin supérieur */
+  top: 0;
+  /* on décale la moitié du sélecteur, puis on translate verticalement */
+  transform:
+    translateX(-50%)
+    translateY(calc(var(--pct) * 100%));
 }
