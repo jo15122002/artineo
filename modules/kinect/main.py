@@ -312,7 +312,7 @@ class MainController:
                     mask = diff > self.config.stroke_intensity_thresh
                     buf = self.final_drawings[self.current_tool][:, :, ch]
                     buf[mask] = (1 - self.config.alpha) * buf[mask] + self.config.alpha * diff[mask]
-                    buf[~mask] *= (1 - 0.1)
+                    buf[~mask] *= (1 - 0.15)
                     composite = cv2.convertScaleAbs(self.final_drawings[self.current_tool])
 
                     raw = self.brush_detector.detect(composite, self.current_tool)
