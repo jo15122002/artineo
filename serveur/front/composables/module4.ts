@@ -111,24 +111,7 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
   const strokes = ref<Stroke[]>([])
   const objects = ref<ArtObject[]>([])
   const backgrounds = ref<ArtObject[]>([])
-
-  // 5️⃣ draw a stroke using its fixed brush
   const scale = 3
-  function drawStroke(ctx: CanvasRenderingContext2D, s: Stroke) {
-    const px = s.x * scale
-    const py = s.y * scale
-    const img = brushImages[s.tool_id]
-    if (!img || !img.complete) return
-
-    const size = (s.size ?? 5) * scale
-    const ang = s.angle ?? 0
-
-    ctx.save()
-    ctx.translate(px, py)
-    ctx.rotate(ang)
-    ctx.drawImage(img, -size / 2, -size / 2, size, size)
-    ctx.restore()
-  }
 
   // 6️⃣ draw an object sprite (non-background)
   function drawObject(ctx: CanvasRenderingContext2D, o: ArtObject) {
@@ -232,55 +215,6 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
       objects.value = objects.value.filter(o => !buf.removeObjects!.includes(o.id))
     }
 
-    // 7.6) render everything
-    // const canvas = canvasRef.value
-    // if (!canvas) return
-    // const ctx = canvas.getContext('2d')!
-    // clear
-    // ctx.clearRect(0, 0, canvas.width, canvas.height)
-    // // optional background fill
-    // ctx.fillStyle = '#fff'
-    // ctx.fillRect(0, 0, canvas.width, canvas.height)
-
-    // if (
-    //   maskImage.complete &&
-    //   maskImage.naturalWidth > 0 &&
-    //   strokes.value.length > 0
-    // ) {
-    //   // ctx.save()
-    //   // // 1️⃣ on dessine la mask image plein canvas
-    //   // ctx.drawImage(maskImage, 0, 0, canvas.width, canvas.height)
-    //   // // 2️⃣ on ne conserve que ce qui recouvre nos brushes
-    //   // ctx.globalCompositeOperation = 'destination-in'
-    //   // // 3️⃣ on dessine chaque brush pour tailler la mask
-    //   // strokes.value.forEach(s => {
-    //   //   console.log('drawStroke', s);
-    //   //   drawStroke(ctx, s);
-    //   // });
-    //   // ctx.fillRect(100, 100, 100, 100);
-    //   // // 4️⃣ on rétablit l'état normal (source-over)
-    //   // ctx.restore()
-    //   ctx.save();
-    //   ctx.drawImage(maskImage, 0, 0, canvas.width, canvas.height);
-    //   ctx.globalCompositeOperation = 'destination-in';
-    //   strokes.value.forEach(s => {
-    //     drawStroke(ctx, s);
-    //   });
-    //   ctx.restore();
-    // }
-
-    // // 7.6.1) draw backgrounds **plein écran**, aligné en bas
-    // backgrounds.value.forEach(b => drawBackground(ctx, b))
-
-    // // 7.6.2) draw strokes & objects
-    // // strokes.value.forEach(s => drawStroke(ctx, s))
-    // objects.value.forEach(o => drawObject(ctx, o))
-
-    // // 7.6.3) finally overlay color rectangle
-    // const overlay = buttonColors[currentButton] || buttonColors[1]
-    // ctx.fillStyle = overlay
-    // ctx.fillRect(0, 0, canvas.width, canvas.height)
-
     // 1️⃣ clear + fond blanc
     ctx.clearRect(0, 0, canvas.width, canvas.height)
     ctx.fillStyle = '#fff'
@@ -299,7 +233,7 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
         if (!img || !img.complete) return
         const px = s.x * scale
         const py = s.y * scale
-        const size = (s.size ?? 5) * scale
+        const size = (s.size ?? 5) * scale * 1.5
         const ang = s.angle ?? 0
 
         mCtx.save()
@@ -319,15 +253,6 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
       // e) colle le résultat sur le canvas principal
       ctx.drawImage(maskCanvas, 0, 0)
     }
-
-
-    console.log(
-      '[Module4] maskCanvas size', maskCanvas.width, maskCanvas.height,
-      'strokes:', strokes.value.length,
-      'maskCtx?', !!maskCtx,
-      'maskImage.complete?', maskImage.complete
-    )
-
 
     // 2️⃣ backgrounds
     backgrounds.value.forEach(b => drawBackground(ctx, b))
