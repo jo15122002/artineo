@@ -9,20 +9,16 @@
       <div class="buttons-wrapper">
         <div class="button rectX-button">
           <img src="~/assets/modules/2/rectX.svg" alt="Rect X Button" />
-          <div class="rect-selector"
-               :style="{ transform: `translateX(calc(${percentageX} * 193px))` }"
-          />
+          <div class="rect-selector" :style="{ transform: `translateX(calc(${percentageX} * 193px))` }" />
         </div>
         <div class="button rectY-button">
           <img src="~/assets/modules/2/rectY.svg" alt="Rect Y Button" />
-          <div class="rect-selector"
-                :style="{ transform: `translateX(calc(${percentageY} * -143px))` }"
-          />
+          <div class="rect-selector" :style="{ transform: `translateX(calc(${percentageY} * -143px))` }" />
         </div>
         <div class="button circle-button">
           <img src="~/assets/modules/2/circle.svg" alt="Circle Button" />
           <div class="rect-selector"
-          :style="{ transform: `translateY(-115px)`, rotate: `calc(${percentageRotate} * 180deg)` }"/>
+            :style="{ transform: `translateY(-115px)`, rotate: `calc(${percentageRotate} * 180deg)` }" />
         </div>
       </div>
     </div>
