@@ -1,4 +1,8 @@
 /* assets/modules/2/style.css */
+body {
+  overflow: hidden;
+}
+
 .module2-container {
   height: 100vh;
   margin: 0;

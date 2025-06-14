@@ -1,5 +1,5 @@
 <template>
-  <div class="module2-container scrollable">
+  <div class="module2-container">
     <div class="frame-and-buttons-wrapper">
       <div class="frame-shadow">
         <div class="frame">
