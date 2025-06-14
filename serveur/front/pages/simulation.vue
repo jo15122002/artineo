@@ -90,17 +90,39 @@
 
       <!-- MODULE 4 : Sandbox avec palette d'objets -->
       <div v-else class="controls module4-controls">
+        <div class="remove-buttons">
+          <button @click="removeAll()">Enlever tout</button>
+          <button @click="removeObjects()">Enlever objets</button>
+          <button @click="removeBackground()">Enlever fond</button>
+        </div>
         <div class="module4-container">
-          <div class="sandbox" @click="onSandboxClick">
-            <img v-for="(obj, i) in placedObjects" :key="i" :src="obj.src" class="placed-object"
-              :style="{ left: obj.x + 'px', top: obj.y + 'px' }" />
+          <!-- Palette Backgrounds -->
+          <div class="palette backgrounds-palette">
+            <h3>Backgrounds</h3>
+            <button v-for="bg in backgrounds" :key="bg.src" @click="setBackground(bg)"
+              :class="{ selected: currentBackground?.src === bg.src }">
+              <img :src="bg.src" class="palette-icon" />
+              {{ bg.name }}
+            </button>
           </div>
-          <div class="object-palette">
-            <button v-for="obj in objects" :key="obj.src" @click="selectObject(obj)"
+
+          <!-- Palette Objets -->
+          <div class="palette objects-palette">
+            <h3>Objets</h3>
+            <button v-for="obj in objectItems" :key="obj.src" @click="selectObject(obj)"
               :class="{ selected: selectedObject === obj.src }">
-              <img :src="obj.src" alt="" class="object-icon" />
+              <img :src="obj.src" class="palette-icon" />
               {{ obj.name }}
             </button>
+          </div>
+
+          <!-- Sandbox -->
+          <div class="sandbox" @click="onSandboxClick">
+            <!-- Fond -->
+            <img v-if="currentBackground" :src="currentBackground.src" class="background-image" />
+            <!-- Objets placés -->
+            <img v-for="obj in placedObjects" :key="obj.id" :src="obj.src" class="placed-object"
+              :style="{ left: obj.x + 'px', top: obj.y + 'px' }" />
           </div>
         </div>
       </div>
@@ -189,21 +211,81 @@ const objectModules = import.meta.glob<string>(
   '~/assets/modules/4/images/objects/*.png',
   { eager: true, as: 'url' }
 )
-const objects = Object.entries(objectModules).map(([path, url]) => ({
+const allItems = Object.entries(objectModules).map(([path, url]) => ({
   name: path.split('/').pop()!.replace('.png', ''),
-  src: url as string
+  src: url
 }))
+// Sépare les backgrounds et les autres objets
+const backgrounds = computed(() =>
+  allItems.filter(i => i.name.startsWith('landscape_'))
+)
+const objectItems = computed(() =>
+  allItems.filter(i => !i.name.startsWith('landscape_'))
+)
+
+// État
+const currentBackground = ref<{ src: string; id: string } | null>(null)
 const selectedObject = ref<string | null>(null)
-const placedObjects = reactive<{ src: string; x: number; y: number }[]>([])
-function selectObject(obj: { name: string; src: string }) {
+const placedObjects = reactive<Array<{ src: string; x: number; y: number; id: string }>>([])
+
+// Buffers réfléchis
+const newBackgroundsBuf = reactive<{ src: string; id: string }[]>([])
+const removeBackgroundsBuf = reactive<string[]>([])
+const newObjectsBuf = reactive<{ src: string; x: number; y: number; id: string }[]>([])
+const removeObjectsBuf = reactive<string[]>([])
+
+// --- Fonctions de sélection / placement ---
+function setBackground(bg: { src: string }) {
+  // si un fond était déjà posé, on planifie sa suppression
+  if (currentBackground.value) {
+    removeBackgroundsBuf.push(currentBackground.value.id)
+    // et on nettoie l’entrée pending au cas où
+    const idx = newBackgroundsBuf.findIndex(b => b.id === currentBackground.value!.id)
+    if (idx >= 0) newBackgroundsBuf.splice(idx, 1)
+  }
+  // nouveau fond
+  const id = `background-${Date.now()}`
+  currentBackground.value = { src: bg.src, id }
+  newBackgroundsBuf.splice(0) // on ne veut qu’un seul fond pending à la fois
+  newBackgroundsBuf.push({ src: bg.src, id })
+}
+
+// Choix d'un objet à placer
+function selectObject(obj: { src: string }) {
   selectedObject.value = obj.src
 }
+
 function onSandboxClick(evt: MouseEvent) {
   if (!selectedObject.value) return
   const rect = (evt.currentTarget as HTMLElement).getBoundingClientRect()
   const x = Math.round(evt.clientX - rect.left)
   const y = Math.round(evt.clientY - rect.top)
-  placedObjects.push({ src: selectedObject.value, x, y })
+  const shape = selectedObject.value.split('/').pop()!.replace('.png', '')
+  const id = `${shape}-${placedObjects.length}-${Date.now()}`
+  placedObjects.push({ src: selectedObject.value, x, y, id })
+}
+
+function removeBackground() {
+  if (!currentBackground.value) return
+  removeBackgroundsBuf.push(currentBackground.value.id)
+  // on retire le fond de l’affichage
+  currentBackground.value = null
+  // on enlève l’éventuel newBuffer
+  const idx = newBackgroundsBuf.findIndex(b => b.id === currentBackground.value?.id)
+  if (idx >= 0) newBackgroundsBuf.splice(idx, 1)
+}
+
+function removeObjects() {
+  // planifier la suppression
+  placedObjects.forEach(o => removeObjectsBuf.push(o.id))
+  // vider l’affichage et le nouveau buffer
+  placedObjects.splice(0)
+  newObjectsBuf.splice(0)
+}
+
+function removeAll() {
+  removeBackground()
+  removeObjects()
 }
 
 // Streaming toggles & timers
@@ -230,58 +312,48 @@ function sendById(id: number) {
 
 // MODULE 4 : envoyez les objets placés structurés pour use4kinect
 function sendModule4() {
-  const scale = 3; // même coefficient que pour le rendu canvas
+  const scale = 3
 
-  // Backgrounds : placedObjects but name contains "landscape", same fields as objects otherwise
-  const newBackgrounds = placedObjects.filter(o => o.src.includes('landscape')).map((o, i) => {
-    const shape = o.src.split('/').pop()!.replace(/\.png$/, '');
-    placedObjects.splice(placedObjects.indexOf(o), 1); // Remove from placedObjects
-    return {
-      id: `background-${Date.now()}`,
-      type: 'background',
-      shape,
-      cx: o.x,
-      cy: o.y,
-      w: 320 / scale,
-      h: 240 / scale,
-      angle: 0.0,
-      scale: 1.0
-    }
-  });
-
-
-  const newObjects = placedObjects.map((o, i) => {
-    const shape = o.src.split('/').pop()!.replace(/\.png$/, '');
-    return {
-      id: `${shape}-${i}-${Date.now()}`,
-      type: 'object',
-      shape,
-      cx: o.x,
-      cy: o.y,
-      w: 50,
-      h: 50,
-      angle: 0.0,
-      scale: 1.0
-    };
-  });
-
+  // on construit le payload à partir des buffers
+  const newBackgrounds = newBackgroundsBuf.map(b => ({
+    id: b.id,
+    type: 'background',
+    shape: b.src.split('/').pop()!.replace('.png', ''),
+    cx: 160, cy: 120,
+    w: 320 / scale, h: 240 / scale,
+    angle: 0.0,
+    scale: 1.0
+  }))
+  const newObjects = placedObjects.map(o => ({
+    id: o.id,
+    type: 'object',
+    shape: o.src.split('/').pop()!.replace('.png', ''),
+    cx: o.x,
+    cy: o.y,
+    w: 50,
+    h: 50,
+    angle: 0.0,
+    scale: 1.0
+  }));
   const payload = {
-      newStrokes: [],
-      removeStrokes: [],
-      newObjects,
-      removeObjects: [],
-      newBackgrounds,
-      removeBackgrounds: []
-  };
+    newStrokes: [],
+    removeStrokes: [],
+    newObjects,
+    removeObjects: [...removeObjectsBuf],
+    newBackgrounds,
+    removeBackgrounds: [...removeBackgroundsBuf]
+  }
 
-  // Envoi via Artineo
-  clients[4].setBuffer(payload)
+  clients[4]
+    .setBuffer(payload)
     .then(() => {
-      console.log('Module 4 buffer envoyé avec succès', payload);
+      // on vide les buffers qui ont été envoyés
+      newBackgroundsBuf.splice(0)
+      removeBackgroundsBuf.splice(0)
+      newObjectsBuf.splice(0)
+      removeObjectsBuf.splice(0)
     })
-    .catch(err => {
-      console.error('Erreur lors de l’envoi du buffer pour le module 4 :', err);
-    });
+    .catch(err => console.error('Module4 send error:', err))
 }
 
 // Fonctions Modules 1 à 3
@@ -542,6 +614,67 @@ onUnmounted(() => {
   margin: 0;
 }
 
+/* MODULE 4 : Sandbox & Palette */
+.background-image {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 0;
+}
+
+.placed-object {
+  position: absolute;
+  z-index: 1;
+}
+
+.palette {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.palette button.selected {
+  outline: 2px solid #42b983;
+}
+
+.remove-buttons {
+  margin-bottom: 1rem;
+}
+
+.remove-buttons button {
+  margin-right: 0.5rem;
+}
+
+.background-image {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 0;
+}
+
+.placed-object {
+  position: absolute;
+  z-index: 1;
+}
+
+.palette {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.palette button.selected {
+  outline: 2px solid #42b983;
+}
+
+
+
 /* SWITCH TOGGLE */
 .switch {
   display: inline-flex;
@@ -638,7 +771,8 @@ onUnmounted(() => {
   border-color: #4caf50;
 }
 
-.object-icon {
+.object-icon,
+.palette-icon {
   width: 40px;
   height: 40px;
   object-fit: contain;
