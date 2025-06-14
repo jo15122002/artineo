@@ -14,29 +14,48 @@
     </div>
 
     <div class="arty">
-      <img src="~/assets/modules/4/images/arty.png" alt="">
+      <!-- image fixe -->
+      <img src="~/assets/modules/4/images/arty.png" alt="Arty" class="arty-img" />
+
+      <!-- image dynamique -->
+      <img :src="stepSrc" alt="Indication step" class="indication-step" />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import use4kinect from '~/composables/module4.ts'
 
 definePageMeta({ layout: 'module' })
 
-// 1️⃣ Réf du canvas
+// 🟢 Étape courante
+const step = ref(1)
+
+// 📦 Import de toutes les étapes en “eager” (chargées au build) et renvoi d'URL
+const images = import.meta.glob(
+  '~/assets/modules/4/images/steps/*.png',
+  { eager: true, as: 'url' }
+) as Record<string, string>
+
+// 🔄 Computed pour retourner l'URL correspondant à la step courante
+const stepSrc = computed(() => {
+  const entry = Object.entries(images)
+    .find(([path]) => path.endsWith(`step${step.value}.png`))
+  return entry ? entry[1] : ''
+})
+
+// Réf du canvas pour le composable
 const canvas = ref<HTMLCanvasElement | null>(null)
 
-// 2️⃣ Appel du composable AU TOP-LEVEL
+// Appel au composable Kinect
 const { strokes, objects, timerColor, timerText } = use4kinect(canvas)
 
-// 3️⃣ Initialisation de la taille après montage
+// Initialisation de la taille du canvas au montage
 onMounted(() => {
-  // ROI SIZE
   const ROISz = { w: 305, h: 200, scale: 3 }
   const c = canvas.value!
-  c.width  = ROISz.w * ROISz.scale
+  c.width = ROISz.w * ROISz.scale
   c.height = ROISz.h * ROISz.scale
 })
 </script>
