@@ -53,7 +53,7 @@ import useModule2 from '~/composables/module2'
 const step = ref(1)
 
 const images = import.meta.glob(
-  '~/assets/modules/2/steps/*.png',
+  '~/assets/modules/3/steps/*.png',
   { eager: true, as: 'url' }
 ) as Record<string, string>
 
