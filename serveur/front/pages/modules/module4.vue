@@ -49,7 +49,7 @@ const stepSrc = computed(() => {
 const canvas = ref<HTMLCanvasElement | null>(null)
 
 // Appel au composable Kinect
-const { strokes, objects, timerColor, timerText, timerSeconds, startTimer } = use4kinect(canvas)
+const { strokes, objects, timerColor, timerText, timerSeconds, startTimer } = use4kinect(canvas, step)
 
 // Calcul dynamique du nombre total d’étapes  
 const maxStep = Object.keys(images)
