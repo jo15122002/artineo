@@ -97,6 +97,14 @@
         </div>
         <div class="module4-container">
           <div>
+            <div class="button-selector">
+              <span>Overlay Button :</span>
+              <button v-for="id in Object.keys(buttonColors)" :key="id" :class="{ active: currentButton === +id }"
+                @click="currentButton = +id">
+                Button {{ id }}
+              </button>
+            </div>
+
             <!-- Palette Backgrounds -->
             <div class="palette backgrounds-palette">
               <h3>Backgrounds</h3>
@@ -130,6 +138,9 @@
               width: (imageSizes[obj.src]?.width || 50) / scale + 'px',
               height: (imageSizes[obj.src]?.height || 50) / scale + 'px'
             }" />
+
+            <div class="sandbox-overlay" :style="{ backgroundColor: buttonColors[currentButton] }"></div>
+
 
             <img v-if="dragPreview" :src="dragPreview.src" class="drag-preview" :style="{
               left: dragPreview.x + 'px',
@@ -253,6 +264,13 @@ const newBackgroundsBuf = reactive<{ src: string; id: string }[]>([])
 const removeBackgroundsBuf = reactive<string[]>([])
 const newObjectsBuf = reactive<{ src: string; x: number; y: number; id: string }[]>([])
 const removeObjectsBuf = reactive<string[]>([])
+
+// overlay “bouton”
+const buttonColors: Record<number, string> = {
+  1: 'rgba(83, 160, 236, 0.2)',
+  2: 'rgba(252, 191, 0, 0.2)'
+}
+const currentButton = ref<number>(1)
 
 function getScaledSize(src: string) {
   const size = imageSizes[src] || { width: 50, height: 50 }
@@ -403,13 +421,13 @@ function sendModule4() {
     type: 'background',
     shape: b.src.split('/').pop()!.replace('.png', ''),
     cx: 160, cy: 120,
-    w: 320 / scale, h: 240 / scale,
+    w: 305 / scale, h: 200 / scale,
     angle: 0.0,
     scale: 1.0
   }))
   const newObjects = placedObjects.map(o => {
     const size = imageSizes[o.src] || { width: 50, height: 50 }
-    const w = size.width  / scale
+    const w = size.width / scale
     const h = size.height / scale
     return {
       id: o.id,
@@ -430,7 +448,8 @@ function sendModule4() {
     newObjects,
     removeObjects: [...removeObjectsBuf],
     newBackgrounds,
-    removeBackgrounds: [...removeBackgroundsBuf]
+    removeBackgrounds: [...removeBackgroundsBuf],
+    button: currentButton.value
   }
 
   clients[4]
@@ -726,11 +745,6 @@ onUnmounted(() => {
   z-index: 0;
 }
 
-.placed-object {
-  position: absolute;
-  z-index: 1;
-}
-
 .palette {
   display: flex;
   flex-wrap: wrap;
@@ -747,54 +761,6 @@ onUnmounted(() => {
 
 .remove-buttons button {
   margin-right: 0.5rem;
-}
-
-.background-image {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  z-index: 0;
-}
-
-.placed-object {
-  position: absolute;
-  z-index: 1;
-}
-
-.palette {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-
-.palette button.selected {
-  outline: 2px solid #42b983;
-}
-
-.sandbox {
-  position: relative;
-  width: 305px;
-  height: 200px;
-  border: 1px solid #ccc;
-  overflow: hidden;
-}
-
-.background-image {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  z-index: 0;
-}
-
-.placed-object {
-  position: absolute;
-  z-index: 1;
 }
 
 .drag-preview {
@@ -823,8 +789,29 @@ onUnmounted(() => {
   pointer-events: none;
 }
 
-.palette .draggable-item img {
+.button-selector {
+  margin-bottom: 0.5rem;
+}
+
+.button-selector button {
+  margin-right: 0.5rem;
+  padding: 0.3em 0.6em;
+}
+
+.button-selector button.active {
+  background: #42b983;
+  color: white;
+}
+
+/* overlay au-dessus du fond et sous les objets */
+.sandbox-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
   pointer-events: none;
+  z-index: 1;
 }
 
 /* SWITCH TOGGLE */
@@ -891,8 +878,8 @@ onUnmounted(() => {
 
 .sandbox {
   position: relative;
-  width: 320px;
-  height: 240px;
+  width: 305px;
+  height: 200px;
   background: #f0f0f0;
   border: 1px solid #333;
   cursor: pointer;
@@ -900,6 +887,7 @@ onUnmounted(() => {
 
 .placed-object {
   position: absolute;
+  z-index: 3;
   width: 50px;
   height: 50px;
   pointer-events: none;
