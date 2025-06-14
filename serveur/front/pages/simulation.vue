@@ -95,11 +95,68 @@
         </label>
       </div>
 
-      <!-- MODULE 4 -->
+      <!-- MODULE 4 : Sandbox avec palette d'objets -->
       <div v-else class="controls module4-controls">
-        <label>Payload JSON :</label>
-        <textarea v-model="payloads[mod]" rows="4" placeholder='{"foo":"bar"}'>
-        </textarea>
+        <div class="remove-buttons">
+          <button @click="removeAll()">Enlever tout</button>
+          <button @click="removeObjects()">Enlever objets</button>
+          <button @click="removeBackground()">Enlever fond</button>
+        </div>
+        <div class="module4-container">
+          <div>
+            <div class="button-selector">
+              <span>Overlay Button :</span>
+              <button v-for="id in Object.keys(buttonColors)" :key="id" :class="{ active: currentButton === +id }"
+                @click="currentButton = +id">
+                Button {{ id }}
+              </button>
+            </div>
+
+            <!-- Palette Backgrounds -->
+            <div class="palette backgrounds-palette">
+              <h3>Backgrounds</h3>
+              <button v-for="bg in backgrounds" :key="bg.src" @click="setBackground(bg)"
+                :class="{ selected: currentBackground?.src === bg.src }">
+                <img :src="bg.src" class="palette-icon" />
+                {{ bg.name }}
+              </button>
+            </div>
+
+            <!-- Palette Objets -->
+            <div class="palette objects-palette">
+              <h3>Objets</h3>
+              <button v-for="obj in objectItems" :key="obj.src" class="draggable-item" draggable="true"
+                @dragstart="onDragStart(obj, $event)" @dragend="onDragEnd">
+                <img :src="obj.src" class="palette-icon" draggable="false" alt="" />
+                {{ obj.name }}
+              </button>
+            </div>
+          </div>
+
+          <!-- Sandbox -->
+          <div class="sandbox" @dragover.prevent="onSandboxDragOver" @dragleave="onSandboxDragLeave"
+            @drop.prevent="onSandboxDrop">
+            <!-- Background permanent -->
+            <img v-if="currentBackground" :src="currentBackground.src" class="background-image" />
+
+            <img v-for="obj in placedObjects" :key="obj.id" :src="obj.src" class="placed-object" :style="{
+              left: obj.x + 'px',
+              top: obj.y + 'px',
+              width: (imageSizes[obj.src]?.width || 50) / scale + 'px',
+              height: (imageSizes[obj.src]?.height || 50) / scale + 'px'
+            }" />
+
+            <div class="sandbox-overlay" :style="{ backgroundColor: buttonColors[currentButton] }"></div>
+
+
+            <img v-if="dragPreview" :src="dragPreview.src" class="drag-preview" :style="{
+              left: dragPreview.x + 'px',
+              top: dragPreview.y + 'px',
+              width: getScaledSize(dragPreview.src).width + 'px',
+              height: getScaledSize(dragPreview.src).height + 'px'
+            }" />
+          </div>
+        </div>
       </div>
 
       <!-- Toggle Envoi continu -->
@@ -129,7 +186,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, reactive, watch } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, watch, ref } from 'vue'
 import { useArtineo } from '~/composables/useArtineo'
 
 const moduleIds = [1, 2, 3, 4]
@@ -176,6 +233,165 @@ const module3Config = reactive<{
   assignments: { lieux: {}, couleurs: {}, emotions: {} }
 })
 
+// MODULE 4 – import des PNG SSR-compatible
+const objectModules = import.meta.glob<string>(
+  '~/assets/modules/4/images/objects/*.png',
+  { eager: true, as: 'url' }
+)
+const allItems = Object.entries(objectModules).map(([path, url]) => ({
+  name: path.split('/').pop()!.replace('.png', ''),
+  src: url
+}))
+// Sépare les backgrounds et les autres objets
+const backgrounds = computed(() =>
+  allItems.filter(i => i.name.startsWith('landscape_'))
+)
+const objectItems = computed(() =>
+  allItems.filter(i => !i.name.startsWith('landscape_'))
+)
+
+const imageSizes = reactive<Record<string, { width: number; height: number }>>({})
+
+// État
+const currentBackground = ref<{ src: string; id: string } | null>(null)
+const selectedObject = ref<string | null>(null)
+const placedObjects = reactive<Array<{ src: string; x: number; y: number; id: string }>>([])
+
+const draggingSrc = ref<string | null>(null)
+const dragPreview = ref<{ src: string; x: number; y: number } | null>(null)
+const scale = 16 // échelle pour le module 4
+
+// Buffers réfléchis
+const newBackgroundsBuf = reactive<{ src: string; id: string }[]>([])
+const removeBackgroundsBuf = reactive<string[]>([])
+const newObjectsBuf = reactive<{ src: string; x: number; y: number; id: string }[]>([])
+const removeObjectsBuf = reactive<string[]>([])
+
+// overlay “bouton”
+const buttonColors: Record<number, string> = {
+  1: 'rgba(83, 160, 236, 0.2)',
+  2: 'rgba(252, 191, 0, 0.2)'
+}
+const currentButton = ref<number>(1)
+
+function getScaledSize(src: string) {
+  const size = imageSizes[src] || { width: 50, height: 50 }
+  return {
+    width: size.width / scale,
+    height: size.height / scale
+  }
+}
+
+// --- Fonctions de sélection / placement ---
+function setBackground(bg: { src: string }) {
+  // si un fond était déjà posé, on planifie sa suppression
+  if (currentBackground.value) {
+    removeBackgroundsBuf.push(currentBackground.value.id)
+    // et on nettoie l’entrée pending au cas où
+    const idx = newBackgroundsBuf.findIndex(b => b.id === currentBackground.value!.id)
+    if (idx >= 0) newBackgroundsBuf.splice(idx, 1)
+  }
+  // nouveau fond
+  const id = `background-${Date.now()}`
+  currentBackground.value = { src: bg.src, id }
+  newBackgroundsBuf.splice(0) // on ne veut qu’un seul fond pending à la fois
+  newBackgroundsBuf.push({ src: bg.src, id })
+}
+
+function onDragStart(obj: { src: string }, evt: DragEvent) {
+  draggingSrc.value = obj.src
+
+  // 1) créer un canvas vide pour masquer le ghost-browser
+  const empty = document.createElement('canvas')
+  empty.width = empty.height = 0
+  evt.dataTransfer!.setDragImage(empty, 0, 0)
+
+  // (optionnel) définir un mime-type pour compatibilité
+  evt.dataTransfer!.setData('text/plain', obj.src)
+}
+
+function onDragEnd() {
+  draggingSrc.value = null
+  dragPreview.value = null
+}
+
+function onSandboxDragOver(evt: DragEvent) {
+  if (!draggingSrc.value) return
+  const rect = (evt.currentTarget as HTMLElement).getBoundingClientRect()
+  const rawX = evt.clientX - rect.left
+  const rawY = evt.clientY - rect.top
+  const { width, height } = getScaledSize(draggingSrc.value)
+  dragPreview.value = {
+    src: draggingSrc.value,
+    x: Math.round(rawX - width / 2),
+    y: Math.round(rawY - height / 2)
+  }
+}
+
+
+function onSandboxDragLeave() {
+  dragPreview.value = null
+}
+
+function onSandboxDrop(evt: DragEvent) {
+  if (!draggingSrc.value) return
+  const rect = (evt.currentTarget as HTMLElement).getBoundingClientRect()
+  const rawX = evt.clientX - rect.left
+  const rawY = evt.clientY - rect.top
+  const { width, height } = getScaledSize(draggingSrc.value)
+
+  const shape = draggingSrc.value.split('/').pop()!.replace('.png', '')
+  const id = `${shape}-${placedObjects.length}-${Date.now()}`
+  placedObjects.push({
+    src: draggingSrc.value,
+    x: Math.round(rawX - width / 2),
+    y: Math.round(rawY - height / 2),
+    id
+  })
+
+  draggingSrc.value = null
+  dragPreview.value = null
+}
+
+// Choix d'un objet à placer
+function selectObject(obj: { src: string }) {
+  selectedObject.value = obj.src
+}
+
+function onSandboxClick(evt: MouseEvent) {
+  if (!selectedObject.value) return
+  const rect = (evt.currentTarget as HTMLElement).getBoundingClientRect()
+  const x = Math.round(evt.clientX - rect.left)
+  const y = Math.round(evt.clientY - rect.top)
+  const shape = selectedObject.value.split('/').pop()!.replace('.png', '')
+  const id = `${shape}-${placedObjects.length}-${Date.now()}`
+  placedObjects.push({ src: selectedObject.value, x, y, id })
+}
+
+function removeBackground() {
+  if (!currentBackground.value) return
+  removeBackgroundsBuf.push(currentBackground.value.id)
+  // on retire le fond de l’affichage
+  currentBackground.value = null
+  // on enlève l’éventuel newBuffer
+  const idx = newBackgroundsBuf.findIndex(b => b.id === currentBackground.value?.id)
+  if (idx >= 0) newBackgroundsBuf.splice(idx, 1)
+}
+
+function removeObjects() {
+  // planifier la suppression
+  placedObjects.forEach(o => removeObjectsBuf.push(o.id))
+  // vider l’affichage et le nouveau buffer
+  placedObjects.splice(0)
+  newObjectsBuf.splice(0)
+}
+
+function removeAll() {
+  removeBackground()
+  removeObjects()
+}
+
+// Streaming toggles & timers
 // computed pour formater "M:SS"
 const formattedTimer = computed(() => {
   const s = Math.max(0, Math.min(60, module3Fields.timer))
@@ -197,7 +413,107 @@ function sendById(id: number) {
   if (id === 1) return sendModule1()
   if (id === 2) return sendModule2()
   if (id === 3) return sendModule3()
-  return sendBuffer(id)
+  if (id === 4) return sendModule4()
+}
+
+// MODULE 4 : envoyez les objets placés structurés pour use4kinect
+function sendModule4() {
+  const scale = 16
+
+  // on construit le payload à partir des buffers
+  const newBackgrounds = newBackgroundsBuf.map(b => ({
+    id: b.id,
+    type: 'background',
+    shape: b.src.split('/').pop()!.replace('.png', ''),
+    cx: 160, cy: 120,
+    w: 305 / scale, h: 200 / scale,
+    angle: 0.0,
+    scale: 1.0
+  }))
+  const newObjects = placedObjects.map(o => {
+    const size = imageSizes[o.src] || { width: 50, height: 50 }
+    const w = size.width / scale
+    const h = size.height / scale
+    return {
+      id: o.id,
+      type: 'object',
+      shape: o.src.split('/').pop()!.replace('.png', ''),
+      // on envoie le centre, pas le coin
+      cx: o.x + w / 2,
+      cy: o.y + h / 2,
+      w,
+      h,
+      angle: 0.0,
+      scale: 1.0
+    }
+  })
+  const payload = {
+    newStrokes: [],
+    removeStrokes: [],
+    newObjects,
+    removeObjects: [...removeObjectsBuf],
+    newBackgrounds,
+    removeBackgrounds: [...removeBackgroundsBuf],
+    button: currentButton.value
+  }
+
+  clients[4]
+    .setBuffer(payload)
+    .then(() => {
+      // on vide les buffers qui ont été envoyés
+      newBackgroundsBuf.splice(0)
+      removeBackgroundsBuf.splice(0)
+      newObjectsBuf.splice(0)
+      removeObjectsBuf.splice(0)
+    })
+    .catch(err => console.error('Module4 send error:', err))
+}
+
+// Fonctions Modules 1 à 3
+function sendModule1() {
+  clients[1].setBuffer({
+    x: module1Fields.x,
+    y: module1Fields.y,
+    diameter: module1Fields.diameter
+  })
+}
+
+function sendModule2() {
+  clients[2].setBuffer({
+    rotX: module2Fields.rotX,
+    rotY: module2Fields.rotY,
+    rotZ: module2Fields.rotZ
+  })
+}
+
+function sendModule3() {
+  clients[3].setBuffer({
+    uid1: module3Fields.uid1,
+    uid2: module3Fields.uid2,
+    uid3: module3Fields.uid3,
+    current_set: module3Fields.current_set,
+    button_pressed: module3Fields.button_pressed
+  })
+}
+
+// Fallback JSON send (non utilisé pour mod 4)
+function sendBuffer(mod: number) {
+  try {
+    const raw = payloads[mod].trim()
+    const data = raw ? JSON.parse(raw) : {}
+    clients[mod].setBuffer(data)
+  } catch (err) {
+    alert(`JSON invalide : ${err}`)
+  }
+}
+
+async function retrieveBuffer(mod: number) {
+  try {
+    const buf = await clients[mod].getBuffer()
+    buffers[mod] = JSON.stringify(buf, null, 2)
+  } catch (err) {
+    buffers[mod] = `Erreur : ${err}`
+  }
 }
 
 // IR module 1…
@@ -220,6 +536,17 @@ function updateIrPosition(evt: MouseEvent) {
 }
 
 onMounted(async () => {
+  allItems.forEach(item => {
+    const img = new Image()
+    img.src = item.src
+    img.onload = () => {
+      imageSizes[item.src] = {
+        width: img.naturalWidth,
+        height: img.naturalHeight
+      }
+    }
+  })
+
   // initialisation des clients Artineo
   moduleIds.forEach(id => {
     const client = useArtineo(id)
@@ -269,7 +596,7 @@ onMounted(async () => {
     module3Config.assignments = cfg.assignments || { lieux: {}, couleurs: {}, emotions: {} }
     module3Fields.current_set = 1
   } catch (e) {
-    console.error('fetchConfig module 3:', e)
+    console.error('fetchConfig module 3 :', e)
   }
 
   // watchers pour le streaming
@@ -414,7 +741,7 @@ async function retrieveBuffer(mod: number) {
   font-family: monospace;
 }
 
-/* MODULE GÉNÉRAL */
+/* MODULE 3, 4 Général */
 .controls {
   display: flex;
   flex-direction: column;
@@ -449,6 +776,86 @@ async function retrieveBuffer(mod: number) {
   white-space: pre-wrap;
   word-break: break-word;
   margin: 0;
+}
+
+/* MODULE 4 : Sandbox & Palette */
+.background-image {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 0;
+}
+
+.palette {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.palette button.selected {
+  outline: 2px solid #42b983;
+}
+
+.remove-buttons {
+  margin-bottom: 1rem;
+}
+
+.remove-buttons button {
+  margin-right: 0.5rem;
+}
+
+.drag-preview {
+  position: absolute;
+  z-index: 2;
+  opacity: 0.7;
+  pointer-events: none;
+  width: 50px;
+  /* taille par défaut */
+  height: 50px;
+  /* taille par défaut */
+}
+
+.palette .draggable-item {
+  cursor: grab;
+  /* désactive la sélection de texte pour un drag plus fluide */
+  user-select: none;
+}
+
+.palette .draggable-item:active {
+  cursor: grabbing;
+}
+
+/* On empêche l'image d'intercepter le drag, pour que tout le bouton soit draggable */
+.palette .draggable-item img {
+  pointer-events: none;
+}
+
+.button-selector {
+  margin-bottom: 0.5rem;
+}
+
+.button-selector button {
+  margin-right: 0.5rem;
+  padding: 0.3em 0.6em;
+}
+
+.button-selector button.active {
+  background: #42b983;
+  color: white;
+}
+
+/* overlay au-dessus du fond et sous les objets */
+.sandbox-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
 }
 
 /* SWITCH TOGGLE */
@@ -503,5 +910,58 @@ async function retrieveBuffer(mod: number) {
 
 .switch .slider.round::before {
   border-radius: 50%;
+}
+
+/* MODULE 4 : sandbox & palette */
+.module4-container {
+  display: flex;
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.sandbox {
+  position: relative;
+  width: 305px;
+  height: 200px;
+  background: #f0f0f0;
+  border: 1px solid #333;
+  cursor: pointer;
+}
+
+.placed-object {
+  position: absolute;
+  z-index: 3;
+  width: 50px;
+  height: 50px;
+  pointer-events: none;
+}
+
+.object-palette {
+  display: flex;
+  flex-direction: column;
+  margin-left: 1rem;
+}
+
+.object-palette button {
+  display: flex;
+  align-items: center;
+  margin-bottom: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid #ccc;
+  background: white;
+  cursor: pointer;
+}
+
+.object-palette button.selected {
+  border-color: #4caf50;
+}
+
+.object-icon,
+.palette-icon {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+  margin-right: 0.5rem;
 }
 </style>

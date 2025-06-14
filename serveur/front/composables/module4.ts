@@ -194,6 +194,7 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
 
     // 7.4) backgrounds
     if (buf.newBackgrounds) {
+      console.log('[Artineo][Kinect] received new backgrounds', buf.newBackgrounds)
       // remplace les backgrounds existants avec ceux reçus
       backgrounds.value = backgrounds.value.concat(
         buf.newBackgrounds.filter(nb => !backgrounds.value.some(b => b.id === nb.id))
@@ -384,6 +385,7 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
       isKinectSubscribed = true
       artClientKinect.onMessage((msg: any) => {
         if (msg.action === 'get_buffer' && msg.buffer) {
+          console.log('[Artineo][Kinect] received buffer', msg.buffer)
           drawBuffer(msg.buffer)
         }
       })
