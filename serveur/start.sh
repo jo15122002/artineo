@@ -70,7 +70,7 @@ PORT=$(find_free_port $FRONT_START_PORT)
   cd "$BASE_DIR/front"
   npm install
   # npm devrait maintenant être trouvé
-  exec npm run dev -- --host 0.0.0.0 --port $PORT
+  NUXT_TELEMETRY_DISABLED=1 exec npm run dev -- --host 0.0.0.0 --port $PORT
 ) &
 frontendPID=$!
 
