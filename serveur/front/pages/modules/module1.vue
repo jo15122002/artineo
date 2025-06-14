@@ -15,7 +15,11 @@
     </div>
 
     <div class="arty">
-      <img src="~/assets/modules/1/arty.png" alt="">
+      <!-- image fixe -->
+      <img src="~/assets/modules/4/images/arty.png" alt="Arty" class="arty-img" />
+
+      <!-- image dynamique -->
+      <img :src="stepSrc" alt="Indication step" class="indication-step" />
     </div>
     <!-- Zone cible (si debug=true) -->
     <div v-if="showDebug" class="debug-zone" :style="zoneStyle"></div>
@@ -34,6 +38,21 @@ definePageMeta({ layout: 'module' })
 
 const { public: { apiUrl } } = useRuntimeConfig()
 const { backgroundPath, filterStyle, x, y, diamPx, timerColor, timerText } = useModule1()
+
+// 🟢 Étape courante
+const step = ref(1)
+
+const images = import.meta.glob(
+  '~/assets/modules/1/steps/*.png',
+  { eager: true, as: 'url' }
+) as Record<string, string>
+
+// 🔄 Computed pour retourner l'URL correspondant à la step courante
+const stepSrc = computed(() => {
+  const entry = Object.entries(images)
+    .find(([path]) => path.endsWith(`step${step.value}.png`))
+  return entry ? entry[1] : ''
+})
 
 // debug flag
 const showDebug = ref(false)
