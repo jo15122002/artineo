@@ -2,13 +2,32 @@
 import { computed, onBeforeUnmount, onMounted, ref, type Ref } from 'vue'
 import { useArtineo } from './useArtineo'
 
+function hexToRgb(hex: string) {
+  const h = hex.replace('#','')
+  const bigint = parseInt(h, 16)
+  return {
+    r: (bigint >> 16) & 0xFF,
+    g: (bigint >> 8)  & 0xFF,
+    b:  bigint        & 0xFF,
+  }
+}
+function rgbToHex(r: number, g: number, b: number) {
+  const hr = r.toString(16).padStart(2, '0')
+  const hg = g.toString(16).padStart(2, '0')
+  const hb = b.toString(16).padStart(2, '0')
+  return `#${hr}${hg}${hb}`
+}
+function lerp(a: number, b: number, t: number) {
+  return a + (b - a) * t
+}
+
 export default function useModule3(
   playerRef: Ref<InstanceType<typeof import('~/components/ArtyPlayer.vue').default> | null>
 ) {
   // Guard SSR : rien à faire côté serveur
   if (!process.client) {
     const backgroundSet  = ref<number>(1)
-    const blobTexts      = ref<string[]>(['Aucun','Aucun','Aucun'])
+    const blobTexts      = ref<string[]>(['Lieu','Couleur','Émotion'])
     const states         = ref<Array<'default'|'correct'|'wrong'>>(['default','default','default'])
     const stateClasses   = computed(() => states.value.map(s => `state-${s}`))
     const pressedStates  = ref<boolean[]>([false,false,false])
@@ -24,17 +43,56 @@ export default function useModule3(
   const client   = useArtineo(moduleId)
 
   const backgroundSet = ref<number>(1)
-  const blobTexts     = ref<string[]>(['Aucun','Aucun','Aucun'])
+  const blobTexts     = ref<string[]>(['Lieu','Couleur','Émotion'])
   const states        = ref<Array<'default'|'correct'|'wrong'>>(['default','default','default'])
   const stateClasses  = computed(() => states.value.map(s => `state-${s}`))
   const pressedStates = ref<boolean[]>([false,false,false])
   let prevPressed     = false
+
+  const TIMER_DURATION = 60; // duree en secondes
+
+  const timerText = ref<string>('1:00')
 
   const pluralMap: Record<string,string> = {
     lieu:    'lieux',
     couleur: 'couleurs',
     emotion: 'emotions'
   }
+
+  // calcule les secondes restantes
+  const timerSeconds = computed(() => {
+    const [m, s] = timerText.value.split(':').map(v => parseInt(v, 10));
+    return m * 60 + s;
+  });
+
+ const colorStops = [
+    { p: 1.0, color: '#2626FF' },
+    { p: 0.6, color: '#FA81C3' },
+    { p: 0.3, color: '#FA4923' }
+  ] as const
+
+  const timerColor = computed(() => {
+    // ratio entre 0 et 1
+    const pct = timerSeconds.value / TIMER_DURATION
+    // on parcourt chaque segment [i]→[i+1]
+    for (let i = 0; i < colorStops.length - 1; i++) {
+      const { p: p0, color: c0 } = colorStops[i]
+      const { p: p1, color: c1 } = colorStops[i+1]
+      if (pct <= p0 && pct >= p1) {
+        // t = 0 à p0  → couleur c0
+        // t = 1 à p1  → couleur c1
+        const t = (p0 - pct) / (p0 - p1)
+        const rgb0 = hexToRgb(c0)
+        const rgb1 = hexToRgb(c1)
+        const r = Math.round(lerp(rgb0.r, rgb1.r, t))
+        const g = Math.round(lerp(rgb0.g, rgb1.g, t))
+        const b = Math.round(lerp(rgb0.b, rgb1.b, t))
+        return rgbToHex(r, g, b)
+      }
+    }
+    // fallback
+    return colorStops[colorStops.length - 1].color
+  })
 
   function lookupLabel(map: Record<string,string>, code: string): string {
     const inv: Record<string,string> = {}
@@ -45,6 +103,7 @@ export default function useModule3(
   }
 
   function updateFromBuffer(buf: any) {
+    console.log('[useModule3] updateFromBuffer', buf)
     if (buf.current_set && buf.current_set !== backgroundSet.value) {
       backgroundSet.value  = buf.current_set
       states.value         = ['default','default','default']
@@ -52,7 +111,7 @@ export default function useModule3(
       prevPressed          = false
     }
 
-    const texts   = ['Aucun','Aucun','Aucun']
+    const texts   = ['Lieu','Couleur','Émotion']
     const colors  = ['#FFA500','#FFA500','#FFA500']
     const keys    = ['lieu','couleur','emotion'] as const
     const uidKeys = ['uid1','uid2','uid3']      as const
@@ -89,6 +148,11 @@ export default function useModule3(
         states.value        = states.value.map(s => s === 'wrong' ? 'default' : s)
         pressedStates.value = states.value.map(s => s === 'correct')
       }, 2000)
+    }
+
+    if (typeof buf.timer === 'string') {
+        console.log('[useModule3] timer received:', buf.timer)
+        timerText.value = buf.timer
     }
 
     prevPressed = !!buf.button_pressed
@@ -128,7 +192,7 @@ export default function useModule3(
       } catch {
         // ignore
       }
-    }, 1000)
+    }, 500)
   })
 
   onBeforeUnmount(() => {
@@ -144,6 +208,8 @@ export default function useModule3(
     blobTexts,
     stateClasses,
     pressedStates,
-    backgroundUrl
+    backgroundUrl,
+    timerText,
+    timerColor
   }
 }

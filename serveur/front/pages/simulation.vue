@@ -10,7 +10,8 @@
           <div class="ir-area" @mousedown="onIrAreaMouseDown" @mouseup="onIrAreaMouseUp" @mouseleave="onIrAreaMouseUp"
             @mousemove="onIrAreaMouseMove">
             <div v-if="module1Fields.clicked" class="ir-marker"
-              :style="{ left: module1Fields.x + 'px', top: module1Fields.y + 'px' }"></div>
+              :style="{ left: module1Fields.x + 'px', top: module1Fields.y + 'px' }">
+            </div>
           </div>
           <div class="ir-coords">
             X: {{ module1Fields.x }}, Y: {{ module1Fields.y }}
@@ -27,17 +28,17 @@
       <div v-else-if="mod === 2" class="controls module2-controls">
         <label>
           rotX :
-          <input type="range" v-model.number="module2Fields.rotX" :min="-6.28" :max="6.28" :step="0.01" />
+          <input type="range" v-model.number="module2Fields.rotX" :min="-6.28" :max="6.28" step="0.01" />
           <span>{{ module2Fields.rotX.toFixed(2) }}</span>
         </label>
         <label>
           rotY :
-          <input type="range" v-model.number="module2Fields.rotY" :min="-6.28" :max="6.28" :step="0.01" />
+          <input type="range" v-model.number="module2Fields.rotY" :min="-6.28" :max="6.28" step="0.01" />
           <span>{{ module2Fields.rotY.toFixed(2) }}</span>
         </label>
         <label>
           rotZ :
-          <input type="range" v-model.number="module2Fields.rotZ" :min="-6.28" :max="6.28" :step="0.01" />
+          <input type="range" v-model.number="module2Fields.rotZ" :min="-6.28" :max="6.28" step="0.01" />
           <span>{{ module2Fields.rotZ.toFixed(2) }}</span>
         </label>
       </div>
@@ -85,6 +86,12 @@
         <label>
           Bouton pressé :
           <input type="checkbox" v-model="module3Fields.button_pressed" />
+        </label>
+
+        <label class="slider-label">
+          Timer :
+          <input type="range" v-model.number="module3Fields.timer" min="0" max="60" />
+          <span>{{ formattedTimer }}</span>
         </label>
       </div>
 
@@ -161,13 +168,7 @@
 
       <!-- Boutons d'action -->
       <div class="button-row">
-        <button @click="mod === 1
-          ? sendModule1()
-          : mod === 2
-            ? sendModule2()
-            : mod === 3
-              ? sendModule3()
-              : sendModule4()">
+        <button @click="sendById(mod)">
           Envoyer buffer
         </button>
         <button @click="retrieveBuffer(mod)">
@@ -185,7 +186,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, watch, ref } from 'vue'
 import { useArtineo } from '~/composables/useArtineo'
 
 const moduleIds = [1, 2, 3, 4]
@@ -209,13 +210,14 @@ const module2Fields = reactive({
   rotZ: 0
 })
 
-// MODULE 3 fields & config
+// MODULE 3 fields & config (avec timer en secondes)
 const module3Fields = reactive({
   uid1: '',
   uid2: '',
   uid3: '',
   current_set: 1,
-  button_pressed: false
+  button_pressed: false,
+  timer: 60    // ← initialisé à 60 s
 })
 const module3Config = reactive<{
   answers: any[]
@@ -390,20 +392,23 @@ function removeAll() {
 }
 
 // Streaming toggles & timers
-const streaming = reactive<Record<number, boolean>>({
-  1: false,
-  2: false,
-  3: false,
-  4: false
-})
-const intervals = reactive<Record<number, number | null>>({
-  1: null,
-  2: null,
-  3: null,
-  4: null
+// computed pour formater "M:SS"
+const formattedTimer = computed(() => {
+  const s = Math.max(0, Math.min(60, module3Fields.timer))
+  const m = Math.floor(s / 60)
+  const ss = (s % 60).toString().padStart(2, '0')
+  return `${m}:${ss}`
 })
 
-// Helper: envoie selon l'ID du module
+// Toggle & timers pour l'envoi continu
+const streaming = reactive<Record<number, boolean>>({
+  1: false, 2: false, 3: false, 4: false
+})
+const intervals = reactive<Record<number, number | null>>({
+  1: null, 2: null, 3: null, 4: null
+})
+
+// Helper pour l'envoi
 function sendById(id: number) {
   if (id === 1) return sendModule1()
   if (id === 2) return sendModule2()
@@ -511,7 +516,7 @@ async function retrieveBuffer(mod: number) {
   }
 }
 
-// Gestion zone IR (module 1)
+// IR module 1…
 function onIrAreaMouseDown(evt: MouseEvent) {
   module1Fields.isDragging = true
   updateIrPosition(evt)
@@ -525,15 +530,12 @@ function onIrAreaMouseMove(evt: MouseEvent) {
 function updateIrPosition(evt: MouseEvent) {
   const area = evt.currentTarget as HTMLElement
   const rect = area.getBoundingClientRect()
-  const x = Math.round(evt.clientX - rect.left)
-  const y = Math.round(evt.clientY - rect.top)
-  module1Fields.x = Math.min(Math.max(x, 0), rect.width)
-  module1Fields.y = Math.min(Math.max(y, 0), rect.height)
+  module1Fields.x = Math.round(Math.min(Math.max(evt.clientX - rect.left, 0), rect.width))
+  module1Fields.y = Math.round(Math.min(Math.max(evt.clientY - rect.top, 0), rect.height))
   module1Fields.clicked = true
 }
 
 onMounted(async () => {
-
   allItems.forEach(item => {
     const img = new Image()
     img.src = item.src
@@ -545,6 +547,7 @@ onMounted(async () => {
     }
   })
 
+  // initialisation des clients Artineo
   moduleIds.forEach(id => {
     const client = useArtineo(id)
     clients[id] = client
@@ -553,8 +556,10 @@ onMounted(async () => {
 
     client.onMessage(msg => {
       if (msg.action === 'get_buffer') {
-        buffers[id] = JSON.stringify(msg.buffer, null, 2)
         const b = msg.buffer as any
+        buffers[id] = JSON.stringify(b, null, 2)
+
+        // mise à jour des UI simulées
         if (id === 1) {
           module1Fields.x = b.x ?? module1Fields.x
           module1Fields.y = b.y ?? module1Fields.y
@@ -572,44 +577,40 @@ onMounted(async () => {
           module3Fields.uid3 = b.uid3 ?? ''
           module3Fields.current_set = b.current_set ?? module3Fields.current_set
           module3Fields.button_pressed = b.button_pressed ?? false
+          if (typeof b.timer === 'string') {
+            const parts = b.timer.split(':').map(v => parseInt(v, 10))
+            if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+              module3Fields.timer = parts[0] * 60 + parts[1]
+            }
+          }
         }
       }
     })
   })
 
+  // fetch config module 3
   try {
     const cfg = await clients[3].fetchConfig()
     module3Config.answers = cfg.answers || []
-    module3Config.wanted_assignments = cfg.wanted_assignments || {
-      lieux: [],
-      couleurs: [],
-      emotions: []
-    }
-    module3Config.assignments = cfg.assignments || {
-      lieux: {},
-      couleurs: {},
-      emotions: {}
-    }
+    module3Config.wanted_assignments = cfg.wanted_assignments || { lieux: [], couleurs: [], emotions: [] }
+    module3Config.assignments = cfg.assignments || { lieux: {}, couleurs: {}, emotions: {} }
     module3Fields.current_set = 1
   } catch (e) {
     console.error('fetchConfig module 3 :', e)
   }
 
-  // Watchers pour le toggle streaming
+  // watchers pour le streaming
   moduleIds.forEach(id => {
-    watch(
-      () => streaming[id],
-      enabled => {
-        if (enabled) {
-          intervals[id] = window.setInterval(() => sendById(id), 100)
-        } else {
-          if (intervals[id] !== null) {
-            clearInterval(intervals[id]!)
-            intervals[id] = null
-          }
+    watch(() => streaming[id], enabled => {
+      if (enabled) {
+        intervals[id] = window.setInterval(() => sendById(id), 100)
+      } else {
+        if (intervals[id] !== null) {
+          clearInterval(intervals[id]!)
+          intervals[id] = null
         }
       }
-    )
+    })
   })
 })
 
@@ -621,6 +622,49 @@ onUnmounted(() => {
     }
   })
 })
+
+// Envois buffer pour chaque module
+function sendModule1() {
+  clients[1].setBuffer({
+    x: module1Fields.x,
+    y: module1Fields.y,
+    diameter: module1Fields.diameter
+  })
+}
+function sendModule2() {
+  clients[2].setBuffer({
+    rotX: module2Fields.rotX,
+    rotY: module2Fields.rotY,
+    rotZ: module2Fields.rotZ
+  })
+}
+function sendModule3() {
+  clients[3].setBuffer({
+    uid1: module3Fields.uid1,
+    uid2: module3Fields.uid2,
+    uid3: module3Fields.uid3,
+    current_set: module3Fields.current_set,
+    button_pressed: module3Fields.button_pressed,
+    timer: formattedTimer.value
+  })
+}
+function sendBuffer(mod: number) {
+  try {
+    const raw = payloads[mod].trim()
+    const data = raw ? JSON.parse(raw) : {}
+    clients[mod].setBuffer(data)
+  } catch (err) {
+    alert(`JSON invalide : ${err}`)
+  }
+}
+async function retrieveBuffer(mod: number) {
+  try {
+    const buf = await clients[mod].getBuffer()
+    buffers[mod] = JSON.stringify(buf, null, 2)
+  } catch (err) {
+    buffers[mod] = `Erreur : ${err}`
+  }
+}
 </script>
 
 <style scoped>

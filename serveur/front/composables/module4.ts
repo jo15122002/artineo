@@ -78,6 +78,28 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
     }
   }
 
+  // 2️⃣bis load mask image
+  const maskModules = import.meta.glob<string>(
+    '~/assets/modules/4/images/masks/mask.png',
+    { eager: true, as: 'url' }
+  )
+
+  // on récupère la première (et seule) URL disponible :
+  const maskPaths = Object.values(maskModules)
+  if (maskPaths.length === 0) {
+    console.error('[Module4] Aucun mask trouvé via glob')
+  }
+  const maskPath = maskPaths[0]!
+
+  // offscreen pour le mask
+  const maskCanvas = document.createElement('canvas')
+  let maskCtx: CanvasRenderingContext2D | null = null
+
+  const maskImage = new Image()
+  maskImage.src = maskPath
+  maskImage.onload = () => console.log('[Module4] Mask loaded:', maskPath)
+  maskImage.onerror = e => console.error('[Module4] Failed to load mask image:', maskPath, e)
+
   // 3️⃣ map button IDs to RGBA overlays
   const buttonColors: Record<number, string> = {
     1: 'rgba(83, 160, 236, 0.2)',
@@ -89,23 +111,7 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
   const strokes = ref<Stroke[]>([])
   const objects = ref<ArtObject[]>([])
   const backgrounds = ref<ArtObject[]>([])
-
-  // 5️⃣ draw a stroke using its fixed brush
   const scale = 3
-  function drawStroke(ctx: CanvasRenderingContext2D, s: Stroke) {
-    const img = brushImages[s.tool_id]
-    if (!img || !img.complete) return
-    const px = s.x * scale
-    const py = s.y * scale
-    const size = (s.size ?? 5) * scale
-    const ang = s.angle ?? 0
-
-    ctx.save()
-    ctx.translate(px, py)
-    ctx.rotate(ang)
-    ctx.drawImage(img, -size / 2, -size / 2, size, size)
-    ctx.restore()
-  }
 
   // 6️⃣ draw an object sprite (non-background)
   function drawObject(ctx: CanvasRenderingContext2D, o: ArtObject) {
@@ -152,6 +158,19 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
   }) {
     if (!buf) return
 
+    const canvas = canvasRef.value!
+    const ctx = canvas.getContext('2d')!
+
+    // initialise / recalcule la taille du maskCanvas
+    if (!maskCtx
+      || maskCanvas.width !== canvas.width
+      || maskCanvas.height !== canvas.height
+    ) {
+      maskCanvas.width = canvas.width
+      maskCanvas.height = canvas.height
+      maskCtx = maskCanvas.getContext('2d')
+    }
+
     // 7.1) button event
     if (typeof buf.button === 'number') {
       currentButton = buf.button
@@ -197,31 +216,59 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
       objects.value = objects.value.filter(o => !buf.removeObjects!.includes(o.id))
     }
 
-    // 7.6) render everything
-    const canvas = canvasRef.value
-    if (!canvas) return
-    const ctx = canvas.getContext('2d')!
-    // clear
+    // 1️⃣ clear + fond blanc
     ctx.clearRect(0, 0, canvas.width, canvas.height)
-    // optional background fill
     ctx.fillStyle = '#fff'
     ctx.fillRect(0, 0, canvas.width, canvas.height)
 
-    // 7.6.1) draw backgrounds **plein écran**, aligné en bas
+    // 3️⃣ mask découpé aux brushes, sur offscreen
+    if (maskCtx && maskImage.complete && strokes.value.length > 0) {
+      // a) clear
+      maskCtx.clearRect(0, 0, maskCanvas.width, maskCanvas.height)
+
+      // b) draw all your brushes in source-over
+      maskCtx.globalCompositeOperation = 'source-over'
+      const mCtx = maskCtx!
+      strokes.value.forEach(s => {
+        const img = brushImages[s.tool_id]
+        if (!img || !img.complete) return
+        const px = s.x * scale
+        const py = s.y * scale
+        const size = (s.size ?? 5) * scale * 1.5
+        const ang = s.angle ?? 0
+
+        mCtx.save()
+        mCtx.translate(px, py)
+        mCtx.rotate(ang)
+        mCtx.drawImage(img, -size / 2, -size / 2, size, size)
+        mCtx.restore()
+      })
+
+      // c) passe en source-in et dessine le mask image
+      maskCtx.globalCompositeOperation = 'source-in'
+      maskCtx.drawImage(maskImage, 0, 0, maskCanvas.width, maskCanvas.height)
+
+      // d) reviens en source-over
+      maskCtx.globalCompositeOperation = 'source-over'
+
+      // e) colle le résultat sur le canvas principal
+      ctx.drawImage(maskCanvas, 0, 0)
+    }
+
+    // 2️⃣ backgrounds
     backgrounds.value.forEach(b => drawBackground(ctx, b))
 
-    // 7.6.2) draw strokes & objects
-    strokes.value.forEach(s => drawStroke(ctx, s))
+    // 4️⃣ objets
     objects.value.forEach(o => drawObject(ctx, o))
 
-    // 7.6.3) finally overlay color rectangle
+    // 5️⃣ overlay couleur
     const overlay = buttonColors[currentButton] || buttonColors[1]
     ctx.fillStyle = overlay
     ctx.fillRect(0, 0, canvas.width, canvas.height)
   }
 
 
-    // ─────────────── 9️⃣ fonction d’ajout d’image ───────────────
+  // ─────────────── 9️⃣ fonction d’ajout d’image ───────────────
   /**
    * Ajoute sur le canvas, à la position (cx, cy), l’image `shape`.
    * @param shape  Nom de l’image (clé dans objectImages)
@@ -275,14 +322,16 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
     drawBuffer({});
   }
 
-  const keyBindings: Record<string, 
-    { shape: string | undefined; 
-      cx: number | undefined; 
-      cy: number | undefined, 
-      w: number | undefined, 
-      h: number | undefined, 
-      button: number  | undefined }
-    > = {
+  const keyBindings: Record<string,
+    {
+      shape: string | undefined;
+      cx: number | undefined;
+      cy: number | undefined,
+      w: number | undefined,
+      h: number | undefined,
+      button: number | undefined
+    }
+  > = {
     a: {
       shape: 'landscape_fields', cx: 50, cy: 80,
       w: undefined,
@@ -348,7 +397,7 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
       pollingIntervalKinect = setInterval(() => {
         artClientKinect.getBuffer()
           .then((buf: any) => drawBuffer(buf))
-          .catch(() => {})
+          .catch(() => { })
       }, 100)
     }
 
@@ -368,7 +417,7 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
       pollingIntervalButton = setInterval(() => {
         artClientButton.getBuffer()
           .then((buf: any) => drawBuffer(buf))
-          .catch(() => {})
+          .catch(() => { })
       }, 100)
     }
 

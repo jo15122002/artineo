@@ -85,6 +85,3 @@ ffmpeg -loglevel error \
        -f rawvideo -pix_fmt yuv420p -s 640x480 -r 30 -i "$FIFO" \
        -f rawvideo -vf "scale=320:240" -pix_fmt bgr24 -r 15 - \
   | python3 "$WORKDIR/main.py" $DEBUG_FLAG
-
-# 6️⃣ Nettoyage si jamais main.py termine
-cleanup

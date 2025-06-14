@@ -1,10 +1,45 @@
 /* assets/modules/2/style.css */
+body {
+  overflow: hidden;
+}
+
 .module2-container {
-  width: 100vw;
   height: 100vh;
   margin: 0;
   padding: 0;
   overflow: hidden;
+  display: flex;
+  justify-content: center;
+}
+
+.frame-and-buttons-wrapper {
+  width: 50%;
+  max-width: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  /* gap: 24px; */
+}
+
+.frame-shadow {
+  width: 100%;
+  height: 36vw;
+  min-height: 36vw;
+  background: #F3E9E4;
+  position: relative;
+  clip-path: polygon(0 0, 94% 0, 100% 8.5%, 100% 100%, 6% 100%, 0% 91.5%);
+  margin-top: 40px;
+}
+
+.frame {
+  background: #3D3D3D;
+  width: calc(100% - 3vw);
+  height: 33vw;
+  border: 3vw solid black;
+  box-sizing: border-box;
+  border-bottom-color: #3D3D3D;
+  border-top-color: #3D3D3D;
+  position: relative;
 }
 
 /* s’assurer que le canvas prend bien tout l’espace : */
@@ -12,4 +47,139 @@ canvas {
   display: block;
   width: 100%;
   height: 100%;
+}
+
+.buttons-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  gap: 24px;
+  width: 100%;
+}
+
+.rect-selector {
+  width: 14px;
+  height: 70px;
+  background: #2626FF;
+  position: absolute;
+}
+
+.button > img {
+  width: 100%;
+  height: 100%;
+}
+
+.button {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  scale: 0.8;
+}
+
+.rectX-button {
+  width: 400px;
+  min-width: 400px;
+}
+
+.rectY-button {
+  height: 300px;
+  min-height: 300px;
+  width: 70px;
+  min-width: 70px;
+}
+
+.circle-button {
+  height: 272px;
+  min-height: 272px;
+  width: 272px;
+  min-width: 272px;
+}
+
+.circle-button > .rect-selector {
+  transform-origin: center center;
+  transition: transform 0.2s ease-out;
+}
+
+.button .rect-selector {
+  position: absolute;
+  /* taille fixe (au cas où) */
+  width: 14px;
+  height: 70px;
+}
+
+/* Slider horizontal (X) */
+.rectX-button .rect-selector {
+  /* on part de l’extrême gauche du parent */
+  left: 0;
+  /* d’abord on décale la moitié du sélecteur, puis on ajoute la translation */
+  translate: var(--t-x) 0;
+  transition: translate .15s ease-out;
+}
+
+/* Slider vertical (Y) */
+.rectY-button .rect-selector {
+  width: 70px;
+  height: 14px;
+  left: 50%;
+  top: 0;
+
+  /* 50% pour centrer horizontalement */
+  translate: -50% var(--t-y);
+  transition: translate .15s ease-out;
+}
+
+/* ----- UI ---------------------------------------------------------------- */
+.arty {
+  position: absolute;
+  bottom: -1%;
+  left: 0%;
+}
+
+.arty img {
+  width: 75%;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.timer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 90%;
+  width: 15vw;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: "CheeseSauce", cursive;
+  flex-direction: row;
+  --timer-color: #2626FF; /* valeur par défaut */
+}
+
+.timer-text {
+  position: absolute;
+  top: 51.5%;
+  right: -16%;
+  transform: translate(-50%, -50%);
+  color: #FFF;
+  z-index: 1;
+  font-size: 4.8rem;
+}
+
+.timer-splat {
+  width: 100%;
+  height: 100%;
+  background-color: var(--timer-color);
+
+  /* mask standard + webkit */
+  mask-image: url('timer_splat.svg');
+  mask-repeat: no-repeat;
+  mask-position: center;
+  mask-size: contain;
+
+  -webkit-mask-image: url('timer_splat.svg');
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  -webkit-mask-size: contain;
 }
