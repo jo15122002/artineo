@@ -96,33 +96,47 @@
           <button @click="removeBackground()">Enlever fond</button>
         </div>
         <div class="module4-container">
-          <!-- Palette Backgrounds -->
-          <div class="palette backgrounds-palette">
-            <h3>Backgrounds</h3>
-            <button v-for="bg in backgrounds" :key="bg.src" @click="setBackground(bg)"
-              :class="{ selected: currentBackground?.src === bg.src }">
-              <img :src="bg.src" class="palette-icon" />
-              {{ bg.name }}
-            </button>
-          </div>
+          <div>
+            <!-- Palette Backgrounds -->
+            <div class="palette backgrounds-palette">
+              <h3>Backgrounds</h3>
+              <button v-for="bg in backgrounds" :key="bg.src" @click="setBackground(bg)"
+                :class="{ selected: currentBackground?.src === bg.src }">
+                <img :src="bg.src" class="palette-icon" />
+                {{ bg.name }}
+              </button>
+            </div>
 
-          <!-- Palette Objets -->
-          <div class="palette objects-palette">
-            <h3>Objets</h3>
-            <button v-for="obj in objectItems" :key="obj.src" @click="selectObject(obj)"
-              :class="{ selected: selectedObject === obj.src }">
-              <img :src="obj.src" class="palette-icon" />
-              {{ obj.name }}
-            </button>
+            <!-- Palette Objets -->
+            <div class="palette objects-palette">
+              <h3>Objets</h3>
+              <button v-for="obj in objectItems" :key="obj.src" class="draggable-item" draggable="true"
+                @dragstart="onDragStart(obj, $event)" @dragend="onDragEnd">
+                <img :src="obj.src" class="palette-icon" draggable="false" alt="" />
+                {{ obj.name }}
+              </button>
+            </div>
           </div>
 
           <!-- Sandbox -->
-          <div class="sandbox" @click="onSandboxClick">
-            <!-- Fond -->
+          <div class="sandbox" @dragover.prevent="onSandboxDragOver" @dragleave="onSandboxDragLeave"
+            @drop.prevent="onSandboxDrop">
+            <!-- Background permanent -->
             <img v-if="currentBackground" :src="currentBackground.src" class="background-image" />
-            <!-- Objets placés -->
-            <img v-for="obj in placedObjects" :key="obj.id" :src="obj.src" class="placed-object"
-              :style="{ left: obj.x + 'px', top: obj.y + 'px' }" />
+
+            <img v-for="obj in placedObjects" :key="obj.id" :src="obj.src" class="placed-object" :style="{
+              left: obj.x + 'px',
+              top: obj.y + 'px',
+              width: (imageSizes[obj.src]?.width || 50) / scale + 'px',
+              height: (imageSizes[obj.src]?.height || 50) / scale + 'px'
+            }" />
+
+            <img v-if="dragPreview" :src="dragPreview.src" class="drag-preview" :style="{
+              left: dragPreview.x + 'px',
+              top: dragPreview.y + 'px',
+              width: getScaledSize(dragPreview.src).width + 'px',
+              height: getScaledSize(dragPreview.src).height + 'px'
+            }" />
           </div>
         </div>
       </div>
@@ -223,16 +237,30 @@ const objectItems = computed(() =>
   allItems.filter(i => !i.name.startsWith('landscape_'))
 )
 
+const imageSizes = reactive<Record<string, { width: number; height: number }>>({})
+
 // État
 const currentBackground = ref<{ src: string; id: string } | null>(null)
 const selectedObject = ref<string | null>(null)
 const placedObjects = reactive<Array<{ src: string; x: number; y: number; id: string }>>([])
+
+const draggingSrc = ref<string | null>(null)
+const dragPreview = ref<{ src: string; x: number; y: number } | null>(null)
+const scale = 16 // échelle pour le module 4
 
 // Buffers réfléchis
 const newBackgroundsBuf = reactive<{ src: string; id: string }[]>([])
 const removeBackgroundsBuf = reactive<string[]>([])
 const newObjectsBuf = reactive<{ src: string; x: number; y: number; id: string }[]>([])
 const removeObjectsBuf = reactive<string[]>([])
+
+function getScaledSize(src: string) {
+  const size = imageSizes[src] || { width: 50, height: 50 }
+  return {
+    width: size.width / scale,
+    height: size.height / scale
+  }
+}
 
 // --- Fonctions de sélection / placement ---
 function setBackground(bg: { src: string }) {
@@ -248,6 +276,61 @@ function setBackground(bg: { src: string }) {
   currentBackground.value = { src: bg.src, id }
   newBackgroundsBuf.splice(0) // on ne veut qu’un seul fond pending à la fois
   newBackgroundsBuf.push({ src: bg.src, id })
+}
+
+function onDragStart(obj: { src: string }, evt: DragEvent) {
+  draggingSrc.value = obj.src
+
+  // 1) créer un canvas vide pour masquer le ghost-browser
+  const empty = document.createElement('canvas')
+  empty.width = empty.height = 0
+  evt.dataTransfer!.setDragImage(empty, 0, 0)
+
+  // (optionnel) définir un mime-type pour compatibilité
+  evt.dataTransfer!.setData('text/plain', obj.src)
+}
+
+function onDragEnd() {
+  draggingSrc.value = null
+  dragPreview.value = null
+}
+
+function onSandboxDragOver(evt: DragEvent) {
+  if (!draggingSrc.value) return
+  const rect = (evt.currentTarget as HTMLElement).getBoundingClientRect()
+  const rawX = evt.clientX - rect.left
+  const rawY = evt.clientY - rect.top
+  const { width, height } = getScaledSize(draggingSrc.value)
+  dragPreview.value = {
+    src: draggingSrc.value,
+    x: Math.round(rawX - width / 2),
+    y: Math.round(rawY - height / 2)
+  }
+}
+
+
+function onSandboxDragLeave() {
+  dragPreview.value = null
+}
+
+function onSandboxDrop(evt: DragEvent) {
+  if (!draggingSrc.value) return
+  const rect = (evt.currentTarget as HTMLElement).getBoundingClientRect()
+  const rawX = evt.clientX - rect.left
+  const rawY = evt.clientY - rect.top
+  const { width, height } = getScaledSize(draggingSrc.value)
+
+  const shape = draggingSrc.value.split('/').pop()!.replace('.png', '')
+  const id = `${shape}-${placedObjects.length}-${Date.now()}`
+  placedObjects.push({
+    src: draggingSrc.value,
+    x: Math.round(rawX - width / 2),
+    y: Math.round(rawY - height / 2),
+    id
+  })
+
+  draggingSrc.value = null
+  dragPreview.value = null
 }
 
 // Choix d'un objet à placer
@@ -312,7 +395,7 @@ function sendById(id: number) {
 
 // MODULE 4 : envoyez les objets placés structurés pour use4kinect
 function sendModule4() {
-  const scale = 3
+  const scale = 16
 
   // on construit le payload à partir des buffers
   const newBackgrounds = newBackgroundsBuf.map(b => ({
@@ -324,17 +407,23 @@ function sendModule4() {
     angle: 0.0,
     scale: 1.0
   }))
-  const newObjects = placedObjects.map(o => ({
-    id: o.id,
-    type: 'object',
-    shape: o.src.split('/').pop()!.replace('.png', ''),
-    cx: o.x,
-    cy: o.y,
-    w: 50,
-    h: 50,
-    angle: 0.0,
-    scale: 1.0
-  }));
+  const newObjects = placedObjects.map(o => {
+    const size = imageSizes[o.src] || { width: 50, height: 50 }
+    const w = size.width  / scale
+    const h = size.height / scale
+    return {
+      id: o.id,
+      type: 'object',
+      shape: o.src.split('/').pop()!.replace('.png', ''),
+      // on envoie le centre, pas le coin
+      cx: o.x + w / 2,
+      cy: o.y + h / 2,
+      w,
+      h,
+      angle: 0.0,
+      scale: 1.0
+    }
+  })
   const payload = {
     newStrokes: [],
     removeStrokes: [],
@@ -425,6 +514,18 @@ function updateIrPosition(evt: MouseEvent) {
 }
 
 onMounted(async () => {
+
+  allItems.forEach(item => {
+    const img = new Image()
+    img.src = item.src
+    img.onload = () => {
+      imageSizes[item.src] = {
+        width: img.naturalWidth,
+        height: img.naturalHeight
+      }
+    }
+  })
+
   moduleIds.forEach(id => {
     const client = useArtineo(id)
     clients[id] = client
@@ -673,7 +774,58 @@ onUnmounted(() => {
   outline: 2px solid #42b983;
 }
 
+.sandbox {
+  position: relative;
+  width: 305px;
+  height: 200px;
+  border: 1px solid #ccc;
+  overflow: hidden;
+}
 
+.background-image {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 0;
+}
+
+.placed-object {
+  position: absolute;
+  z-index: 1;
+}
+
+.drag-preview {
+  position: absolute;
+  z-index: 2;
+  opacity: 0.7;
+  pointer-events: none;
+  width: 50px;
+  /* taille par défaut */
+  height: 50px;
+  /* taille par défaut */
+}
+
+.palette .draggable-item {
+  cursor: grab;
+  /* désactive la sélection de texte pour un drag plus fluide */
+  user-select: none;
+}
+
+.palette .draggable-item:active {
+  cursor: grabbing;
+}
+
+/* On empêche l'image d'intercepter le drag, pour que tout le bouton soit draggable */
+.palette .draggable-item img {
+  pointer-events: none;
+}
+
+.palette .draggable-item img {
+  pointer-events: none;
+}
 
 /* SWITCH TOGGLE */
 .switch {
@@ -733,6 +885,8 @@ onUnmounted(() => {
 .module4-container {
   display: flex;
   align-items: flex-start;
+  flex-direction: column;
+  gap: 1rem;
 }
 
 .sandbox {
