@@ -24,7 +24,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import use4kinect from '~/composables/module4.ts'
 
 definePageMeta({ layout: 'module' })
@@ -49,7 +49,23 @@ const stepSrc = computed(() => {
 const canvas = ref<HTMLCanvasElement | null>(null)
 
 // Appel au composable Kinect
-const { strokes, objects, timerColor, timerText } = use4kinect(canvas)
+const { strokes, objects, timerColor, timerText, timerSeconds, startTimer } = use4kinect(canvas)
+
+// Calcul dynamique du nombre total d’étapes  
+const maxStep = Object.keys(images)
+  .map(path => {
+    const m = path.match(/step(\d+)\.png$/)
+    return m ? parseInt(m[1], 10) : 0
+  })
+  .reduce((a, b) => Math.max(a, b), 0)
+
+// Watcher : quand timer arrive à 0 et qu’il reste une étape, on incrémente et on relance
+watch(timerSeconds!, newVal => {
+  if (newVal === 0 && step.value < maxStep) {
+    step.value++
+    startTimer?.()
+  }
+})
 
 // Initialisation de la taille du canvas au montage
 onMounted(() => {

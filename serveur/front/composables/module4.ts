@@ -516,5 +516,5 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
       return `${m}:${String(s).padStart(2, '0')}`;
     });
 
-  return { strokes, objects, backgrounds, timerColor, timerText }
+  return { strokes, objects, backgrounds, timerColor, timerText, timerSeconds, startTimer }
 }
