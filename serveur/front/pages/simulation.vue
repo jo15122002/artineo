@@ -353,21 +353,6 @@ function onSandboxDrop(evt: DragEvent) {
   dragPreview.value = null
 }
 
-// Choix d'un objet à placer
-function selectObject(obj: { src: string }) {
-  selectedObject.value = obj.src
-}
-
-function onSandboxClick(evt: MouseEvent) {
-  if (!selectedObject.value) return
-  const rect = (evt.currentTarget as HTMLElement).getBoundingClientRect()
-  const x = Math.round(evt.clientX - rect.left)
-  const y = Math.round(evt.clientY - rect.top)
-  const shape = selectedObject.value.split('/').pop()!.replace('.png', '')
-  const id = `${shape}-${placedObjects.length}-${Date.now()}`
-  placedObjects.push({ src: selectedObject.value, x, y, id })
-}
-
 function removeBackground() {
   if (!currentBackground.value) return
   removeBackgroundsBuf.push(currentBackground.value.id)
@@ -483,16 +468,6 @@ function sendModule2() {
     rotX: module2Fields.rotX,
     rotY: module2Fields.rotY,
     rotZ: module2Fields.rotZ
-  })
-}
-
-function sendModule3() {
-  clients[3].setBuffer({
-    uid1: module3Fields.uid1,
-    uid2: module3Fields.uid2,
-    uid3: module3Fields.uid3,
-    current_set: module3Fields.current_set,
-    button_pressed: module3Fields.button_pressed
   })
 }
 
@@ -623,21 +598,6 @@ onUnmounted(() => {
   })
 })
 
-// Envois buffer pour chaque module
-function sendModule1() {
-  clients[1].setBuffer({
-    x: module1Fields.x,
-    y: module1Fields.y,
-    diameter: module1Fields.diameter
-  })
-}
-function sendModule2() {
-  clients[2].setBuffer({
-    rotX: module2Fields.rotX,
-    rotY: module2Fields.rotY,
-    rotZ: module2Fields.rotZ
-  })
-}
 function sendModule3() {
   clients[3].setBuffer({
     uid1: module3Fields.uid1,
@@ -647,23 +607,6 @@ function sendModule3() {
     button_pressed: module3Fields.button_pressed,
     timer: formattedTimer.value
   })
-}
-function sendBuffer(mod: number) {
-  try {
-    const raw = payloads[mod].trim()
-    const data = raw ? JSON.parse(raw) : {}
-    clients[mod].setBuffer(data)
-  } catch (err) {
-    alert(`JSON invalide : ${err}`)
-  }
-}
-async function retrieveBuffer(mod: number) {
-  try {
-    const buf = await clients[mod].getBuffer()
-    buffers[mod] = JSON.stringify(buf, null, 2)
-  } catch (err) {
-    buffers[mod] = `Erreur : ${err}`
-  }
 }
 </script>
 
