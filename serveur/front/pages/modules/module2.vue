@@ -35,7 +35,11 @@
     </div>
 
     <div class="arty">
-      <img src="~/assets/modules/2/arty.png" alt="Arty Mascotte" />
+      <!-- image fixe -->
+      <img src="~/assets/modules/4/images/arty.png" alt="Arty" class="arty-img" />
+
+      <!-- image dynamique -->
+      <img :src="stepSrc" alt="Indication step" class="indication-step" />
     </div>
   </div>
 </template>
@@ -44,6 +48,21 @@
 import { useResizeObserver } from '@vueuse/core'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import useModule2 from '~/composables/module2'
+
+// 🟢 Étape courante
+const step = ref(1)
+
+const images = import.meta.glob(
+  '~/assets/modules/3/steps/*.png',
+  { eager: true, as: 'url' }
+) as Record<string, string>
+
+// 🔄 Computed pour retourner l'URL correspondant à la step courante
+const stepSrc = computed(() => {
+  const entry = Object.entries(images)
+    .find(([path]) => path.endsWith(`step${step.value}.png`))
+  return entry ? entry[1] : ''
+})
 
 // Canvas + rotations
 const canvas = ref<HTMLCanvasElement | null>(null)

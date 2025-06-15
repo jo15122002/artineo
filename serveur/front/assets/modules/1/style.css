@@ -26,13 +26,23 @@
   position: absolute;
   top: -1%;
   left: 0%;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 30%;
 }
 
-.arty img {
-  width: 75%;
+.arty-img {
   height: auto;
   max-width: 100%;
   max-height: 100%;
+}
+
+.indication-step {
+  width: 50%;
+  position: absolute;
+  bottom: 15vh;
+  margin-left: 8vw;
 }
 
 .timer {
@@ -52,7 +62,7 @@
 .timer-text {
   position: absolute;
   top: 51.5%;
-  right: -20%;
+  right: -2%;
   transform: translate(-50%, -50%);
   color: #FFF;
   z-index: 1;

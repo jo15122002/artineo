@@ -1,6 +1,6 @@
 // File: serveur/front/composables/module4.ts
 import type { Ref } from 'vue'
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useArtineo } from './useArtineo'
 
 export interface Stroke {
@@ -28,7 +28,7 @@ export interface ArtObject {
  * Renders strokes, objects, backgrounds, and a color overlay
  * according to a "button" value received over WS.
  */
-export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
+export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>, stepRef: Ref<number>) {
   // SSR guard: no DOM on server
   if (!process.client) {
     const stub: any = ref(null)
@@ -113,6 +113,13 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
   const backgrounds = ref<ArtObject[]>([])
   const scale = 3
 
+  // dès qu’on change d’étape, on vide les strokes si on n’est plus en step 1
+  watch(stepRef, newStep => {
+    if (newStep !== 1) {
+      strokes.value = []
+    }
+  })
+
   // 6️⃣ draw an object sprite (non-background)
   function drawObject(ctx: CanvasRenderingContext2D, o: ArtObject) {
     const img = objectImages[o.shape]
@@ -177,7 +184,7 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
     }
 
     // 7.2) add strokes
-    if (buf.newStrokes) {
+    if (buf.newStrokes && stepRef.value === 1) {
       buf.newStrokes.forEach(s => {
         if (!strokes.value.some(x => x.id === s.id)) {
           if (s.angle === undefined) {
@@ -380,6 +387,7 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
 
   onMounted(async () => {
     console.log('Module 4: Kinect + Button')
+    startTimer()
     // subscribe to Kinect updates
     if (!isKinectSubscribed) {
       isKinectSubscribed = true
@@ -442,5 +450,80 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>) {
     window.removeEventListener('keydown', onKeydown);
   })
 
-  return { strokes, objects, backgrounds }
+  const TIMER_DURATION = 60 // secondes
+  const timerSeconds = ref<number>(TIMER_DURATION)
+  let timerInterval: number | undefined = undefined
+
+  function startTimer() {
+    // réinitialise la valeur et stoppe un éventuel timer en cours
+    if (timerInterval) {
+      clearInterval(timerInterval)
+    }
+    timerSeconds.value = TIMER_DURATION
+    // décrémente chaque seconde
+    timerInterval = window.setInterval(() => {
+      // on décompte et on s'assure de ne pas passer sous 0
+      timerSeconds.value = Math.max(timerSeconds.value - 1, 0)
+      if (timerSeconds.value === 0 && timerInterval) {
+        clearInterval(timerInterval)
+      }
+    }, 1000)
+  }
+
+  function hexToRgb(hex: string) {
+    const h = hex.replace('#', '')
+    const bigint = parseInt(h, 16)
+    return {
+      r: (bigint >> 16) & 0xFF,
+      g: (bigint >> 8) & 0xFF,
+      b: bigint & 0xFF,
+    }
+  }
+  function rgbToHex(r: number, g: number, b: number) {
+    const hr = r.toString(16).padStart(2, '0')
+    const hg = g.toString(16).padStart(2, '0')
+    const hb = b.toString(16).padStart(2, '0')
+    return `#${hr}${hg}${hb}`
+  }
+  function lerp(a: number, b: number, t: number) {
+    return a + (b - a) * t
+  }
+
+  const colorStops = [
+    { p: 1.0, color: '#2626FF' },
+    { p: 0.6, color: '#FA81C3' },
+    { p: 0.3, color: '#FA4923' }
+  ] as const
+
+  const timerColor = computed(() => {
+    // ratio entre 0 et 1
+    const pct = timerSeconds.value / TIMER_DURATION
+    // on parcourt chaque segment [i]→[i+1]
+    for (let i = 0; i < colorStops.length - 1; i++) {
+      const { p: p0, color: c0 } = colorStops[i]
+      const { p: p1, color: c1 } = colorStops[i + 1]
+      if (pct <= p0 && pct >= p1) {
+        // t = 0 à p0  → couleur c0
+        // t = 1 à p1  → couleur c1
+        const t = (p0 - pct) / (p0 - p1)
+        const rgb0 = hexToRgb(c0)
+        const rgb1 = hexToRgb(c1)
+        const r = Math.round(lerp(rgb0.r, rgb1.r, t))
+        const g = Math.round(lerp(rgb0.g, rgb1.g, t))
+        const b = Math.round(lerp(rgb0.b, rgb1.b, t))
+        return rgbToHex(r, g, b)
+      }
+    }
+    // fallback
+    return colorStops[colorStops.length - 1].color
+  })
+
+  // computed pour formater en M:SS
+  const timerText = computed(() => {
+    const m = Math.floor(timerSeconds.value / 60);
+    const s = timerSeconds.value % 60;
+    return `${m}:${String(s).padStart(2, '0')}`;
+  });
+
+  return { strokes, objects, backgrounds, timerColor, timerText, timerSeconds, startTimer }
 }
