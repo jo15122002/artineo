@@ -133,7 +133,7 @@ export function useArtyManager(
       vid.style.width    = '100vw'
       vid.style.height   = '100vh'
       vid.style.zIndex   = '10000'
-      vid.style.backgroundColor = 'black'
+      vid.style.backgroundColor = 'transparent'
 
       vid.addEventListener('play',  handlePlay)
       vid.addEventListener('ended', handleEnded)
