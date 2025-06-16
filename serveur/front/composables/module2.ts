@@ -54,7 +54,7 @@ export default function useModule2(canvasRef: Ref<HTMLCanvasElement | null>) {
     if (canvas) {
       const scene = new THREE.Scene()
       const camera = new THREE.PerspectiveCamera(60, canvas.clientWidth / canvas.clientHeight, 0.1, 1000)
-      camera.position.set(0, 0, 4)
+      camera.position.set(0, -0.30, 2)
 
       const renderer = new THREE.WebGLRenderer({ antialias: true, canvas })
       renderer.setSize(canvas.clientWidth, canvas.clientHeight)
