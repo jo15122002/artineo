@@ -21,7 +21,8 @@
       <!-- image dynamique -->
       <img v-if="!tutorialFinished" :src="stepSrc" alt="Indication step" class="indication-step" />
       <ArtyPlayer ref="player1" :module="1" @ready="onPlayerReady" class="arty-player" />
-      <ArtyPlayer ref="player2" :module="1" @ready="console.log(`ply2 ready`)" class="arty-player" />
+      <ArtyPlayer ref="playerFrame" :module="1" @ready="console.log(`ply frame ready`)" class="arty-player" />
+      <ArtyPlayer ref="artyFrame" :module="1" @ready="console.log(`ply arty ready`)" class="arty-player" />
     </div>
 
     <!-- Zone cible (si debug=true) -->
@@ -33,167 +34,84 @@
 </template>
 
 <script setup lang="ts">
-import { useRuntimeConfig } from '#app'
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import ArtyPlayer from '~/components/ArtyPlayer.vue'
 import useModule1 from '~/composables/module1.ts'
 
-definePageMeta({ layout: 'module' })
+const { x, y, diamPx } = useModule1()
 
-const { public: { apiUrl } } = useRuntimeConfig()
-const {
-  backgroundPath,
-  filterStyle,
-  x, y,
-  diamPx,
-  timerColor,
-  timerText
-} = useModule1()
+// 1) liste des directions dans l’ordre ou aléatoirement
+const directions = ['Avance', 'Droite', 'Recule', 'Gauche']
+const currentIndex = ref(0)
+const currentDir = () => directions[currentIndex.value]
 
-// 🟢 Étape courante
-const step = ref(1)
-const player1 = ref<InstanceType<typeof ArtyPlayer> | null>(null)
-const player2 = ref<InstanceType<typeof ArtyPlayer> | null>(null)
+// 2) refs vers les deux players de hint
+const playerFrame = ref<InstanceType<typeof ArtyPlayer> | null>(null)
+const playerArty = ref<InstanceType<typeof ArtyPlayer> | null>(null)
 
-// --- 1) variables pour la détection de step ---
-const initialPos = reactive({ x: 0, y: 0, d: 0 })
-const entryTimeStep = ref<number | null>(null)
-const STEP_HOLD_TIME = 2 // secondes à tenir
+// 3) délais (en ms)
+const hintDelay = 3000   // 3s avant la video simple
+const artyHintDelay = 2000   // 2s après la simple avant la version arty
 
-// --- 2) fonctions de validation par étape ---
-const conditionFns: Array<(cur: { x: number; y: number; d: number }) => boolean> = [
-  cur => cur.d > initialPos.d,   // 1 - avancer (diamPx augmente → z avance)
-  cur => cur.x > initialPos.x,   // 2 - vers la droite
-  cur => cur.y > initialPos.y,   // 3 - vers le bas
-  cur => cur.y < initialPos.y,   // 4 - vers le haut
-  cur => cur.x < initialPos.x,   // 5 - vers la gauche
-  cur => cur.d < initialPos.d    // 6 - reculer (diamPx diminue → z recule)
-]
+let hintTimer: number | null = null
+let artyHintTimer: number | null = null
 
-// images pour chaque step
-const images = import.meta.glob(
-  '~/assets/modules/1/steps/*.png',
-  { eager: true, as: 'url' }
-) as Record<string, string>
-
-// nombre total d'étapes
-const maxStep = Object.entries(images).length
-
-// flag pour marquer la fin du tuto
-const tutorialFinished = ref(false)
-
-// 🔄 Computed pour retourner l'URL correspondant à la step courante
-const stepSrc = computed(() => {
-  const entry = Object.entries(images)
-    .find(([path]) => path.endsWith(`step${step.value}.png`))
-  return entry ? entry[1] : ''
-})
-
-// debug flag
-const showDebug = ref(false)
-
-// reactive pour la position cible (uniquement utile en debug)
-const goodResponsePosition = reactive({ x: 0, y: 0 })
-const goodResponseZoneSize = 30
-
-function onPlayerReady() {
-  console.log('[Module1] ArtyPlayer prêt → lecture de l\'intro…')
-  // Lecture de la vidéo d'introduction
-  player1.value?.playByTitle(
-    'intro.mp4',
-    () => console.log('→ onStart video imagination.mp4'),
-    () => {
-      console.log('→ vidéo imagination terminée')
-      player2.value?.playByTitle(
-        'Avance.webm',
-        () => console.log('→ onStart video imagination.mp4'),
-        () => console.log('→ vidéo imagination terminée')
-      )
-    }
-  )
+function clearHintTimers() {
+  if (hintTimer != null) { clearTimeout(hintTimer); hintTimer = null }
+  if (artyHintTimer != null) { clearTimeout(artyHintTimer); artyHintTimer = null }
 }
 
+function startHintTimers() {
+  clearHintTimers()
+  // 3a) timer pour la video simple
+  hintTimer = window.setTimeout(() => {
+    playerFrame.value?.playByTitle(`${currentDir()}.webm`)
+    // 3b) puis timer pour la video arty
+    artyHintTimer = window.setTimeout(() => {
+      playerArty.value?.playByTitle(`${currentDir()}_Arty.webm`)
+    }, artyHintDelay)
+  }, hintDelay)
+}
+
+// 4) fonction qui valide la direction courante
+function checkDirection(cur: { x: number, y: number, d: number }) {
+  const init = initialPos
+  switch (currentDir()) {
+    case 'Avance': return cur.d > init.d
+    case 'Recule': return cur.d < init.d
+    case 'Droite': return cur.x > init.x
+    case 'Gauche': return cur.x < init.x
+  }
+  return false
+}
+
+// onMounted : on mémorise la position de départ et on lance le premier hint
+const initialPos = { x: 0, y: 0, d: 0 }
 onMounted(() => {
-  const params = new URLSearchParams(window.location.search)
-  showDebug.value = params.get('debug') === 'true' || params.get('debug') === '1'
-
-  // initialisation aléatoire pour le debug
-  goodResponsePosition.x = Math.random() * 320
-  goodResponsePosition.y = Math.random() * 240
-
-  // mémoriser la position de départ pour la step 1
   initialPos.x = x.value
   initialPos.y = y.value
   initialPos.d = diamPx.value
+  startHintTimers()
 })
 
-// --- 3) watcher : valide la step si la condition tient STEP_HOLD_TIME secondes ---
+// 5) on watch la position pour détecter la bonne direction
 watch([x, y, diamPx], ([nx, ny, nd]) => {
-  if (tutorialFinished.value) return
-  if (step.value > conditionFns.length) return
-
-  const now = performance.now() / 1000
-  const isOk = conditionFns[step.value - 1]({ x: nx, y: ny, d: nd })
-
-  if (isOk) {
-    if (entryTimeStep.value === null) {
-      entryTimeStep.value = now
-    } else if (now - entryTimeStep.value >= STEP_HOLD_TIME) {
-      // validation de la step
-      step.value++
-      // réinitialisation pour la prochaine étape
-      initialPos.x = nx
-      initialPos.y = ny
-      initialPos.d = nd
-      entryTimeStep.value = null
+  const cur = { x: nx, y: ny, d: nd }
+  if (checkDirection(cur)) {
+    // on a validé la consigne
+    clearHintTimers()
+    // préparation de la prochaine
+    initialPos.x = nx
+    initialPos.y = ny
+    initialPos.d = nd
+    currentIndex.value++
+    if (currentIndex.value < directions.length) {
+      startHintTimers()
+    } else {
+      // fin de tuto…
     }
-  } else {
-    // reset si condition rompue
-    entryTimeStep.value = null
   }
 })
-
-// --- 4) watcher : termine le tuto quand on dépasse le nombre d'images ---
-watch(step, (newStep) => {
-  if (newStep > maxStep) {
-    tutorialFinished.value = true
-  }
-})
-
-
-// ────────────────────────────────────────────────────────────────────────────
-// Styles debug
-// ────────────────────────────────────────────────────────────────────────────
-
-// style de la zone cible
-const zoneStyle = computed(() => ({
-  position: 'absolute',
-  left: `${(goodResponsePosition.x / 320) * 100}%`,
-  top: `${(goodResponsePosition.y / 240) * 100}%`,
-  width: `${goodResponseZoneSize * 2}px`,
-  height: `${goodResponseZoneSize * 2}px`,
-  border: '2px dashed red',
-  borderRadius: '50%',
-  transform: 'translate(-50%, -50%)',
-  pointerEvents: 'none',
-  boxSizing: 'border-box',
-  zIndex: 10
-}))
-
-// style du cercle IR
-const circleStyle = computed(() => ({
-  position: 'absolute',
-  left: `${(x.value / 320) * 100}%`,
-  top: `${(y.value / 240) * 100}%`,
-  width: `${diamPx.value}px`,
-  height: `${diamPx.value}px`,
-  border: '2px solid red',
-  borderRadius: '50%',
-  transform: 'translate(-50%, -50%)',
-  pointerEvents: 'none',
-  boxSizing: 'border-box',
-  zIndex: 11
-}))
 </script>
 
 <style scoped src="~/assets/modules/1/style.css"></style>
