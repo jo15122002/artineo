@@ -21,6 +21,7 @@
       <!-- image dynamique -->
       <img v-if="!tutorialFinished" :src="stepSrc" alt="Indication step" class="indication-step" />
       <ArtyPlayer ref="player1" :module="1" @ready="onPlayerReady" class="arty-player" />
+      <ArtyPlayer ref="player2" :module="1" @ready=null class="arty-player" />
     </div>
 
     <!-- Zone cible (si debug=true) -->
@@ -34,8 +35,8 @@
 <script setup lang="ts">
 import { useRuntimeConfig } from '#app'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import useModule1 from '~/composables/module1.ts'
 import ArtyPlayer from '~/components/ArtyPlayer.vue'
+import useModule1 from '~/composables/module1.ts'
 
 definePageMeta({ layout: 'module' })
 
@@ -52,6 +53,7 @@ const {
 // 🟢 Étape courante
 const step = ref(1)
 const player1 = ref<InstanceType<typeof ArtyPlayer> | null>(null)
+const player2 = ref<InstanceType<typeof ArtyPlayer> | null>(null)
 
 // --- 1) variables pour la détection de step ---
 const initialPos = reactive({ x: 0, y: 0, d: 0 })
@@ -98,10 +100,16 @@ function onPlayerReady() {
   console.log('[Module1] ArtyPlayer prêt → lecture de l\'intro…')
   // Lecture de la vidéo d'introduction
   player1.value?.playByTitle(
-    'OverlayAvance_2.gif',
+    'intro.mp4',
     () => console.log('→ onStart video imagination.mp4'),
-    () => console.log('→ onComplete video imagination.mp4')
-  )
+    () => {
+      console.log('→ vidéo imagination terminée')
+      player2.value?.playByTitle(
+        'avance.webm',
+        () => console.log('→ onStart video imagination.mp4'),
+        () => console.log('→ vidéo imagination terminée')
+      )
+    })
 }
 
 onMounted(() => {
