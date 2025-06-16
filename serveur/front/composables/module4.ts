@@ -104,6 +104,7 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>, ste
   const buttonColors: Record<number, string> = {
     1: 'rgba(83, 160, 236, 0.2)',
     2: 'rgba(252, 191, 0, 0.2)',
+    3: 'rgba(147, 146, 183, 0.6)',
   }
   let currentButton = 1  // default
 
@@ -364,7 +365,8 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>, ste
       button: undefined
     },
     1: { shape: undefined, cx: undefined, cy: undefined, w: undefined, h: undefined, button: 1 },
-    2: { shape: undefined, cx: undefined, cy: undefined, w: undefined, h: undefined, button: 2 }
+    2: { shape: undefined, cx: undefined, cy: undefined, w: undefined, h: undefined, button: 2 },
+    3: { shape: undefined, cx: undefined, cy: undefined, w: undefined, h: undefined, button: 3 }
   };
 
   function onKeydown(ev: KeyboardEvent) {
