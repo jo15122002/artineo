@@ -8,22 +8,26 @@ import { useArtineo } from './useArtineo'
 
 export default function useModule2(canvasRef: Ref<HTMLCanvasElement | null>) {
   if (!process.client) {
-    const rotX = ref(0)
-    const rotY = ref(0)
-    const rotZ = ref(0)
+    // mode SSR / build
+    const zero = ref(0)
     const timerColor = ref('#2626FF')
     const timerText = ref('1:00')
-    return { rotX, rotY, rotZ, timerColor, timerText }
+    // on renvoie aussi des bornes neutres
+    return {
+      rotX: zero, rotY: zero, rotZ: zero,
+      rotXMin: zero, rotXMax: zero,
+      rotYMin: zero, rotYMax: zero,
+      rotZMin: zero, rotZMax: zero,
+      timerColor, timerText,
+    }
   }
 
   const artClient = useArtineo(2)
 
-  // 1️⃣ Valeurs réactives de rotation
+  // rotations et bornes
   const rotX = ref(0)
   const rotY = ref(0)
   const rotZ = ref(0)
-
-  // 🚧 Bornes depuis la config
   const rotXMin = ref(-Infinity)
   const rotXMax = ref(+Infinity)
   const rotYMin = ref(-Infinity)
@@ -31,88 +35,60 @@ export default function useModule2(canvasRef: Ref<HTMLCanvasElement | null>) {
   const rotZMin = ref(-Infinity)
   const rotZMax = ref(+Infinity)
 
-  // 2️⃣ Clamp utilitaire
+  // clamp
   const clamp = (v: number, min: number, max: number) => Math.min(Math.max(v, min), max)
 
-  // 3️⃣ Chargement des bornes depuis la config HTTP
+  // charge la config axes.rot? {min,max}
   async function loadConfig() {
     try {
       const cfg = await artClient.fetchConfig()
-      console.log('Config rotation chargée', cfg)
-      rotXMin.value = cfg.axes.rotX.min ?? rotXMin.value
-      rotXMax.value = cfg.axes.rotX.max ?? rotXMax.value
-      rotYMin.value = cfg.axes.rotY.min ?? rotYMin.value
-      rotYMax.value = cfg.axes.rotY.max ?? rotYMax.value
-      rotZMin.value = cfg.axes.rotZ.min ?? rotZMin.value
-      rotZMax.value = cfg.axes.rotZ.max ?? rotZMax.value
-
-      console.log('Bornes de rotation appliquées', {
-        rotXMin: rotXMin.value,
-        rotXMax: rotXMax.value,
-        rotYMin: rotYMin.value,
-        rotYMax: rotYMax.value,
-        rotZMin: rotZMin.value,
-        rotZMax: rotZMax.value,
-      })
+      // ex. { axes: { rotX: { min:…, max:… }, … } }
+      rotXMin.value = cfg.axes.rotX.min  ?? rotXMin.value
+      rotXMax.value = cfg.axes.rotX.max  ?? rotXMax.value
+      rotYMin.value = cfg.axes.rotY.min  ?? rotYMin.value
+      rotYMax.value = cfg.axes.rotY.max  ?? rotYMax.value
+      rotZMin.value = cfg.axes.rotZ.min  ?? rotZMin.value
+      rotZMax.value = cfg.axes.rotZ.max  ?? rotZMax.value
     } catch (e) {
       console.warn('Impossible de charger la config rotation', e)
     }
   }
 
-  // 4️⃣ Applique le clamp sur le buffer reçu
+  // applique et clamp
   function applyBuffer(buf: any) {
-    console.log('Buffer reçu', buf)
     if (typeof buf.rotX === 'number')
       rotX.value = clamp(buf.rotX, rotXMin.value, rotXMax.value)
     if (typeof buf.rotY === 'number')
       rotY.value = clamp(buf.rotY, rotYMin.value, rotYMax.value)
     if (typeof buf.rotZ === 'number')
       rotZ.value = clamp(buf.rotZ, rotZMin.value, rotZMax.value)
-    console.log('Valeurs de rotation appliquées', {
-      rotX: rotX.value,
-      rotY: rotY.value,
-      rotZ: rotZ.value,
-    })
   }
 
   let pollingInterval: ReturnType<typeof setInterval> | null = null
 
-  // 5️⃣ Timer et couleurs
-  const TIMER_DURATION = 60 // secondes
-  const timerSeconds = ref<number>(TIMER_DURATION)
-  let timerInterval: number | undefined
-
+  // timer (inchangé)…
+  const TIMER_DURATION = 60
+  const timerSeconds = ref(TIMER_DURATION)
+  let timerInterval: number
   function startTimer() {
-    if (timerInterval) clearInterval(timerInterval)
+    clearInterval(timerInterval)
     timerSeconds.value = TIMER_DURATION
     timerInterval = window.setInterval(() => {
       timerSeconds.value = Math.max(timerSeconds.value - 1, 0)
-      if (timerSeconds.value === 0 && timerInterval) {
-        clearInterval(timerInterval)
-      }
+      if (timerSeconds.value === 0) clearInterval(timerInterval)
     }, 1000)
   }
-
+  // fonctions couleur…
   function hexToRgb(hex: string) {
     const h = hex.replace('#', '')
-    const bigint = parseInt(h, 16)
-    return {
-      r: (bigint >> 16) & 0xff,
-      g: (bigint >> 8) & 0xff,
-      b: bigint & 0xff,
-    }
+    const bi = parseInt(h, 16)
+    return { r: (bi >> 16) & 0xff, g: (bi >> 8) & 0xff, b: bi & 0xff }
   }
-
   function rgbToHex(r: number, g: number, b: number) {
-    const hr = r.toString(16).padStart(2, '0')
-    const hg = g.toString(16).padStart(2, '0')
-    const hb = b.toString(16).padStart(2, '0')
-    return `#${hr}${hg}${hb}`
+    const to2 = (x: number) => x.toString(16).padStart(2, '0')
+    return `#${to2(r)}${to2(g)}${to2(b)}`
   }
-
-  function lerp(a: number, b: number, t: number) {
-    return a + (b - a) * t
-  }
+  function lerp(a: number, b: number, t: number) { return a + (b - a) * t }
 
   const colorStops = [
     { p: 1.0, color: '#2626FF' },
@@ -127,15 +103,15 @@ export default function useModule2(canvasRef: Ref<HTMLCanvasElement | null>) {
       const { p: p1, color: c1 } = colorStops[i + 1]
       if (pct <= p0 && pct >= p1) {
         const t = (p0 - pct) / (p0 - p1)
-        const rgb0 = hexToRgb(c0)
-        const rgb1 = hexToRgb(c1)
-        const r = Math.round(lerp(rgb0.r, rgb1.r, t))
-        const g = Math.round(lerp(rgb0.g, rgb1.g, t))
-        const b = Math.round(lerp(rgb0.b, rgb1.b, t))
-        return rgbToHex(r, g, b)
+        const a = hexToRgb(c0), b = hexToRgb(c1)
+        return rgbToHex(
+          Math.round(lerp(a.r, b.r, t)),
+          Math.round(lerp(a.g, b.g, t)),
+          Math.round(lerp(a.b, b.b, t))
+        )
       }
     }
-    return colorStops[colorStops.length - 1].color
+    return colorStops.at(-1)!.color
   })
 
   const timerText = computed(() => {
@@ -145,91 +121,63 @@ export default function useModule2(canvasRef: Ref<HTMLCanvasElement | null>) {
   })
 
   onMounted(async () => {
-    // Charge d'abord les bornes de rotation
+    // 1) charge bornes
     await loadConfig()
-
-    // Démarre le timer
+    // 2) démarre timer
     startTimer()
-
-    // 6️⃣ WebSocket push
+    // 3) WS push
     artClient.onMessage((msg: any) => {
-      if (msg.action === 'get_buffer' && msg.buffer) {
-        applyBuffer(msg.buffer)
-      }
+      if (msg.action === 'get_buffer' && msg.buffer) applyBuffer(msg.buffer)
     })
-
-    // 7️⃣ Initial + HTTP fallback
-    try {
-      const buf0 = await artClient.getBuffer()
-      applyBuffer(buf0)
-    } catch {}
-
-    // 8️⃣ Polling (20 FPS → 50 ms)
-    const intervalMs = 50
+    // 4) initial + polling HTTP
+    try { applyBuffer(await artClient.getBuffer()) } catch {}
     pollingInterval = setInterval(async () => {
-      try {
-        const buf = await artClient.getBuffer()
-        applyBuffer(buf)
-      } catch {}
-    }, intervalMs)
+      try { applyBuffer(await artClient.getBuffer()) } catch {}
+    }, 50)
 
-    // —————— Three.js ——————
+    // 5) Three.js (inchangé)
     const canvas = canvasRef.value
     if (canvas) {
       const scene = new THREE.Scene()
-      const camera = new THREE.PerspectiveCamera(
-        60,
-        canvas.clientWidth / canvas.clientHeight,
-        0.1,
-        1000
-      )
-      camera.position.set(0, -0.30, 2)
+      const camera = new THREE.PerspectiveCamera(60, canvas.clientWidth / canvas.clientHeight, 0.1, 1000)
+      camera.position.set(0, -0.3, 2)
       const renderer = new THREE.WebGLRenderer({ antialias: true, canvas })
       renderer.setSize(canvas.clientWidth, canvas.clientHeight)
-
       scene.add(new THREE.AmbientLight(0xffffff, 1))
-      const dirLight = new THREE.SpotLight(0xffffff, 450)
-      dirLight.angle = Math.PI / 3
-      dirLight.position.set(0, 0, 5)
-      scene.add(dirLight)
-
-      let loadedObject: THREE.Object3D | null = null
-      new MTLLoader()
-        .setPath('/models/module2/')
-        .load('Enter a title.mtl', (materials) => {
-          materials.preload()
-          new OBJLoader()
-            .setMaterials(materials)
-            .setPath('/models/module2/')
-            .load('Enter a title.obj', (object) => {
-              const center = new THREE.Box3()
-                .setFromObject(object)
-                .getCenter(new THREE.Vector3())
-              const container = new THREE.Group()
-              object.position.sub(center)
-              container.add(object)
-              scene.add(container)
-              loadedObject = container
-            })
+      const spot = new THREE.SpotLight(0xffffff, 450)
+      spot.angle = Math.PI / 3; spot.position.set(0, 0, 5)
+      scene.add(spot)
+      let obj: THREE.Object3D | null = null
+      new MTLLoader().setPath('/models/module2/').load('Enter a title.mtl', mats => {
+        mats.preload()
+        new OBJLoader().setMaterials(mats).setPath('/models/module2/').load('Enter a title.obj', o => {
+          const c = new THREE.Box3().setFromObject(o).getCenter(new THREE.Vector3())
+          const grp = new THREE.Group()
+          o.position.sub(c); grp.add(o); scene.add(grp); obj = grp
         })
-
-      function animate() {
+      })
+      ;(function animate() {
         requestAnimationFrame(animate)
-        if (loadedObject) {
-          loadedObject.rotation.x = rotX.value
-          loadedObject.rotation.y = rotY.value
-          loadedObject.rotation.z = rotZ.value
+        if (obj) {
+          obj.rotation.x = rotX.value
+          obj.rotation.y = rotY.value
+          obj.rotation.z = rotZ.value
         }
         renderer.render(scene, camera)
-      }
-      animate()
+      })()
     }
   })
 
   onBeforeUnmount(() => {
     if (pollingInterval) clearInterval(pollingInterval)
-    if (timerInterval) clearInterval(timerInterval)
+    clearInterval(timerInterval)
   })
 
-  return { rotX, rotY, rotZ, timerColor, timerText }
+  return {
+    rotX, rotY, rotZ,
+    rotXMin, rotXMax,
+    rotYMin, rotYMax,
+    rotZMin, rotZMax,
+    timerColor, timerText,
+  }
 }
