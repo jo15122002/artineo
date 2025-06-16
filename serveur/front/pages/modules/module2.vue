@@ -11,13 +11,13 @@
         <!-- Slider X -->
         <div class="button rectX-button" ref="rectXBtn">
           <img src="~/assets/modules/2/rectX.svg" alt="Slider X" />
-          <div class="rect-selector" ref="rectXSel" :style="{ '--t-x': translateX + 'px' }" />
+          <div class="rect-selector" ref="rectXSel" :style="{ '--t-x': translateY + 'px' }" />
         </div>
 
         <!-- Slider Y -->
         <div class="button rectY-button" ref="rectYBtn">
           <img src="~/assets/modules/2/rectY.svg" alt="Slider Y" />
-          <div class="rect-selector" ref="rectYSel" :style="{ '--t-y': translateY + 'px' }" />
+          <div class="rect-selector" ref="rectYSel" :style="{ '--t-y': translateX + 'px' }" />
         </div>
 
         <!-- Knob Z -->
