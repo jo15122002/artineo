@@ -64,22 +64,28 @@ const stepSrc = computed(() => {
   return entry ? entry[1] : ''
 })
 
-// Canvas + rotations
+// Canvas + hook composable
 const canvas = ref<HTMLCanvasElement | null>(null)
-const { rotX, rotY, rotZ, timerColor, timerText } = useModule2(canvas)
+const {
+  rotX, rotY, rotZ,
+  rotXMin, rotXMax,
+  rotYMin, rotYMax,
+  rotZMin, rotZMax,
+  timerColor, timerText
+} = useModule2(canvas)
 
-// Convert rotZ to degrees for CSS
-const rotZDeg = computed(() => (rotZ.value * 180) / Math.PI)
+// normalisation dynamique X/Y/Z selon les bornes chargées
+const pctX = computed(() =>
+  (rotX.value - rotXMin.value) / (rotXMax.value - rotXMin.value)
+)
+const pctY = computed(() =>
+  (rotY.value - rotYMin.value) / (rotYMax.value - rotYMin.value)
+)
+const pctZ = computed(() =>
+  (rotZ.value - rotZMin.value) / (rotZMax.value - rotZMin.value)
+)
 
-// Percentage normalization (±2π → 0–1)
-const inf = -2 * Math.PI
-const sup = 2 * Math.PI
-const span = sup - inf
-const norm = (v: number) => (v - inf) / span
-const pctX = computed(() => norm(rotX.value))
-const pctY = computed(() => norm(rotY.value))
-
-// Refs to DOM
+// Refs to DOM for sliders
 const rectXBtn = ref<HTMLElement | null>(null)
 const rectXSel = ref<HTMLElement | null>(null)
 const rectYBtn = ref<HTMLElement | null>(null)
@@ -91,7 +97,7 @@ const selectorWidth = ref(0)
 const parentHeightY = ref(0)
 const selectorHeight = ref(0)
 
-// Compute translations (%)
+// Compute translations (pixels)
 const translateX = computed(() =>
   pctX.value * (parentWidthX.value - selectorWidth.value)
 )
@@ -99,11 +105,13 @@ const translateY = computed(() =>
   pctY.value * (parentHeightY.value - selectorHeight.value)
 )
 
+// Compute knob rotation in degrees (0–360°)
+const rotZDeg = computed(() => pctZ.value * 360)
+
 let roX: ReturnType<typeof useResizeObserver>
 let roY: ReturnType<typeof useResizeObserver>
 
 onMounted(() => {
-  // mesure initiale + création des observers
   const measure = () => {
     if (rectXBtn.value) parentWidthX.value = rectXBtn.value.clientWidth
     if (rectXSel.value) selectorWidth.value = rectXSel.value.offsetWidth
