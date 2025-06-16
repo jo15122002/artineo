@@ -9,21 +9,29 @@
       <div class="buttons-wrapper" ref="buttonsWrapper">
 
         <!-- Slider X -->
-        <div class="button rectX-button" ref="rectXBtn">
+         <div>
+          <div class="button rectX-button" ref="rectXBtn">
           <img src="~/assets/modules/2/rectX.svg" alt="Slider X" />
           <div class="rect-selector" ref="rectXSel" :style="{ '--t-x': translateX + 'px' }" />
         </div>
+        <span v-if="isXChecked">V</span>
+         </div>
+        
 
-        <!-- Slider Y -->
-        <div class="button rectY-button" ref="rectYBtn">
+        <!-- Slider Y --><div>
+        <div class="button rectY-button" ref="rectYBtn" :class="{'gray': !isXChecked}">
           <img src="~/assets/modules/2/rectY.svg" alt="Slider Y" />
           <div class="rect-selector" ref="rectYSel" :style="{ '--t-y': translateY + 'px' }" />
         </div>
+        <span v-if="isYChecked">V</span>
+         </div>
 
-        <!-- Knob Z -->
-        <div class="button circle-button">
+        <!-- Knob Z --><div>
+        <div class="button circle-button" :class="{'gray': !isXChecked || !isYChecked}">
           <img src="~/assets/modules/2/circle.svg" alt="Knob Z" />
           <div class="rect-selector" :style="{ transform: `rotate(${rotZDeg}deg) translateY(-115px)` }" />
+        </div>
+        <span v-if="isZChecked">V</span>
         </div>
 
       </div>
@@ -71,7 +79,8 @@ const {
   rotXMin, rotXMax,
   rotYMin, rotYMax,
   rotZMin, rotZMax,
-  timerColor, timerText
+  timerColor, timerText,
+  isXChecked, isYChecked, isZChecked
 } = useModule2(canvas)
 
 // normalisation dynamique X/Y/Z selon les bornes chargées

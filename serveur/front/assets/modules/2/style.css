@@ -193,3 +193,7 @@ canvas {
   -webkit-mask-position: center;
   -webkit-mask-size: contain;
 }
+
+.gray {
+  filter: grayscale(100%);
+}

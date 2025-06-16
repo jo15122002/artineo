@@ -35,6 +35,10 @@ export default function useModule2(canvasRef: Ref<HTMLCanvasElement | null>) {
   const rotZMin = ref(-Infinity)
   const rotZMax = ref(+Infinity)
 
+  const isXChecked: Ref<boolean> = ref(false)
+  const isYChecked: Ref<boolean> = ref(false)
+  const isZChecked: Ref<boolean> = ref(false)
+
   // clamp
   const clamp = (v: number, min: number, max: number) => Math.min(Math.max(v, min), max)
 
@@ -56,12 +60,18 @@ export default function useModule2(canvasRef: Ref<HTMLCanvasElement | null>) {
 
   // applique et clamp
   function applyBuffer(buf: any) {
+    if (!buf || typeof buf !== 'object' || buf.rotX === undefined) return
     if (typeof buf.rotX === 'number')
       rotX.value = clamp(buf.rotX, rotXMin.value, rotXMax.value)
+      isXChecked.value = buf.isXChecked
+
     if (typeof buf.rotY === 'number')
       rotY.value = clamp(buf.rotY, rotYMin.value, rotYMax.value)
+      isYChecked.value = buf.isYChecked
+
     if (typeof buf.rotZ === 'number')
       rotZ.value = clamp(buf.rotZ, rotZMin.value, rotZMax.value)
+      isZChecked.value = buf.isZChecked
   }
 
   let pollingInterval: ReturnType<typeof setInterval> | null = null
@@ -179,5 +189,6 @@ export default function useModule2(canvasRef: Ref<HTMLCanvasElement | null>) {
     rotYMin, rotYMax,
     rotZMin, rotZMax,
     timerColor, timerText,
+    isXChecked, isYChecked, isZChecked
   }
 }
