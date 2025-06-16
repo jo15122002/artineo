@@ -18,7 +18,8 @@ export interface UseArtyManagerReturn {
   playByTitle:   (
     title: string,
     onStart?: () => void,
-    onComplete?: () => void
+    onComplete?: () => void,
+    autoplay?: boolean
   ) => void
 }
 
@@ -64,10 +65,10 @@ export function useArtyManager(
       })
 
       mediaList.value = list
-      if (list.length > 0) {
-        currentIndex.value = 0
-        initPlayer(currentIndex.value)
-      }
+      // if (list.length > 0) {
+      //   currentIndex.value = 0
+      //   initPlayer(currentIndex.value)
+      // }
     } catch (e) {
       console.error(`[ArtyManager][Module ${moduleId}] Erreur pendant load():`, e)
     }
@@ -76,7 +77,8 @@ export function useArtyManager(
   function initPlayer(
     index: number,
     onStartCallback?: () => void,
-    onCompleteCallback?: () => void
+    onCompleteCallback?: () => void,
+    autoplay = false
   ) {
     const container = containerRef.value
 
@@ -124,7 +126,7 @@ export function useArtyManager(
       vid.src         = info.url
       vid.preload     = 'auto'
       vid.muted       = false
-      vid.autoplay    = true
+      vid.autoplay    = autoplay
       vid.playsInline = true     // Au besoin sur mobile/embedded
       // ON NE MET PLUS `controls`
       vid.style.position = 'fixed'
@@ -203,7 +205,7 @@ export function useArtyManager(
       return
     }
     currentIndex.value = idx
-    initPlayer(idx, onStart, onComplete)
+    initPlayer(idx, onStart, onComplete, true)
     play()
   }
 

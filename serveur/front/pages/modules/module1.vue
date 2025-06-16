@@ -21,7 +21,7 @@
       <!-- image dynamique -->
       <img v-if="!tutorialFinished" :src="stepSrc" alt="Indication step" class="indication-step" />
       <ArtyPlayer ref="player1" :module="1" @ready="onPlayerReady" class="arty-player" />
-      <ArtyPlayer ref="player2" :module="1" @ready=null class="arty-player" />
+      <ArtyPlayer ref="player2" :module="1" @ready="console.log(`ply2 ready`)" class="arty-player" />
     </div>
 
     <!-- Zone cible (si debug=true) -->
@@ -105,11 +105,12 @@ function onPlayerReady() {
     () => {
       console.log('→ vidéo imagination terminée')
       player2.value?.playByTitle(
-        'avance.webm',
+        'Avance.webm',
         () => console.log('→ onStart video imagination.mp4'),
         () => console.log('→ vidéo imagination terminée')
       )
-    })
+    }
+  )
 }
 
 onMounted(() => {
