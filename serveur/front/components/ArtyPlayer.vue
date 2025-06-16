@@ -62,7 +62,12 @@ watch(
 .arty-player {
     width: 0;
     height: 0;
+    background: transparent;
     /* On ne veut pas voir un espace vide : <audio> est d’office “display: none”,
      <video> a controls et valeur fixe, mais le parent gère l’affichage si besoin. */
+}
+
+.arty-player video {
+    background: transparent;
 }
 </style>
