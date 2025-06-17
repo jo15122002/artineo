@@ -159,7 +159,7 @@ export default function useModule2(canvasRef: Ref<HTMLCanvasElement | null>) {
     }
 
     // 2) start the timer
-    startTimer()
+    // startTimer()
 
     // 3) subscribe to WebSocket for buffer & timerControl
     artClient.onMessage((msg: any) => {
@@ -231,6 +231,7 @@ export default function useModule2(canvasRef: Ref<HTMLCanvasElement | null>) {
     rotYMin, rotYMax,
     rotZMin, rotZMax,
     timerColor, timerText,
-    isXChecked, isYChecked, isZChecked
+    isXChecked, isYChecked, isZChecked,
+    startTimer
   }
 }

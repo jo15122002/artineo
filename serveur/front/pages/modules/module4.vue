@@ -3,6 +3,7 @@
 
     <div class="arty">
       <ArtyPlayer ref="player4" :module="4" @ready="onPlayerReady" class="arty-player arty-angle" style="display: none" />
+      <ArtyPlayer ref="player4Music" :module="4" @ready="onMusicPlayerReady" class="arty-player arty-angle" style="display: none" />
     </div>
 
     <div class="painting-frame-with-shadow">
@@ -66,15 +67,21 @@ const {
 
 // --- 3. ArtyPlayer ref + helpers ---
 const player4 = ref<InstanceType<typeof ArtyPlayer> | null>(null)
+const player4Music = ref<InstanceType<typeof ArtyPlayer> | null>(null)
 const artyImage = ref<HTMLImageElement | null>(null)
 
 function playStepVideo(n: number) {
-  artyImage.value!.style.display = 'none' // cache l’image fixe
+  // wait 500ms before hiding the image
+  setTimeout(() => {
+    if (artyImage.value) {
+      artyImage.value.style.display = 'none'
+    }
+  }, 500)
+  // artyImage.value!.style.display = 'none' // cache l’image fixe
   player4.value?.playByTitle(
     `step${n}.webm`,
     /* onStart? */ undefined,
     /* onEnd */ () => {
-      // une fois la vidéo finie, on démarre le timer
       startTimer?.()
       artyImage.value!.style.display = 'block' // affiche l’image fixe
     },
@@ -85,6 +92,10 @@ function playStepVideo(n: number) {
 function onPlayerReady() {
   // lancement de la vidéo du premier step
   playStepVideo(step.value)
+}
+
+function onMusicPlayerReady() {
+  player4Music.value?.playByTitle('song.wav')
 }
 
 // --- 4. à chaque changement de step, jouer la vidéo ---
@@ -104,7 +115,7 @@ if (timerSeconds) {
         step.value++
       } else {
         // dernier step terminé → outroteur
-        player4.value?.playByTitle('outro.webm')
+        player4.value?.playByTitle('outro.webm', undefined, () => player4Music.value?.stop(), "arty-left")
       }
     }
   })

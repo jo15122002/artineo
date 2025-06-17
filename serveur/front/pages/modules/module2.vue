@@ -6,6 +6,10 @@
           <canvas ref="canvas" />
         </div>
       </div>
+
+      <ArtyPlayer ref="player2" :module="2" @ready="onPlayerReady" class="arty-player arty-angle" style="display: none" />
+      <ArtyPlayer ref="player2Music" :module="2" @ready="onMusicPlayerReady" class="arty-player" style="display: none" />
+
       <div class="buttons-wrapper" ref="buttonsWrapper">
 
         <!-- Slider X -->
@@ -56,6 +60,7 @@
 import { useResizeObserver } from '@vueuse/core'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import useModule2 from '~/composables/module2'
+import ArtyPlayer from '~/components/ArtyPlayer.vue'
 
 // 🟢 Étape courante
 const step = ref(1)
@@ -80,7 +85,8 @@ const {
   rotYMin, rotYMax,
   rotZMin, rotZMax,
   timerColor, timerText,
-  isXChecked, isYChecked, isZChecked
+  isXChecked, isYChecked, isZChecked,
+  startTimer
 } = useModule2(canvas)
 
 // normalisation dynamique X/Y/Z selon les bornes chargées
@@ -119,6 +125,37 @@ const rotZDeg = computed(() => pctZ.value * 360)
 
 let roX: ReturnType<typeof useResizeObserver>
 let roY: ReturnType<typeof useResizeObserver>
+
+const player2 = ref<InstanceType<typeof ArtyPlayer> | null>(null)
+const player2Music = ref<InstanceType<typeof ArtyPlayer> | null>(null)
+
+function onPlayerReady() {
+  player2.value?.playByTitle(
+    'Jeu2_intro.webm',
+    () => console.log('→ début de Jeu2.webm'),
+    () => startTimer?.()
+  )
+}
+
+function onMusicPlayerReady() {
+  player2Music.value?.playByTitle("song.wav")
+}
+
+watch(
+  [isXChecked, isYChecked, isZChecked, timerText],
+  ([xChecked, yChecked, zChecked, t]) => {
+    if ((xChecked && yChecked && zChecked) || t === '0:00') {
+      // Lance la vidéo principale (mettre ici le titre de la vidéo désirée)
+      setTimeout(() => {
+        player2.value?.playByTitle(
+          'Jeu2Fin.webm',
+          () => console.log('→ lancement de la vidéo de fin'),
+          () => player2Music.value?.stop()
+        )
+      }, 2000)
+    }
+  }
+)
 
 onMounted(() => {
   const measure = () => {

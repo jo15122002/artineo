@@ -31,7 +31,8 @@ const {
     play,
     next,
     prev,
-    playByTitle
+    playByTitle,
+    stop
 } = useArtyManager(props.module, container)
 
 // On “premium expose” ces méthodes pour que le parent (module3.vue) y accède via `player3.value`
@@ -40,7 +41,8 @@ defineExpose({
     play,
     next,
     prev,
-    playByTitle
+    playByTitle,
+    stop
 })
 
 // Dès que <div ref="container"> existe, on appelle load()
@@ -72,10 +74,12 @@ watch(
 
 #arty-left {
     position: absolute;
-    left: 0;
-    top: 0;
+    left: -18.33%;
+    top: -9.5%;
     width: 50%;
     height: auto;
+    rotate: 30deg;
+    scale: 1.5;
 }
 
 /* Styles pour cacher l’audio */

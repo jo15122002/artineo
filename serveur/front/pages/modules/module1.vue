@@ -21,6 +21,7 @@
       <ArtyPlayer ref="fullScreenPlayer" :module="1" @ready="onFullScreenPlayerReady" class="arty-player" />
       <ArtyPlayer ref="playerFrame" :module="1" @ready="console.log('playerFrame prêt')" class="arty-player" />
       <ArtyPlayer ref="playerArty" :module="1" @ready="console.log('playerArty prêt')" class="arty-player" />
+      <ArtyPlayer ref="playerArtyMusic" :module="1" @ready="console.log('playerMusic prêt')" class="arty-player" />
     </div>
 
     <!-- Optionnel : affichage textuel de l'indice courant -->
@@ -50,7 +51,11 @@ const {
   x, y,
   diamPx,
   timerColor,
-  timerText
+  timerText,
+  responseAlreadyValidated,
+  resetTimer,
+  resumeTimer,
+  goodResponsePos
 } = useModule1()
 
 // → 1) Indice courant (mis à jour par la logique de jeu)
@@ -63,15 +68,22 @@ const initialPos = reactive({ x: 0, y: 0, d: 0 })
 const playerFrame = ref<InstanceType<typeof ArtyPlayer> | null>(null)
 const playerArty = ref<InstanceType<typeof ArtyPlayer> | null>(null)
 const fullScreenPlayer = ref<InstanceType<typeof ArtyPlayer> | null>(null)
+const playerArtyMusic = ref<InstanceType<typeof ArtyPlayer> | null>(null)
 
 const canPoll = ref(false)
 
 function onFullScreenPlayerReady() {
-  fullScreenPlayer.value?.playByTitle('intro.mp4', undefined, () => {
-    console.log('Full screen player ended')
-    console.log("canpoll", canPoll.value)
-    canPoll.value = true
-  })
+  fullScreenPlayer.value?.playByTitle('intro.mp4',
+    () => {
+      resetTimer();
+      playerArtyMusic.value?.playByTitle('song.mp4')
+    },
+    () => {
+      resumeTimer()
+      console.log('Full screen player ended')
+      console.log("canpoll", canPoll.value)
+      canPoll.value = true
+    })
 }
 
 // → 4) Délai avant affichage des hints (en ms)
@@ -99,7 +111,7 @@ function startHintTimer() {
     if (!currentDirection.value) return
     // Lancer les deux vidéos en simultané
     playerFrame.value?.playByTitle(`${currentDirection.value}.webm`)
-    playerArty.value?.playByTitle(`${currentDirection.value}_Arty.webm`)
+    playerArty.value?.playByTitle(`${currentDirection.value}_Arty.webm`, undefined, undefined, "arty-left")
   }, hintDelay)
 }
 
@@ -129,8 +141,8 @@ const diamRuleToShowTip = 20
 
 // → 7) On observe les capteurs et on annule les hints dès réussite
 watch([x, y, diamPx], ([nx, ny, nd]) => {
-  console.log("canPoll", canPoll.value, "x", nx, "y", ny, "diamPx", nd)
-  if (!canPoll.value) return
+  // console.log("canPoll", canPoll.value, "x", nx, "y", ny, "diamPx", nd)
+  if (!canPoll.value || responseAlreadyValidated) return
   const cur = { x: nx, y: ny, d: nd }
   if (isMovingCorrectly(cur)) {
     clearHintTimers()
@@ -180,7 +192,7 @@ watch([x, y, diamPx], ([nx, ny, nd]) => {
 
 watch([showTipX, showTipY, showTipZone], () => {
   console.log("canPoll", canPoll.value, "showTipX", showTipX.value, "showTipY", showTipY.value, "showTipZone", showTipZone.value)
-  if (!canPoll.value) return
+  if (!canPoll.value || responseAlreadyValidated) return
   if (showTipX.value) {
     console.log('showTipX', x.value, goodResponsePosition.x)
     playerFrame.value?.playByTitle(x.value > goodResponsePosition.x ? 'Gauche.webm' : 'Droite.webm', undefined, () => {
@@ -206,9 +218,16 @@ watch([showTipX, showTipY, showTipZone], () => {
   }
 })
 
+watch(responseAlreadyValidated, (val) => {
+  console.log("responseAlreadyValidated", val)
+  if (val) {
+    fullScreenPlayer.value?.playByTitle('fin.mp4')
+  }
+})
+
 // → Debug
 const showDebug = ref(false)
-const goodResponsePosition = reactive({ x: 0, y: 0 })
+const goodResponsePosition = goodResponsePos
 const goodResponseZoneSize = 30
 
 onMounted(() => {
@@ -216,8 +235,8 @@ onMounted(() => {
   showDebug.value = params.get('debug') === 'true' || params.get('debug') === '1'
 
   // position aléatoire pour debug
-  goodResponsePosition.x = Math.random() * 320
-  goodResponsePosition.y = Math.random() * 240
+  // goodResponsePosition.x = Math.random() * 320
+  // goodResponsePosition.y = Math.random() * 240
 
   // init position de référence
   initialPos.x = x.value

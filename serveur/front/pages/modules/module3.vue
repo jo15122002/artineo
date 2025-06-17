@@ -9,6 +9,7 @@
     </div>
 
     <ArtyPlayer ref="player3" :module="3" @ready="onPlayerReady" class="arty-player" />
+    <ArtyPlayer ref="player3Music" :module="3" @ready="onMusicPlayerReady" class="arty-player" />
 
     <section class="choices">
       <button v-for="(label, i) in blobTexts" :key="i" class="choice-wrapper">
@@ -54,6 +55,7 @@ const stepSrc = computed(() => {
 })
 
 const player3 = ref<InstanceType<typeof ArtyPlayer> | null>(null)
+const player3Music = ref<InstanceType<typeof ArtyPlayer> | null>(null)
 
 const {
   backgroundSet,
@@ -77,6 +79,10 @@ function onPlayerReady() {
   )
 }
 
+function onMusicPlayerReady() {
+  player3Music.value?.playByTitle('song.wav')
+}
+
 // ✅ Condition prête : timer à "0:00" ET toutes les classes contiennent "correct"
 const readyForNext = computed(() => {
   return timerText?.value === '0:00'
@@ -94,7 +100,9 @@ watch(
     ) {
       console.log('[Module3] conditions OK → lecture de fin')
       stopTimer?.() // On arrête le timer
-      player3.value?.playByTitle('Jeu3Fin.webm')
+      player3.value?.playByTitle('Jeu3Fin.webm', undefined,
+        () => player3Music.value?.stop()
+      )
     }
   }
 )

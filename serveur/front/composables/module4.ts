@@ -318,7 +318,7 @@ export default function useModule4(
 
   onMounted(() => {
     // start timer on mount
-    startTimer()
+    // startTimer()
 
     // subscribe Kinect WS
     artClientKinect.onMessage((msg:any)=>{
