@@ -18,7 +18,7 @@
         <img v-if="isYChecked" src="~/assets/modules/2/splash-check.png" alt="splash check" class="splash-check" />
       </div>
       <div v-show="isYChecked && !isZChecked">
-        <div class="button circle-button" :class="{ 'gray': !isXChecked || !isYChecked }">
+        <div class="button circle-button" :class="{ gray: !isXChecked || !isYChecked }">
           <img src="~/assets/modules/2/circle.svg" alt="Knob Z" />
           <div class="rect-selector" :style="{ transform: `rotate(${rotZDeg}deg) translateY(-115px)` }" />
         </div>
@@ -29,13 +29,16 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, onUnmounted, reactive, ref } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, onUnmounted } from 'vue'
 import { useArtineo } from '~/composables/useArtineo'
-import { useResizeObserver } from "@vueuse/core";
-import { clamp } from "@antfu/utils";
+import { useResizeObserver } from '@vueuse/core'
+import { clamp } from '@antfu/utils'
+
+// --- rotations and bounds ---
 const rotX = ref(0)
 const rotY = ref(0)
 const rotZ = ref(0)
+
 const rotXMin = ref(-Infinity)
 const rotXMax = ref(+Infinity)
 const rotYMin = ref(-Infinity)
@@ -43,31 +46,29 @@ const rotYMax = ref(+Infinity)
 const rotZMin = ref(-Infinity)
 const rotZMax = ref(+Infinity)
 
-const pctX = computed(() => {
-  const denom = rotXMax.value - rotXMin.value
-  return denom !== 0 ? (rotX.value - rotXMin.value) / denom : 0
-})
-const pctY = computed(() => {
-  const denom = rotYMax.value - rotYMin.value
-  return denom !== 0 ? (rotY.value - rotYMin.value) / denom : 0
-})
-const pctZ = computed(() => {
-  const denom = rotZMax.value - rotZMin.value
-  return denom !== 0 ? (rotZ.value - rotZMin.value) / denom : 0
-})
+// --- compute percentage along each axis ---
+const pctX = computed(() =>
+  rotXMin.value < rotXMax.value
+    ? (rotX.value - rotXMin.value) / (rotXMax.value - rotXMin.value)
+    : 0
+)
+const pctY = computed(() =>
+  rotYMin.value < rotYMax.value
+    ? (rotY.value - rotYMin.value) / (rotYMax.value - rotYMin.value)
+    : 0
+)
+const pctZ = computed(() =>
+  rotZMin.value < rotZMax.value
+    ? (rotZ.value - rotZMin.value) / (rotZMax.value - rotZMin.value)
+    : 0
+)
 
-const rectXBtn = ref<HTMLElement>()
-const rectXSel = ref<HTMLElement>()
-const rectYBtn = ref<HTMLElement>()
-const rectYSel = ref<HTMLElement>()
-
-// Measured dims
+// --- slider positions in px and rotation in deg ---
 const parentWidthX = ref(0)
 const selectorWidth = ref(0)
 const parentHeightY = ref(0)
 const selectorHeight = ref(0)
 
-// Compute translations (pixels)
 const translateX = computed(() =>
   isFinite(pctX.value) && isFinite(parentWidthX.value) && isFinite(selectorWidth.value)
     ? pctX.value * (parentWidthX.value - selectorWidth.value)
@@ -78,11 +79,10 @@ const translateY = computed(() =>
     ? pctY.value * (parentHeightY.value - selectorHeight.value)
     : 0
 )
-
-// Compute knob rotation in degrees (0–360°)
 const rotZDeg = computed(() => pctZ.value * 360)
 
-const tolerance = 0.2 // tolérance pour les rotations
+// --- check states ---
+const tolerance = 0.2
 const objectiveRotX = 2
 const objectiveRotY = 1
 const objectiveRotZ = 0.5
@@ -90,60 +90,117 @@ const isXChecked = computed(() => Math.abs(rotX.value - objectiveRotX) < toleran
 const isYChecked = computed(() => Math.abs(rotY.value - objectiveRotY) < tolerance)
 const isZChecked = computed(() => Math.abs(rotZ.value - objectiveRotZ) < tolerance)
 
+// --- DOM refs ---
+const rectXBtn = ref<HTMLElement>()
+const rectXSel = ref<HTMLElement>()
+const rectYBtn = ref<HTMLElement>()
+const rectYSel = ref<HTMLElement>()
+
+// --- server buffering ---
 const client = useArtineo(2)
 let intervalId: number | null = null
-
 function sendModule2() {
-
   client.setBuffer({
     rotX: rotX.value,
     rotY: rotY.value,
     rotZ: rotZ.value,
     isXChecked: isXChecked.value,
     isYChecked: isYChecked.value,
-    isZChecked: isZChecked.value
+    isZChecked: isZChecked.value,
+  })
+}
+
+// --- load config, set bounds, init slider at min ---
+async function loadConfig() {
+  try {
+    const cfg = await client.fetchConfig()
+    rotXMin.value = cfg.axes.rotX.min
+    rotXMax.value = cfg.axes.rotX.max
+    rotYMin.value = cfg.axes.rotY.min
+    rotYMax.value = cfg.axes.rotY.max
+    rotZMin.value = cfg.axes.rotZ.min
+    rotZMax.value = cfg.axes.rotZ.max
+
+    // position initiale à la borne min
+    rotX.value = rotXMin.value
+    rotY.value = rotYMin.value
+    rotZ.value = rotZMin.value
+  } catch (e) {
+    console.warn('Impossible de charger la config rotation', e)
+  }
+}
+
+// --- unified drag setup using Pointer Events ---
+function setupDrag(el: HTMLElement, onMove: (e: PointerEvent) => void) {
+  const onPointerMove = (e: PointerEvent) => {
+    const rect = el.parentElement!.getBoundingClientRect()
+    onMove(e)
+  }
+  const onPointerUp = () => {
+    window.removeEventListener('pointermove', onPointerMove)
+    window.removeEventListener('pointerup', onPointerUp)
+  }
+  el.addEventListener('pointerdown', (e: PointerEvent) => {
+    e.preventDefault()
+    window.addEventListener('pointermove', onPointerMove)
+    window.addEventListener('pointerup', onPointerUp)
+  })
+}
+
+function setupDragX() {
+  const el = rectXSel.value!
+  const parent = rectXBtn.value!
+  setupDrag(el, e => {
+    const rect = parent.getBoundingClientRect()
+    const rawPct = (e.clientX - rect.left) / rect.width
+    const pct = clamp(rawPct, 0, 1)
+    rotX.value = rotXMin.value + pct * (rotXMax.value - rotXMin.value)
+  })
+}
+
+function setupDragY() {
+  const el = rectYSel.value!
+  const parent = rectYBtn.value!
+  setupDrag(el, e => {
+    const rect = parent.getBoundingClientRect()
+    const rawPct = (e.clientY - rect.top) / rect.height
+    const pct = clamp(rawPct, 0, 1)
+    rotY.value = rotYMin.value + pct * (rotYMax.value - rotYMin.value)
+  })
+}
+
+function setupDragZ() {
+  const el = document.querySelector('.circle-button > .rect-selector') as HTMLElement
+  const parent = document.querySelector('.circle-button') as HTMLElement
+  setupDrag(el, e => {
+    const rect = parent.getBoundingClientRect()
+    const cx = rect.left + rect.width / 2
+    const cy = rect.top + rect.height / 2
+    const dx = e.clientX - cx
+    const dy = e.clientY - cy
+    const angleDeg = ((Math.atan2(dy, dx) * 180) / Math.PI + 360) % 360
+    const pct = angleDeg / 360
+    rotZ.value = rotZMin.value + pct * (rotZMax.value - rotZMin.value)
   })
 }
 
 let roX: ReturnType<typeof useResizeObserver>
 let roY: ReturnType<typeof useResizeObserver>
 
-async function loadConfig() {
-  try {
-    console.log("loadConfig", client)
-    const cfg = await client.fetchConfig()
-    console.log('Config rotation:', cfg)
-    // ex. { axes: { rotX: { min:…, max:… }, … } }
-    rotXMin.value = cfg.axes.rotX.min ?? rotXMin.value
-    rotXMax.value = cfg.axes.rotX.max ?? rotXMax.value
-    rotYMin.value = cfg.axes.rotY.min ?? rotYMin.value
-    rotYMax.value = cfg.axes.rotY.max ?? rotYMax.value
-    rotZMin.value = cfg.axes.rotZ.min ?? rotZMin.value
-    rotZMax.value = cfg.axes.rotZ.max ?? rotZMax.value
-  } catch (e) {
-    console.warn('Impossible de charger la config rotation', e)
-  }
-}
-
 onMounted(() => {
-  // Envoi continu automatique toutes les 100 ms
   intervalId = window.setInterval(sendModule2, 100)
   void loadConfig()
+
   const measure = () => {
     if (rectXBtn.value) parentWidthX.value = rectXBtn.value.clientWidth
     if (rectXSel.value) selectorWidth.value = rectXSel.value.offsetWidth
     if (rectYBtn.value) parentHeightY.value = rectYBtn.value.clientHeight
     if (rectYSel.value) selectorHeight.value = rectYSel.value.offsetHeight
   }
-
   measure()
+  if (rectXBtn.value) roX = useResizeObserver(rectXBtn, measure)
+  if (rectYBtn.value) roY = useResizeObserver(rectYBtn, measure)
 
-  if (rectXBtn.value) {
-    roX = useResizeObserver(rectXBtn, measure)
-  }
-  if (rectYBtn.value) {
-    roY = useResizeObserver(rectYBtn, measure)
-  }
   setupDragX()
   setupDragY()
   setupDragZ()
@@ -155,61 +212,8 @@ onBeforeUnmount(() => {
 })
 
 onUnmounted(() => {
-  if (intervalId !== null) {
-    clearInterval(intervalId)
-  }
+  if (intervalId !== null) clearInterval(intervalId)
 })
-
-function setupDrag(el: HTMLElement, onMove: (e: PointerEvent) => void) {
-  const onPointerMove = (e: PointerEvent) => {
-    onMove(e)
-  }
-  const onPointerUp = () => {
-    window.removeEventListener('pointermove', onPointerMove)
-    window.removeEventListener('pointerup', onPointerUp)
-  }
-  el.addEventListener('pointerdown', (e: PointerEvent) => {
-    e.preventDefault() // bloque le scroll
-    window.addEventListener('pointermove', onPointerMove)
-    window.addEventListener('pointerup', onPointerUp)
-  })
-}
-
-// X :
-function setupDragX() {
-  const el = rectXSel.value!
-  const parent = rectXBtn.value!
-  setupDrag(el, (e) => {
-    const rect = parent.getBoundingClientRect()
-    const pct = clamp((e.clientX - rect.left) / rect.width, 0, 1)
-    rotX.value = rotXMin.value + pct * (rotXMax.value - rotXMin.value)
-  })
-}
-
-// Y :
-function setupDragY() {
-  const el = rectYSel.value!
-  const parent = rectYBtn.value!
-  setupDrag(el, (e) => {
-    const rect = parent.getBoundingClientRect()
-    const pct = clamp((e.clientY - rect.top) / rect.height, 0, 1)
-    rotY.value = rotYMin.value + pct * (rotYMax.value - rotYMin.value)
-  })
-}
-
-// Z :
-function setupDragZ() {
-  const el = document.querySelector('.circle-button > .rect-selector')!
-  const parent = document.querySelector('.circle-button')!
-  setupDrag(el, (e) => {
-    const rect = parent.getBoundingClientRect()
-    const dx = e.clientX - (rect.left + rect.width / 2)
-    const dy = e.clientY - (rect.top + rect.height / 2)
-    const angle = (Math.atan2(dy, dx) * 180 / Math.PI + 360) % 360
-    const pct = angle / 360
-    rotZ.value = rotZMin.value + pct * (rotZMax.value - rotZMin.value)
-  })
-}
 </script>
 
 <style scoped>
@@ -223,33 +227,6 @@ function setupDragZ() {
   font-family: "CheeseSauce", sans-serif;
   max-width: 400px;
   margin: auto;
-}
-
-.module2-controls label {
-  display: flex;
-  align-items: center;
-  margin: 0.5rem 0;
-}
-
-.module2-controls input[type='range'] {
-  margin: 0 0.5rem;
-  flex: 1;
-}
-
-.module2-controls span {
-  width: 60px;
-  text-align: right;
-  font-family: monospace;
-}
-
-.button-row {
-  margin-top: 1rem;
-}
-
-.button-row button {
-  padding: 0.5rem 1rem;
-  font-size: 1rem;
-  cursor: pointer;
 }
 
 .rect-selector {
