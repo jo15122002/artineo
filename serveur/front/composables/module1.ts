@@ -40,7 +40,7 @@ export default function useModule1() {
   // ────────────────────────────────────────────────────────────────────────────
   // Validation “bonne réponse”
   // ────────────────────────────────────────────────────────────────────────────
-  const goodResponsePosition = { x: 160, y: 120 }
+  const goodResponsePos = { x: 160, y: 120 }
   // tolérance en px (horizontale et verticale)
   const positionTolerance = 30
   // durée minimale à rester dans la zone (s)
@@ -48,18 +48,18 @@ export default function useModule1() {
 
   const inZone = ref(false)
   let entryTime: number | null = null
-  let responseAlreadyValidated = false
+  const responseAlreadyValidated = ref(false)
 
-  // CSS filter pour feed-back visuel
+  // CSS filter pour feed‐back visuel
   const filterStyle = computed(() => {
-    const dx = x.value - goodResponsePosition.x
-    const dy = y.value - goodResponsePosition.y
-    let hueVal = (dx / goodResponsePosition.x) * 180
+    const dx = x.value - goodResponsePos.x
+    const dy = y.value - goodResponsePos.y
+    let hueVal = (dx / goodResponsePos.x) * 180
     hueVal = Math.max(-180, Math.min(180, hueVal))
     const refDiam = positionTolerance
     let satVal = 100 + ((diamPx.value - refDiam) / refDiam) * 100
     satVal = Math.max(0, Math.min(200, satVal))
-    let brightVal = 100 - (dy / goodResponsePosition.y) * 50
+    let brightVal = 100 - (dy / goodResponsePos.y) * 50
     brightVal = Math.max(50, Math.min(150, brightVal))
     return `hue-rotate(${hueVal.toFixed(1)}deg)
             saturate(${satVal.toFixed(0)}%)
@@ -67,7 +67,7 @@ export default function useModule1() {
   })
 
   // ────────────────────────────────────────────────────────────────────────────
-  // Timer (inchangé)
+  // Timer logic
   // ────────────────────────────────────────────────────────────────────────────
   const TIMER_DURATION = 60
   const timerSeconds = ref<number>(TIMER_DURATION)
@@ -150,7 +150,7 @@ export default function useModule1() {
   })
 
   // ────────────────────────────────────────────────────────────────────────────
-  // LIFECYCLE
+  // Lifecycle
   // ────────────────────────────────────────────────────────────────────────────
   const fps = ref(10)
   let pollTimer: number | undefined
@@ -169,21 +169,21 @@ export default function useModule1() {
       console.error('[Module1] fetchConfig error', e)
     }
 
-    // WS push + contrôle timer
+    // WebSocket push + timer control
     client.onMessage((msg:any) => {
-      // console.log('[Module1] WS message →', msg)
+      // console.log('[Module1] WS buffer →', msg)
       if (msg.action === 'get_buffer') {
         const buf = msg.buffer as BufferPayload
         x.value      = buf.x      ?? x.value
         y.value      = buf.y      ?? y.value
         diamPx.value = buf.diameter ?? diamPx.value
-        if (buf.timerControl==='pause')  pauseTimer()
-        if (buf.timerControl==='resume') resumeTimer()
-        if (buf.timerControl==='reset')  resetTimer()
+        if (buf.timerControl === 'pause')  pauseTimer()
+        if (buf.timerControl === 'resume') resumeTimer()
+        if (buf.timerControl === 'reset')  resetTimer()
       }
     })
 
-    // fallback HTTP
+    // HTTP polling fallback
     try {
       const buf0 = await client.getBuffer()
       console.log('[Module1] initial HTTP buffer →', buf0)
@@ -197,6 +197,7 @@ export default function useModule1() {
     pollTimer = window.setInterval(async () => {
       try {
         const buf = await client.getBuffer()
+        // console.log('[Module1] HTTP poll buffer →', buf)
         x.value      = buf.x      ?? x.value
         y.value      = buf.y      ?? y.value
         diamPx.value = buf.diameter ?? diamPx.value
@@ -205,29 +206,35 @@ export default function useModule1() {
 
     // === validation “bonne réponse” ===
     watch([x,y], ([newX,newY]) => {
-      const dx = newX - goodResponsePosition.x
-      const dy = newY - goodResponsePosition.y
+      const dx = newX - goodResponsePos.x
+      const dy = newY - goodResponsePos.y
       const now = performance.now()/1000
-      // console.log(`[Module1] Checking zone: dx=${dx.toFixed(1)}, dy=${dy.toFixed(1)}, time=${now.toFixed(3)}`)
+      console.log(
+        `[Module1] check @${now.toFixed(3)}s: x=${newX.toFixed(1)}, y=${newY.toFixed(1)}, ` +
+        `dx=${dx.toFixed(1)}, dy=${dy.toFixed(1)}, inZone=${inZone.value}`
+      )
       if (Math.abs(dx) <= positionTolerance && Math.abs(dy) <= positionTolerance) {
+        console.log(`[Module1] → INSIDE zone at ${now.toFixed(3)}s`)
         if (!inZone.value) {
           inZone.value = true
           entryTime = now
-          responseAlreadyValidated = false
-          console.log(`[Module1] Entered zone at ${now.toFixed(3)}s`)
-        } else if (!responseAlreadyValidated && entryTime !== null) {
-          if (now - entryTime >= stayTime) {
-            responseAlreadyValidated = true
-            console.log(`[Module1] VALIDATED at ${now.toFixed(3)}s (stayed ${ (now-entryTime).toFixed(3) }s)`)
+          responseAlreadyValidated.value = false
+          console.log(`[Module1] → ENTER zone at ${now.toFixed(3)}s`)
+        } else if (!responseAlreadyValidated.value && entryTime !== null) {
+          const dt = now - entryTime
+          console.log(`[Module1] → staying ${dt.toFixed(3)}s`)
+          if (dt >= stayTime) {
+            responseAlreadyValidated.value = true
+            console.log(`[Module1] → VALIDATED after ${dt.toFixed(3)}s`)
           }
         }
       } else {
         if (inZone.value) {
-          console.log(`[Module1] Exited zone at ${now.toFixed(3)}s`)
+          console.log(`[Module1] → EXIT zone at ${now.toFixed(3)}s`)
         }
         inZone.value = false
         entryTime = null
-        responseAlreadyValidated = false
+        responseAlreadyValidated.value = false
       }
     })
   })
@@ -248,6 +255,7 @@ export default function useModule1() {
     responseAlreadyValidated,
     timerColor,
     timerText,
+    goodResponsePos,
     pauseTimer,
     resumeTimer,
     resetTimer

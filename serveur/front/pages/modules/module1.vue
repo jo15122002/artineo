@@ -54,7 +54,8 @@ const {
   timerText,
   responseAlreadyValidated,
   resetTimer,
-  resumeTimer
+  resumeTimer,
+  goodResponsePos
 } = useModule1()
 
 // → 1) Indice courant (mis à jour par la logique de jeu)
@@ -217,7 +218,8 @@ watch([showTipX, showTipY, showTipZone], () => {
   }
 })
 
-watch(() => responseAlreadyValidated, (val) => {
+watch(responseAlreadyValidated, (val) => {
+  console.log("responseAlreadyValidated", val)
   if (val) {
     fullScreenPlayer.value?.playByTitle('fin.mp4')
   }
@@ -225,7 +227,7 @@ watch(() => responseAlreadyValidated, (val) => {
 
 // → Debug
 const showDebug = ref(false)
-const goodResponsePosition = reactive({ x: 0, y: 0 })
+const goodResponsePosition = goodResponsePos
 const goodResponseZoneSize = 30
 
 onMounted(() => {
@@ -233,8 +235,8 @@ onMounted(() => {
   showDebug.value = params.get('debug') === 'true' || params.get('debug') === '1'
 
   // position aléatoire pour debug
-  goodResponsePosition.x = Math.random() * 320
-  goodResponsePosition.y = Math.random() * 240
+  // goodResponsePosition.x = Math.random() * 320
+  // goodResponsePosition.y = Math.random() * 240
 
   // init position de référence
   initialPos.x = x.value
