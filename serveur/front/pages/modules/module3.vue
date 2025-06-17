@@ -103,8 +103,9 @@ watch(
       console.log('[Module3] conditions OK → lecture de fin')
       stopTimer?.() // On arrête le timer
       isPlaying = true
-      player3.value?.playByTitle('Jeu3Fin.webm', undefined,
-        () => player3Music.value?.stop()
+      player3.value?.playByTitle('Jeu3Fin.webm',
+        () => player3Music.value?.stop(),
+        undefined
       )
     }
   }
