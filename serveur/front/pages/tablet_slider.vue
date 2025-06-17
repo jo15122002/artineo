@@ -1,38 +1,38 @@
 <template>
-    <div class="module2-page">
-        <h1>Module 2 – Simulation</h1>
+  <div class="module2-page">
+    <h1>Module 2 – Simulation</h1>
 
-        <div v-show="!isXChecked" class="controls module2-controls">
-          <div>
-            <div class="button rectX-button" ref="rectXBtn">
-              <img src="~/assets/modules/2/rectX.svg" alt="Slider X" />
-              <div class="rect-selector" ref="rectXSel" :style="{ '--t-x': translateX + 'px' }" />
-            </div>
-            <img v-if="isXChecked" src="~/assets/modules/2/splash-check.png" alt="splash check" class="splash-check" />
-          </div>
-         <div>
-          <div v-show="isXChecked && !isYChecked" class="button rectY-button" ref="rectYBtn">
-            <img src="~/assets/modules/2/rectY.svg" alt="Slider Y" />
-            <div class="rect-selector" ref="rectYSel" :style="{ '--t-y': translateY + 'px' }" />
-          </div>
-          <img v-if="isYChecked" src="~/assets/modules/2/splash-check.png" alt="splash check" class="splash-check" />
+    <div v-show="!isXChecked" class="controls module2-controls">
+      <div>
+        <div class="button rectX-button" ref="rectXBtn">
+          <img src="~/assets/modules/2/rectX.svg" alt="Slider X" />
+          <div class="rect-selector" ref="rectXSel" :style="{ '--t-x': translateX + 'px' }" />
         </div>
-          <div v-show="isYChecked && !isZChecked">
-            <div class="button circle-button" :class="{'gray': !isXChecked || !isYChecked}">
-              <img src="~/assets/modules/2/circle.svg" alt="Knob Z" />
-              <div class="rect-selector" :style="{ transform: `rotate(${rotZDeg}deg) translateY(-115px)` }" />
-            </div>
-            <img v-if="isYChecked" src="~/assets/modules/2/splash-check.png" alt="splash check" class="splash-check" />
-          </div>
+        <img v-if="isXChecked" src="~/assets/modules/2/splash-check.png" alt="splash check" class="splash-check" />
+      </div>
+      <div>
+        <div v-show="isXChecked && !isYChecked" class="button rectY-button" ref="rectYBtn">
+          <img src="~/assets/modules/2/rectY.svg" alt="Slider Y" />
+          <div class="rect-selector" ref="rectYSel" :style="{ '--t-y': translateY + 'px' }" />
         </div>
+        <img v-if="isYChecked" src="~/assets/modules/2/splash-check.png" alt="splash check" class="splash-check" />
+      </div>
+      <div v-show="isYChecked && !isZChecked">
+        <div class="button circle-button" :class="{ 'gray': !isXChecked || !isYChecked }">
+          <img src="~/assets/modules/2/circle.svg" alt="Knob Z" />
+          <div class="rect-selector" :style="{ transform: `rotate(${rotZDeg}deg) translateY(-115px)` }" />
+        </div>
+        <img v-if="isYChecked" src="~/assets/modules/2/splash-check.png" alt="splash check" class="splash-check" />
+      </div>
     </div>
+  </div>
 </template>
 
 <script setup lang="ts">
-import {computed, onBeforeUnmount, onMounted, onUnmounted, reactive, ref} from 'vue'
+import { computed, onBeforeUnmount, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useArtineo } from '~/composables/useArtineo'
-import {useResizeObserver} from "@vueuse/core";
-import {clamp} from "@antfu/utils";
+import { useResizeObserver } from "@vueuse/core";
+import { clamp } from "@antfu/utils";
 const rotX = ref(0)
 const rotY = ref(0)
 const rotZ = ref(0)
@@ -69,14 +69,14 @@ const selectorHeight = ref(0)
 
 // Compute translations (pixels)
 const translateX = computed(() =>
-    isFinite(pctX.value) && isFinite(parentWidthX.value) && isFinite(selectorWidth.value)
-        ? pctX.value * (parentWidthX.value - selectorWidth.value)
-        : 0
+  isFinite(pctX.value) && isFinite(parentWidthX.value) && isFinite(selectorWidth.value)
+    ? pctX.value * (parentWidthX.value - selectorWidth.value)
+    : 0
 )
 const translateY = computed(() =>
-    isFinite(pctY.value) && isFinite(parentHeightY.value) && isFinite(selectorHeight.value)
-        ? pctY.value * (parentHeightY.value - selectorHeight.value)
-        : 0
+  isFinite(pctY.value) && isFinite(parentHeightY.value) && isFinite(selectorHeight.value)
+    ? pctY.value * (parentHeightY.value - selectorHeight.value)
+    : 0
 )
 
 // Compute knob rotation in degrees (0–360°)
@@ -95,14 +95,14 @@ let intervalId: number | null = null
 
 function sendModule2() {
 
-    client.setBuffer({
-        rotX: rotX.value,
-        rotY: rotY.value,
-        rotZ: rotZ.value,
-        isXChecked: isXChecked.value,
-        isYChecked: isYChecked.value,
-        isZChecked: isZChecked.value
-    })
+  client.setBuffer({
+    rotX: rotX.value,
+    rotY: rotY.value,
+    rotZ: rotZ.value,
+    isXChecked: isXChecked.value,
+    isYChecked: isYChecked.value,
+    isZChecked: isZChecked.value
+  })
 }
 
 let roX: ReturnType<typeof useResizeObserver>
@@ -114,36 +114,36 @@ async function loadConfig() {
     const cfg = await client.fetchConfig()
     console.log('Config rotation:', cfg)
     // ex. { axes: { rotX: { min:…, max:… }, … } }
-    rotXMin.value = cfg.axes.rotX.min  ?? rotXMin.value
-    rotXMax.value = cfg.axes.rotX.max  ?? rotXMax.value
-    rotYMin.value = cfg.axes.rotY.min  ?? rotYMin.value
-    rotYMax.value = cfg.axes.rotY.max  ?? rotYMax.value
-    rotZMin.value = cfg.axes.rotZ.min  ?? rotZMin.value
-    rotZMax.value = cfg.axes.rotZ.max  ?? rotZMax.value
+    rotXMin.value = cfg.axes.rotX.min ?? rotXMin.value
+    rotXMax.value = cfg.axes.rotX.max ?? rotXMax.value
+    rotYMin.value = cfg.axes.rotY.min ?? rotYMin.value
+    rotYMax.value = cfg.axes.rotY.max ?? rotYMax.value
+    rotZMin.value = cfg.axes.rotZ.min ?? rotZMin.value
+    rotZMax.value = cfg.axes.rotZ.max ?? rotZMax.value
   } catch (e) {
     console.warn('Impossible de charger la config rotation', e)
   }
 }
 
 onMounted(() => {
-    // Envoi continu automatique toutes les 100 ms
-    intervalId = window.setInterval(sendModule2, 100)
-    void loadConfig()
-    const measure = () => {
-      if (rectXBtn.value) parentWidthX.value = rectXBtn.value.clientWidth
-      if (rectXSel.value) selectorWidth.value = rectXSel.value.offsetWidth
-      if (rectYBtn.value) parentHeightY.value = rectYBtn.value.clientHeight
-      if (rectYSel.value) selectorHeight.value = rectYSel.value.offsetHeight
-    }
+  // Envoi continu automatique toutes les 100 ms
+  intervalId = window.setInterval(sendModule2, 100)
+  void loadConfig()
+  const measure = () => {
+    if (rectXBtn.value) parentWidthX.value = rectXBtn.value.clientWidth
+    if (rectXSel.value) selectorWidth.value = rectXSel.value.offsetWidth
+    if (rectYBtn.value) parentHeightY.value = rectYBtn.value.clientHeight
+    if (rectYSel.value) selectorHeight.value = rectYSel.value.offsetHeight
+  }
 
-    measure()
+  measure()
 
-    if (rectXBtn.value) {
-      roX = useResizeObserver(rectXBtn, measure)
-    }
-    if (rectYBtn.value) {
-      roY = useResizeObserver(rectYBtn, measure)
-    }
+  if (rectXBtn.value) {
+    roX = useResizeObserver(rectXBtn, measure)
+  }
+  if (rectYBtn.value) {
+    roY = useResizeObserver(rectYBtn, measure)
+  }
   setupDragX()
   setupDragY()
   setupDragZ()
@@ -155,127 +155,105 @@ onBeforeUnmount(() => {
 })
 
 onUnmounted(() => {
-    if (intervalId !== null) {
-        clearInterval(intervalId)
-    }
+  if (intervalId !== null) {
+    clearInterval(intervalId)
+  }
 })
 
+function setupDrag(el: HTMLElement, onMove: (e: PointerEvent) => void) {
+  const onPointerMove = (e: PointerEvent) => {
+    onMove(e)
+  }
+  const onPointerUp = () => {
+    window.removeEventListener('pointermove', onPointerMove)
+    window.removeEventListener('pointerup', onPointerUp)
+  }
+  el.addEventListener('pointerdown', (e: PointerEvent) => {
+    e.preventDefault() // bloque le scroll
+    window.addEventListener('pointermove', onPointerMove)
+    window.addEventListener('pointerup', onPointerUp)
+  })
+}
+
+// X :
 function setupDragX() {
-  const el = rectXSel.value
-  const parent = rectXBtn.value
-  if (!el || !parent) return
-
-  const onMouseMove = (e: MouseEvent) => {
-    console.log('Mouse move on X slider', e.clientX)
+  const el = rectXSel.value!
+  const parent = rectXBtn.value!
+  setupDrag(el, (e) => {
     const rect = parent.getBoundingClientRect()
-    const offsetX = e.clientX - rect.left
-    const pct = clamp(offsetX / rect.width, 0, 1)
-    console.log('Offset X:', offsetX, 'Pct:', pct)
-    console.log('RotXMin:', rotXMin.value, 'RotXMax:', rotXMax.value)
+    const pct = clamp((e.clientX - rect.left) / rect.width, 0, 1)
     rotX.value = rotXMin.value + pct * (rotXMax.value - rotXMin.value)
-  }
-
-  const onMouseUp = () => {
-    window.removeEventListener('mousemove', onMouseMove)
-    window.removeEventListener('mouseup', onMouseUp)
-  }
-
-  el.addEventListener('mousedown', () => {
-    window.addEventListener('mousemove', onMouseMove)
-    window.addEventListener('mouseup', onMouseUp)
   })
 }
 
+// Y :
 function setupDragY() {
-  const el = rectYSel.value
-  const parent = rectYBtn.value
-  if (!el || !parent) return
-
-  const onMouseMove = (e: MouseEvent) => {
+  const el = rectYSel.value!
+  const parent = rectYBtn.value!
+  setupDrag(el, (e) => {
     const rect = parent.getBoundingClientRect()
-    const offsetY = e.clientY - rect.top
-    const pct = clamp(offsetY / rect.height, 0, 1)
+    const pct = clamp((e.clientY - rect.top) / rect.height, 0, 1)
     rotY.value = rotYMin.value + pct * (rotYMax.value - rotYMin.value)
-  }
-
-  const onMouseUp = () => {
-    window.removeEventListener('mousemove', onMouseMove)
-    window.removeEventListener('mouseup', onMouseUp)
-  }
-
-  el.addEventListener('mousedown', () => {
-    window.addEventListener('mousemove', onMouseMove)
-    window.addEventListener('mouseup', onMouseUp)
   })
 }
 
+// Z :
 function setupDragZ() {
-  const el = document.querySelector('.circle-button > .rect-selector') as HTMLElement | null
-  const parent = document.querySelector('.circle-button') as HTMLElement | null
-  if (!el || !parent) return
-
-  const onMouseMove = (e: MouseEvent) => {
+  const el = document.querySelector('.circle-button > .rect-selector')!
+  const parent = document.querySelector('.circle-button')!
+  setupDrag(el, (e) => {
     const rect = parent.getBoundingClientRect()
-    const centerX = rect.left + rect.width / 2
-    const centerY = rect.top + rect.height / 2
-    const dx = e.clientX - centerX
-    const dy = e.clientY - centerY
-    const angleRad = Math.atan2(dy, dx)
-    const angleDeg = ((angleRad * 180) / Math.PI + 360) % 360
-    const pct = angleDeg / 360
+    const dx = e.clientX - (rect.left + rect.width / 2)
+    const dy = e.clientY - (rect.top + rect.height / 2)
+    const angle = (Math.atan2(dy, dx) * 180 / Math.PI + 360) % 360
+    const pct = angle / 360
     rotZ.value = rotZMin.value + pct * (rotZMax.value - rotZMin.value)
-  }
-
-  const onMouseUp = () => {
-    window.removeEventListener('mousemove', onMouseMove)
-    window.removeEventListener('mouseup', onMouseUp)
-  }
-
-  el.addEventListener('mousedown', () => {
-    window.addEventListener('mousemove', onMouseMove)
-    window.addEventListener('mouseup', onMouseUp)
   })
 }
 </script>
 
 <style scoped>
 @font-face {
-    font-family: "CheeseSauce";
-    src: url('./Cheese-Sauce.woff2') format("woff2");
+  font-family: "CheeseSauce";
+  src: url('./Cheese-Sauce.woff2') format("woff2");
 }
 
 .module2-page {
-    padding: 2rem;
-    font-family: "CheeseSauce", sans-serif;
-    max-width: 400px;
-    margin: auto;
+  padding: 2rem;
+  font-family: "CheeseSauce", sans-serif;
+  max-width: 400px;
+  margin: auto;
 }
 
 .module2-controls label {
-    display: flex;
-    align-items: center;
-    margin: 0.5rem 0;
+  display: flex;
+  align-items: center;
+  margin: 0.5rem 0;
 }
 
 .module2-controls input[type='range'] {
-    margin: 0 0.5rem;
-    flex: 1;
+  margin: 0 0.5rem;
+  flex: 1;
 }
 
 .module2-controls span {
-    width: 60px;
-    text-align: right;
-    font-family: monospace;
+  width: 60px;
+  text-align: right;
+  font-family: monospace;
 }
 
 .button-row {
-    margin-top: 1rem;
+  margin-top: 1rem;
 }
 
 .button-row button {
-    padding: 0.5rem 1rem;
-    font-size: 1rem;
-    cursor: pointer;
+  padding: 0.5rem 1rem;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.rect-selector {
+  touch-action: none;
 }
 </style>
 
