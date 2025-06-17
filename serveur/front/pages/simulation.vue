@@ -124,29 +124,25 @@
             <!-- Palette Objets -->
             <div class="palette objects-palette">
               <h3>Objets</h3>
-              <button v-for="obj in objectItems" :key="obj.src" class="draggable-item" draggable="true"
-                @dragstart="onDragStart(obj, $event)" @dragend="onDragEnd">
-                <img :src="obj.src" class="palette-icon" draggable="false" alt="" />
+              <button v-for="obj in objectItems" :key="obj.src" class="draggable-item"
+                @pointerdown.prevent="startDrag(obj, $event)">
+                <img :src="obj.src" class="palette-icon" draggable="false" />
                 {{ obj.name }}
               </button>
             </div>
           </div>
 
           <!-- Sandbox -->
-          <div class="sandbox" @dragover.prevent="onSandboxDragOver" @dragleave="onSandboxDragLeave"
-            @drop.prevent="onSandboxDrop">
-            <!-- Background permanent -->
+          <div class="sandbox" :ref="setSandbox">
             <img v-if="currentBackground" :src="currentBackground.src" class="background-image" />
-
-            <img v-for="obj in placedObjects" :key="obj.id" :src="obj.src" class="placed-object" :style="{
-              left: obj.x + 'px',
-              top: obj.y + 'px',
-              width: (imageSizes[obj.src]?.width || 50) / scale + 'px',
-              height: (imageSizes[obj.src]?.height || 50) / scale + 'px'
+            <img v-for="o in placedObjects" :key="o.id" class="placed-object" :src="o.src" :style="{
+              left: o.x + 'px',
+              top: o.y + 'px',
+              width: getScaledSize(o.src).width + 'px',
+              height: getScaledSize(o.src).height + 'px'
             }" />
-
             <div class="sandbox-overlay" :style="{ backgroundColor: buttonColors[currentButton] }" />
-
+            <!-- aperçu pendant drag -->
             <img v-if="dragPreview" :src="dragPreview.src" class="drag-preview" :style="{
               left: dragPreview.x + 'px',
               top: dragPreview.y + 'px',
@@ -248,6 +244,8 @@ const scale = 16
 const newBackgroundsBuf = reactive<{ src: string; id: string }[]>([])
 const removeBackgroundsBuf = reactive<string[]>([])
 const removeObjectsBuf = reactive<string[]>([])
+const newObjectsBuf = reactive<{ src: string; x: number; y: number; id: string }[]>([])
+
 
 const buttonColors: Record<number, string> = {
   1: 'rgba(83, 160, 236, 0.2)',
@@ -256,6 +254,104 @@ const buttonColors: Record<number, string> = {
 }
 const currentButton = ref<number>(1)
 
+// ─── MODULE 4 drag’n’drop ─────────────────────────────────────────────
+
+const sandbox = ref<HTMLElement | null>(null)
+
+function setSandbox(el: Element | ComponentPublicInstance | null) {
+  sandbox.value = el as HTMLElement | null
+}
+
+function lockScroll() {
+  const dash = document.querySelector<HTMLElement>('.simulation-dashboard')
+  if (dash) dash.style.overflowY = 'hidden'
+}
+
+function unlockScroll() {
+  const dash = document.querySelector<HTMLElement>('.simulation-dashboard')
+  if (dash) dash.style.overflowY = ''
+}
+
+// Ce handler est appelé à chaque move, pour repositionner l’aperçu
+function onPointerMove(evt: PointerEvent) {
+  if (!draggingSrc.value || !sandbox.value) return
+  const rect = sandbox.value.getBoundingClientRect()
+  const { width, height } = getScaledSize(draggingSrc.value)
+  dragPreview.value = {
+    src: draggingSrc.value,
+    x: Math.round(evt.clientX - rect.left - width / 2),
+    y: Math.round(evt.clientY - rect.top - height / 2)
+  }
+}
+
+// Quand on relâche, on crée l’objet dans le sandbox et on nettoie
+function endDrag(evt: PointerEvent) {
+  console.log('contenu de sandbox.value →', sandbox.value)
+  if (draggingSrc.value && sandbox.value) {
+    const rect = sandbox.value.getBoundingClientRect()
+    const size = getScaledSize(draggingSrc.value)
+    placedObjects.push({
+      src: draggingSrc.value,
+      x: Math.round(evt.clientX - rect.left - size.width / 2),
+      y: Math.round(evt.clientY - rect.top - size.height / 2),
+      id: `obj-${Date.now()}`
+    })
+  }
+  // cleanup
+  dragPreview.value = null
+  draggingSrc.value = null
+  unlockScroll()
+}
+
+// Démarre le drag : on bloque le scroll et on bind window‐events
+function startDrag(obj: { src: string }, evt: PointerEvent) {
+  draggingSrc.value = obj.src
+  lockScroll()
+
+  // tant que l’on n’a pas relâché, on suit le pointeur partout
+  const move = (e: PointerEvent) => onPointerMove(e)
+  const up = (e: PointerEvent) => {
+    endDrag(e)
+    window.removeEventListener('pointermove', move)
+    window.removeEventListener('pointerup', up)
+    window.removeEventListener('pointercancel', up)
+  }
+
+  window.addEventListener('pointermove', move)
+  window.addEventListener('pointerup', up)
+  window.addEventListener('pointercancel', up)
+}
+
+// --- Fonctions de sélection / placement ---
+function setBackground(bg: { src: string }) {
+  if (currentBackground.value) {
+    removeBackgroundsBuf.push(currentBackground.value.id)
+    const idx = newBackgroundsBuf.findIndex(b => b.id === currentBackground.value!.id)
+    if (idx >= 0) newBackgroundsBuf.splice(idx, 1)
+  }
+  const id = `background-${Date.now()}`
+  currentBackground.value = { src: bg.src, id }
+  newBackgroundsBuf.splice(0)
+  newBackgroundsBuf.push({ src: bg.src, id })
+}
+
+function removeBackground() {
+  if (!currentBackground.value) return
+  removeBackgroundsBuf.push(currentBackground.value.id)
+  // on retire le fond de l’affichage
+  currentBackground.value = null
+  // on enlève l’éventuel newBuffer
+  const idx = newBackgroundsBuf.findIndex(b => b.id === currentBackground.value?.id)
+  if (idx >= 0) newBackgroundsBuf.splice(idx, 1)
+}
+
+function removeAll() {
+  removeBackground()
+  removeObjects()
+}
+
+// Streaming toggles & timers
+// computed pour formater "M:SS"
 const streaming = reactive<Record<number, boolean>>({ 1: false, 2: false, 3: false, 4: false })
 const intervals = reactive<Record<number, number | null>>({ 1: null, 2: null, 3: null, 4: null })
 
@@ -283,19 +379,6 @@ function updateIrPosition(evt: MouseEvent) {
   module1Fields.x = Math.round(Math.min(Math.max(evt.clientX - rect.left, 0), rect.width))
   module1Fields.y = Math.round(Math.min(Math.max(evt.clientY - rect.top, 0), rect.height))
   module1Fields.clicked = true
-}
-
-// Module4 helpers (setBackground, onDragStart, onSandboxDrop, etc.)
-function setBackground(bg: { src: string }) {
-  if (currentBackground.value) {
-    removeBackgroundsBuf.push(currentBackground.value.id)
-    const idx = newBackgroundsBuf.findIndex(b => b.id === currentBackground.value!.id)
-    if (idx >= 0) newBackgroundsBuf.splice(idx, 1)
-  }
-  const id = `background-${Date.now()}`
-  currentBackground.value = { src: bg.src, id }
-  newBackgroundsBuf.splice(0)
-  newBackgroundsBuf.push({ src: bg.src, id })
 }
 
 function onDragStart(obj: { src: string }, evt: DragEvent) {
@@ -342,21 +425,10 @@ function onSandboxDrop(evt: DragEvent) {
   dragPreview.value = null
 }
 
-function removeBackground() {
-  if (!currentBackground.value) return
-  removeBackgroundsBuf.push(currentBackground.value.id)
-  currentBackground.value = null
-  const idx = newBackgroundsBuf.findIndex(b => b.id === currentBackground.value?.id)
-  if (idx >= 0) newBackgroundsBuf.splice(idx, 1)
-}
 function removeObjects() {
   placedObjects.forEach(o => removeObjectsBuf.push(o.id))
   placedObjects.splice(0)
   removeObjectsBuf.splice(0)
-}
-function removeAll() {
-  removeBackground()
-  removeObjects()
 }
 
 function getScaledSize(src: string) {
@@ -726,6 +798,14 @@ onUnmounted(() => {
   pointer-events: none;
   z-index: 1;
 }
+
+.module4-container,
+.sandbox,
+.draggable-item {
+  touch-action: none;
+  overscroll-behavior: contain;
+}
+
 
 /* SWITCH TOGGLE */
 .switch {
