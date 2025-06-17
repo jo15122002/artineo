@@ -2,8 +2,8 @@
   <div class="module2-page">
     <h1>Module 2 – Simulation</h1>
 
-    <div v-show="!isXChecked" class="controls module2-controls">
-      <div>
+    <div class="controls module2-controls">
+      <div v-show="!isXChecked">
         <div class="button rectX-button" ref="rectXBtn">
           <img src="~/assets/modules/2/rectX.svg" alt="Slider X" />
           <div class="rect-selector" ref="rectXSel" :style="{ '--t-x': translateX + 'px' }" />
@@ -100,7 +100,7 @@ const rectYSel = ref<HTMLElement>()
 const client = useArtineo(2)
 let intervalId: number | null = null
 function sendModule2() {
-  console.log({
+  console.log("send", {
     rotX: rotX.value,
     rotY: rotY.value,
     rotZ: rotZ.value,
