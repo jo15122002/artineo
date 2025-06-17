@@ -100,6 +100,15 @@ const rectYSel = ref<HTMLElement>()
 const client = useArtineo(2)
 let intervalId: number | null = null
 function sendModule2() {
+  console.log({
+    rotX: rotX.value,
+    rotY: rotY.value,
+    rotZ: rotZ.value,
+    isXChecked: isXChecked.value,
+    isYChecked: isYChecked.value,
+    isZChecked: isZChecked.value,
+  });
+
   client.setBuffer({
     rotX: rotX.value,
     rotY: rotY.value,
