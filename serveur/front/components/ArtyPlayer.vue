@@ -58,26 +58,28 @@ watch(
 )
 </script>
 
-<style scoped>
-.arty-player {
-    width: 0;
-    height: 0;
-    background: transparent;
-    /* On ne veut pas voir un espace vide : <audio> est d’office “display: none”,
-     <video> a controls et valeur fixe, mais le parent gère l’affichage si besoin. */
+<style>
+/* Styles pour la vidéo plein écran */
+.arty-fullscreen-video {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 10000;
+    background-color: transparent;
 }
 
-.arty-player.arty-angle {
-  position: absolute;
-  top: -1%;
-  left: 0%;
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  width: 30%;
+#arty-left {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 50%;
+    height: auto;
 }
 
-.arty-player video {
-    background: transparent;
+/* Styles pour cacher l’audio */
+.arty-audio-hidden {
+    display: none;
 }
 </style>

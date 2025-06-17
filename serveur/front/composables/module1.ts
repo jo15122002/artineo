@@ -4,7 +4,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { BufferPayload } from '~/utils/ArtineoClient'
 
 export default function useModule1() {
-  // 1) Stub en SSR
+  // SSR stub
   if (!process.client) {
     const stub = ref<any>(null)
     return {
@@ -16,6 +16,8 @@ export default function useModule1() {
       inZone: stub,
       entryTime: stub,
       responseAlreadyValidated: stub,
+      timerColor: stub,
+      timerText: stub
     }
   }
 
@@ -26,236 +28,221 @@ export default function useModule1() {
   }
   const client = $artineo(moduleId)
 
+  // reactive state
   const backgroundPath = ref<string>('')
-  const x              = ref(0)
-  const y              = ref(0)
-  const diamPx         = ref(1)
+  const x = ref(0)
+  const y = ref(0)
+  const diamPx = ref(1)
 
-  // ────────────────────────────────────────────────────────────────────────────
-  // 3) VARIABLES DE “BONNE RÉPONSE” (ZONE + DURÉE)
-  // ────────────────────────────────────────────────────────────────────────────
+  // "bonne réponse" logic
   const goodResponsePosition = { x: 160, y: 120 }
   const goodResponseZoneSize = 30
   const goodResponseStayTime = 2.0
-
   const inZone = ref(false)
   let entryTime: number | null = null
   let responseAlreadyValidated = false
-  // ────────────────────────────────────────────────────────────────────────────
 
-  // 4) fps & interval dynamique
-  const fps      = ref(10)           // valeur par défaut
+  // fps & polling
+  const fps = ref(10)
   let pollTimer: number | undefined
 
-  // ────────────────────────────────────────────────────────────────────────────
-  // 5) CALCUL DU STYLE CSS “filter” RELATIF À la bonne réponse
-  // ────────────────────────────────────────────────────────────────────────────
+  // CSS filter for feedback
   const filterStyle = computed(() => {
-    // Coordonnées IR actuelles
-    const curX = x.value
-    const curY = y.value
-
-    // dx, dy relatifs à la bonne réponse
-    const dx = curX - goodResponsePosition.x
-    const dy = curY - goodResponsePosition.y
-
-    // Calcul du hue
+    const dx = x.value - goodResponsePosition.x
+    const dy = y.value - goodResponsePosition.y
     let hueVal = (dx / goodResponsePosition.x) * 180
-    if (hueVal > 180) hueVal = 180
-    if (hueVal < -180) hueVal = -180
-
-    // Calcul de la saturation
-    const refDiam = 40  // diamètre en px pour lequel on veut sat=100%
-
+    hueVal = Math.max(-180, Math.min(180, hueVal))
+    const refDiam = goodResponseZoneSize
     let satVal = 100 + ((diamPx.value - refDiam) / refDiam) * 100
-    // clamp entre 0 et 200
-    if (satVal < 0)   satVal = 0
-    if (satVal > 200) satVal = 200
-
-    // Calcul de la brightness
+    satVal = Math.max(0, Math.min(200, satVal))
     let brightVal = 100 - (dy / goodResponsePosition.y) * 50
-    if (brightVal < 50) brightVal = 50
-    if (brightVal > 150) brightVal = 150
-
-    return `hue-rotate(${hueVal.toFixed(1)}deg) saturate(${satVal.toFixed(0)}%) brightness(${brightVal.toFixed(0)}%)`
+    brightVal = Math.max(50, Math.min(150, brightVal))
+    return `hue-rotate(${hueVal.toFixed(1)}deg)
+            saturate(${satVal.toFixed(0)}%)
+            brightness(${brightVal.toFixed(0)}%)`
   })
+
   // ────────────────────────────────────────────────────────────────────────────
+  // TIMER logic
+  // ────────────────────────────────────────────────────────────────────────────
+  const TIMER_DURATION = 60 // secondes
+  const timerSeconds = ref<number>(TIMER_DURATION)
+  let timerInterval: number | undefined
 
-  // 6) CETTE PARTIE S’EXÉCUTE LORSQUE LE COMPOSANT MONTE
+  function startTimer() {
+    if (timerInterval) clearInterval(timerInterval)
+    timerSeconds.value = TIMER_DURATION
+    timerInterval = window.setInterval(() => {
+      timerSeconds.value = Math.max(timerSeconds.value - 1, 0)
+      if (timerSeconds.value === 0 && timerInterval) {
+        clearInterval(timerInterval)
+      }
+    }, 1000)
+  }
+
+  function pauseTimer() {
+    if (timerInterval) {
+      clearInterval(timerInterval)
+      timerInterval = undefined
+    }
+  }
+
+  function resumeTimer() {
+    if (!timerInterval && timerSeconds.value > 0) {
+      timerInterval = window.setInterval(() => {
+        timerSeconds.value = Math.max(timerSeconds.value - 1, 0)
+        if (timerSeconds.value === 0 && timerInterval) {
+          clearInterval(timerInterval)
+        }
+      }, 1000)
+    }
+  }
+
+  function resetTimer() {
+    pauseTimer()
+    timerSeconds.value = TIMER_DURATION
+  }
+
+  function hexToRgb(hex: string) {
+    const h = hex.replace('#', '')
+    const bigint = parseInt(h, 16)
+    return {
+      r: (bigint >> 16) & 0xff,
+      g: (bigint >> 8) & 0xff,
+      b: bigint & 0xff
+    }
+  }
+
+  function rgbToHex(r: number, g: number, b: number) {
+    const to2 = (x: number) => x.toString(16).padStart(2, '0')
+    return `#${to2(r)}${to2(g)}${to2(b)}`
+  }
+
+  function lerp(a: number, b: number, t: number) {
+    return a + (b - a) * t
+  }
+
+  const colorStops = [
+    { p: 1.0, color: '#2626FF' },
+    { p: 0.6, color: '#FA81C3' },
+    { p: 0.3, color: '#FA4923' }
+  ] as const
+
+  const timerColor = computed(() => {
+    const pct = timerSeconds.value / TIMER_DURATION
+    for (let i = 0; i < colorStops.length - 1; i++) {
+      const { p: p0, color: c0 } = colorStops[i]
+      const { p: p1, color: c1 } = colorStops[i + 1]
+      if (pct <= p0 && pct >= p1) {
+        const t = (p0 - pct) / (p0 - p1)
+        const a = hexToRgb(c0), b = hexToRgb(c1)
+        return rgbToHex(
+          Math.round(lerp(a.r, b.r, t)),
+          Math.round(lerp(a.g, b.g, t)),
+          Math.round(lerp(a.b, b.b, t))
+        )
+      }
+    }
+    return colorStops[colorStops.length - 1].color
+  })
+
+  const timerText = computed(() => {
+    const m = Math.floor(timerSeconds.value / 60)
+    const s = timerSeconds.value % 60
+    return `${m}:${String(s).padStart(2, '0')}`
+  })
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // LIFECYCLE
+  // ────────────────────────────────────────────────────────────────────────────
   onMounted(async () => {
-    // a) fetchConfig incluant fps
-
+    // a) initial config + start timer
     startTimer()
-    console.log('[Module1] Initialisation du module 1')
     try {
       const cfg = await client.fetchConfig()
-      if (cfg.background)      backgroundPath.value = cfg.background
+      if (cfg.background) backgroundPath.value = cfg.background
       if (typeof cfg.fps === 'number' && cfg.fps > 0) {
         fps.value = cfg.fps + 1
-        console.log(`[Module1] FPS configuré : ${fps.value}`)
       }
     } catch (e) {
       console.error('[Module1] fetchConfig error', e)
     }
 
-    // b) gestion WebSocket push
+    // b) WebSocket push + timerControl handling
     client.onMessage((msg: any) => {
-      // console.log(`[Module1] WebSocket message: ${msg.action}`, msg.buffer)
       if (msg.action === 'get_buffer') {
         const buf = msg.buffer as BufferPayload
-        x.value      = buf.x      ?? x.value
-        y.value      = buf.y      ?? y.value
+        x.value = buf.x ?? x.value
+        y.value = buf.y ?? y.value
         diamPx.value = buf.diameter ?? diamPx.value
+
+        // handle timerControl commands
+        if (buf.timerControl === 'pause') pauseTimer()
+        if (buf.timerControl === 'resume') resumeTimer()
+        if (buf.timerControl === 'reset') resetTimer()
       }
     })
 
-    // c) polling dynamique selon fps
-    const pollIntervalMs = () => Math.round(1000 / fps.value)
-    const apply = (buf: BufferPayload) => {
-      x.value      = buf.x      ?? x.value
-      y.value      = buf.y      ?? y.value
-      diamPx.value = buf.diameter ?? diamPx.value
-    }
-
-    // initial + fallback HTTP
+    // c) HTTP polling fallback
     try {
       const buf0 = await client.getBuffer()
-      apply(buf0)
+      x.value = buf0.x ?? x.value
+      y.value = buf0.y ?? y.value
+      diamPx.value = buf0.diameter ?? diamPx.value
     } catch {}
 
-    // lance le polling
     pollTimer = window.setInterval(async () => {
       try {
         const buf = await client.getBuffer()
-        apply(buf)
-      } catch {
-        // ignore
-      }
-    }, pollIntervalMs())
+        x.value = buf.x ?? x.value
+        y.value = buf.y ?? y.value
+        diamPx.value = buf.diameter ?? diamPx.value
+      } catch {}
+    }, Math.round(1000 / fps.value))
 
-    // ────────────────────────────────────────────────────────────────────────────
-    // WATCHER DE VALIDATION “BONNE RÉPONSE”
+    // d) réponse "bonne"
     watch([x, y], ([newX, newY]) => {
       const dx = newX - goodResponsePosition.x
       const dy = newY - goodResponsePosition.y
       const distance = Math.hypot(dx, dy)
-      const now = performance.now() / 1000 // secondes
-
+      const now = performance.now() / 1000
       if (distance <= goodResponseZoneSize) {
         if (!inZone.value) {
           inZone.value = true
           entryTime = now
           responseAlreadyValidated = false
-          console.debug(`[Module1] Entrée zone cible à ${entryTime.toFixed(3)}s`)
         } else if (!responseAlreadyValidated && entryTime !== null) {
           if (now - entryTime >= goodResponseStayTime) {
-            console.log('Bonne réponse validée ! (front)')
             responseAlreadyValidated = true
           }
         }
       } else {
-        if (inZone.value) {
-          console.debug(`[Module1] Sortie zone cible à ${(now).toFixed(3)}s`)
-        }
         inZone.value = false
         entryTime = null
         responseAlreadyValidated = false
       }
     })
-    // ────────────────────────────────────────────────────────────────────────────
   })
-
-   // 8) Couleur du timer
-    const TIMER_DURATION = 60 // secondes
-    const timerSeconds = ref<number>(TIMER_DURATION)
-    let timerInterval: number | undefined = undefined
-
-      function startTimer() {
-        // réinitialise la valeur et stoppe un éventuel timer en cours
-        if (timerInterval) {
-          clearInterval(timerInterval)
-        }
-        timerSeconds.value = TIMER_DURATION
-        // décrémente chaque seconde
-        timerInterval = window.setInterval(() => {
-          // on décompte et on s'assure de ne pas passer sous 0
-          timerSeconds.value = Math.max(timerSeconds.value - 1, 0)
-          if (timerSeconds.value === 0 && timerInterval) {
-            clearInterval(timerInterval)
-          }
-        }, 1000)
-      }
-
-    function hexToRgb(hex: string) {
-      const h = hex.replace('#','')
-      const bigint = parseInt(h, 16)
-      return {
-        r: (bigint >> 16) & 0xFF,
-        g: (bigint >> 8)  & 0xFF,
-        b:  bigint        & 0xFF,
-      }
-    }
-    function rgbToHex(r: number, g: number, b: number) {
-      const hr = r.toString(16).padStart(2, '0')
-      const hg = g.toString(16).padStart(2, '0')
-      const hb = b.toString(16).padStart(2, '0')
-      return `#${hr}${hg}${hb}`
-    }
-    function lerp(a: number, b: number, t: number) {
-      return a + (b - a) * t
-    }
-
-    const colorStops = [
-        { p: 1.0, color: '#2626FF' },
-        { p: 0.6, color: '#FA81C3' },
-        { p: 0.3, color: '#FA4923' }
-      ] as const
-    
-    const timerColor = computed(() => {
-      // ratio entre 0 et 1
-      const pct = timerSeconds.value / TIMER_DURATION
-      // on parcourt chaque segment [i]→[i+1]
-      for (let i = 0; i < colorStops.length - 1; i++) {
-        const { p: p0, color: c0 } = colorStops[i]
-        const { p: p1, color: c1 } = colorStops[i+1]
-        if (pct <= p0 && pct >= p1) {
-          // t = 0 à p0  → couleur c0
-          // t = 1 à p1  → couleur c1
-          const t = (p0 - pct) / (p0 - p1)
-          const rgb0 = hexToRgb(c0)
-          const rgb1 = hexToRgb(c1)
-          const r = Math.round(lerp(rgb0.r, rgb1.r, t))
-          const g = Math.round(lerp(rgb0.g, rgb1.g, t))
-          const b = Math.round(lerp(rgb0.b, rgb1.b, t))
-          return rgbToHex(r, g, b)
-        }
-      }
-      // fallback
-      return colorStops[colorStops.length - 1].color
-    })
-
-    // computed pour formater en M:SS
-    const timerText = computed(() => {
-      const m = Math.floor(timerSeconds.value / 60);
-      const s = timerSeconds.value % 60;
-      return `${m}:${String(s).padStart(2, '0')}`;
-    });
 
   onBeforeUnmount(() => {
     if (pollTimer) clearInterval(pollTimer)
     if (timerInterval) clearInterval(timerInterval)
-    // client.close() retiré : connexion partagée
   })
 
-  // 7) expose fps si besoin
   return {
     backgroundPath,
     filterStyle,
-    x, y, diamPx, fps,
+    x,
+    y,
+    diamPx,
+    fps,
     inZone,
     entryTime,
     responseAlreadyValidated,
     timerColor,
-    timerText
+    timerText,
+    pauseTimer,
+    resumeTimer,
+    resetTimer
   }
 }

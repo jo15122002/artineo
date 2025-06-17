@@ -10,8 +10,7 @@
           <div class="ir-area" @mousedown="onIrAreaMouseDown" @mouseup="onIrAreaMouseUp" @mouseleave="onIrAreaMouseUp"
             @mousemove="onIrAreaMouseMove">
             <div v-if="module1Fields.clicked" class="ir-marker"
-              :style="{ left: module1Fields.x + 'px', top: module1Fields.y + 'px' }">
-            </div>
+              :style="{ left: module1Fields.x + 'px', top: module1Fields.y + 'px' }" />
           </div>
           <div class="ir-coords">
             X: {{ module1Fields.x }}, Y: {{ module1Fields.y }}
@@ -146,8 +145,7 @@
               height: (imageSizes[obj.src]?.height || 50) / scale + 'px'
             }" />
 
-            <div class="sandbox-overlay" :style="{ backgroundColor: buttonColors[currentButton] }"></div>
-
+            <div class="sandbox-overlay" :style="{ backgroundColor: buttonColors[currentButton] }" />
 
             <img v-if="dragPreview" :src="dragPreview.src" class="drag-preview" :style="{
               left: dragPreview.x + 'px',
@@ -166,14 +164,17 @@
         <span class="slider round"></span>
       </label>
 
+      <!-- Contrôle du timer -->
+      <div class="timer-controls">
+        <button @click="controlTimer(mod, 'reset')">Reset Timer</button>
+        <button @click="controlTimer(mod, 'pause')">Pause Timer</button>
+        <button @click="controlTimer(mod, 'resume')">Resume Timer</button>
+      </div>
+
       <!-- Boutons d'action -->
       <div class="button-row">
-        <button @click="sendById(mod)">
-          Envoyer buffer
-        </button>
-        <button @click="retrieveBuffer(mod)">
-          Récupérer buffer
-        </button>
+        <button @click="sendById(mod)">Envoyer buffer</button>
+        <button @click="retrieveBuffer(mod)">Récupérer buffer</button>
       </div>
 
       <!-- Affichage du dernier buffer -->
@@ -186,13 +187,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, reactive, watch, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useArtineo } from '~/composables/useArtineo'
 
 const moduleIds = [1, 2, 3, 4]
 const clients = reactive<Record<number, ReturnType<typeof useArtineo>>>({})
-const payloads = reactive<Record<number, string>>({ 2: '{}', 4: '{}' })
-const buffers = reactive<Record<number, string>>({ 2: '{}', 4: '{}' })
+const buffers = reactive<Record<number, string>>({})
 
 // MODULE 1 fields
 const module1Fields = reactive({
@@ -210,27 +210,19 @@ const module2Fields = reactive({
   rotZ: 0
 })
 
-// MODULE 3 fields & config (avec timer en secondes)
+// MODULE 3 fields & config
 const module3Fields = reactive({
   uid1: '',
   uid2: '',
   uid3: '',
   current_set: 1,
   button_pressed: false,
-  timer: 60    // ← initialisé à 60 s
+  timer: 60
 })
-const module3Config = reactive<{
-  answers: any[]
-  wanted_assignments: { lieux: string[]; couleurs: string[]; emotions: string[] }
-  assignments: {
-    lieux: Record<string, string>
-    couleurs: Record<string, string>
-    emotions: Record<string, string>
-  }
-}>({
-  answers: [],
-  wanted_assignments: { lieux: [], couleurs: [], emotions: [] },
-  assignments: { lieux: {}, couleurs: {}, emotions: {} }
+const module3Config = reactive({
+  answers: [] as any[],
+  wanted_assignments: { lieux: [] as string[], couleurs: [] as string[], emotions: [] as string[] },
+  assignments: { lieux: {} as Record<string, string>, couleurs: {} as Record<string, string>, emotions: {} as Record<string, string> }
 })
 
 // MODULE 4 – import des PNG SSR-compatible
@@ -242,143 +234,31 @@ const allItems = Object.entries(objectModules).map(([path, url]) => ({
   name: path.split('/').pop()!.replace('.png', ''),
   src: url
 }))
-// Sépare les backgrounds et les autres objets
-const backgrounds = computed(() =>
-  allItems.filter(i => i.name.startsWith('landscape_'))
-)
-const objectItems = computed(() =>
-  allItems.filter(i => !i.name.startsWith('landscape_'))
-)
-
+const backgrounds = computed(() => allItems.filter(i => i.name.startsWith('landscape_')))
+const objectItems = computed(() => allItems.filter(i => !i.name.startsWith('landscape_')))
 const imageSizes = reactive<Record<string, { width: number; height: number }>>({})
 
-// État
 const currentBackground = ref<{ src: string; id: string } | null>(null)
-const selectedObject = ref<string | null>(null)
 const placedObjects = reactive<Array<{ src: string; x: number; y: number; id: string }>>([])
 
 const draggingSrc = ref<string | null>(null)
 const dragPreview = ref<{ src: string; x: number; y: number } | null>(null)
-const scale = 16 // échelle pour le module 4
+const scale = 16
 
-// Buffers réfléchis
 const newBackgroundsBuf = reactive<{ src: string; id: string }[]>([])
 const removeBackgroundsBuf = reactive<string[]>([])
-const newObjectsBuf = reactive<{ src: string; x: number; y: number; id: string }[]>([])
 const removeObjectsBuf = reactive<string[]>([])
 
-// overlay “bouton”
 const buttonColors: Record<number, string> = {
   1: 'rgba(83, 160, 236, 0.2)',
   2: 'rgba(252, 191, 0, 0.2)',
-  3: 'rgba(147, 146, 183, 0.6)',
+  3: 'rgba(147, 146, 183, 0.6)'
 }
 const currentButton = ref<number>(1)
 
-function getScaledSize(src: string) {
-  const size = imageSizes[src] || { width: 50, height: 50 }
-  return {
-    width: size.width / scale,
-    height: size.height / scale
-  }
-}
+const streaming = reactive<Record<number, boolean>>({ 1: false, 2: false, 3: false, 4: false })
+const intervals = reactive<Record<number, number | null>>({ 1: null, 2: null, 3: null, 4: null })
 
-// --- Fonctions de sélection / placement ---
-function setBackground(bg: { src: string }) {
-  // si un fond était déjà posé, on planifie sa suppression
-  if (currentBackground.value) {
-    removeBackgroundsBuf.push(currentBackground.value.id)
-    // et on nettoie l’entrée pending au cas où
-    const idx = newBackgroundsBuf.findIndex(b => b.id === currentBackground.value!.id)
-    if (idx >= 0) newBackgroundsBuf.splice(idx, 1)
-  }
-  // nouveau fond
-  const id = `background-${Date.now()}`
-  currentBackground.value = { src: bg.src, id }
-  newBackgroundsBuf.splice(0) // on ne veut qu’un seul fond pending à la fois
-  newBackgroundsBuf.push({ src: bg.src, id })
-}
-
-function onDragStart(obj: { src: string }, evt: DragEvent) {
-  draggingSrc.value = obj.src
-
-  // 1) créer un canvas vide pour masquer le ghost-browser
-  const empty = document.createElement('canvas')
-  empty.width = empty.height = 0
-  evt.dataTransfer!.setDragImage(empty, 0, 0)
-
-  // (optionnel) définir un mime-type pour compatibilité
-  evt.dataTransfer!.setData('text/plain', obj.src)
-}
-
-function onDragEnd() {
-  draggingSrc.value = null
-  dragPreview.value = null
-}
-
-function onSandboxDragOver(evt: DragEvent) {
-  if (!draggingSrc.value) return
-  const rect = (evt.currentTarget as HTMLElement).getBoundingClientRect()
-  const rawX = evt.clientX - rect.left
-  const rawY = evt.clientY - rect.top
-  const { width, height } = getScaledSize(draggingSrc.value)
-  dragPreview.value = {
-    src: draggingSrc.value,
-    x: Math.round(rawX - width / 2),
-    y: Math.round(rawY - height / 2)
-  }
-}
-
-
-function onSandboxDragLeave() {
-  dragPreview.value = null
-}
-
-function onSandboxDrop(evt: DragEvent) {
-  if (!draggingSrc.value) return
-  const rect = (evt.currentTarget as HTMLElement).getBoundingClientRect()
-  const rawX = evt.clientX - rect.left
-  const rawY = evt.clientY - rect.top
-  const { width, height } = getScaledSize(draggingSrc.value)
-
-  const shape = draggingSrc.value.split('/').pop()!.replace('.png', '')
-  const id = `${shape}-${placedObjects.length}-${Date.now()}`
-  placedObjects.push({
-    src: draggingSrc.value,
-    x: Math.round(rawX - width / 2),
-    y: Math.round(rawY - height / 2),
-    id
-  })
-
-  draggingSrc.value = null
-  dragPreview.value = null
-}
-
-function removeBackground() {
-  if (!currentBackground.value) return
-  removeBackgroundsBuf.push(currentBackground.value.id)
-  // on retire le fond de l’affichage
-  currentBackground.value = null
-  // on enlève l’éventuel newBuffer
-  const idx = newBackgroundsBuf.findIndex(b => b.id === currentBackground.value?.id)
-  if (idx >= 0) newBackgroundsBuf.splice(idx, 1)
-}
-
-function removeObjects() {
-  // planifier la suppression
-  placedObjects.forEach(o => removeObjectsBuf.push(o.id))
-  // vider l’affichage et le nouveau buffer
-  placedObjects.splice(0)
-  newObjectsBuf.splice(0)
-}
-
-function removeAll() {
-  removeBackground()
-  removeObjects()
-}
-
-// Streaming toggles & timers
-// computed pour formater "M:SS"
 const formattedTimer = computed(() => {
   const s = Math.max(0, Math.min(60, module3Fields.timer))
   const m = Math.floor(s / 60)
@@ -386,113 +266,7 @@ const formattedTimer = computed(() => {
   return `${m}:${ss}`
 })
 
-// Toggle & timers pour l'envoi continu
-const streaming = reactive<Record<number, boolean>>({
-  1: false, 2: false, 3: false, 4: false
-})
-const intervals = reactive<Record<number, number | null>>({
-  1: null, 2: null, 3: null, 4: null
-})
-
-// Helper pour l'envoi
-function sendById(id: number) {
-  if (id === 1) return sendModule1()
-  if (id === 2) return sendModule2()
-  if (id === 3) return sendModule3()
-  if (id === 4) return sendModule4()
-}
-
-// MODULE 4 : envoyez les objets placés structurés pour use4kinect
-function sendModule4() {
-  const scale = 16
-
-  // on construit le payload à partir des buffers
-  const newBackgrounds = newBackgroundsBuf.map(b => ({
-    id: b.id,
-    type: 'background',
-    shape: b.src.split('/').pop()!.replace('.png', ''),
-    cx: 160, cy: 120,
-    w: 305 / scale, h: 200 / scale,
-    angle: 0.0,
-    scale: 1.0
-  }))
-  const newObjects = placedObjects.map(o => {
-    const size = imageSizes[o.src] || { width: 50, height: 50 }
-    const w = size.width / scale
-    const h = size.height / scale
-    return {
-      id: o.id,
-      type: 'object',
-      shape: o.src.split('/').pop()!.replace('.png', ''),
-      // on envoie le centre, pas le coin
-      cx: o.x + w / 2,
-      cy: o.y + h / 2,
-      w,
-      h,
-      angle: 0.0,
-      scale: 1.0
-    }
-  })
-  const payload = {
-    newStrokes: [],
-    removeStrokes: [],
-    newObjects,
-    removeObjects: [...removeObjectsBuf],
-    newBackgrounds,
-    removeBackgrounds: [...removeBackgroundsBuf],
-    button: currentButton.value
-  }
-
-  clients[4]
-    .setBuffer(payload)
-    .then(() => {
-      // on vide les buffers qui ont été envoyés
-      newBackgroundsBuf.splice(0)
-      removeBackgroundsBuf.splice(0)
-      newObjectsBuf.splice(0)
-      removeObjectsBuf.splice(0)
-    })
-    .catch(err => console.error('Module4 send error:', err))
-}
-
-// Fonctions Modules 1 à 3
-function sendModule1() {
-  clients[1].setBuffer({
-    x: module1Fields.x,
-    y: module1Fields.y,
-    diameter: module1Fields.diameter
-  })
-}
-
-function sendModule2() {
-  clients[2].setBuffer({
-    rotX: module2Fields.rotX,
-    rotY: module2Fields.rotY,
-    rotZ: module2Fields.rotZ
-  })
-}
-
-// Fallback JSON send (non utilisé pour mod 4)
-function sendBuffer(mod: number) {
-  try {
-    const raw = payloads[mod].trim()
-    const data = raw ? JSON.parse(raw) : {}
-    clients[mod].setBuffer(data)
-  } catch (err) {
-    alert(`JSON invalide : ${err}`)
-  }
-}
-
-async function retrieveBuffer(mod: number) {
-  try {
-    const buf = await clients[mod].getBuffer()
-    buffers[mod] = JSON.stringify(buf, null, 2)
-  } catch (err) {
-    buffers[mod] = `Erreur : ${err}`
-  }
-}
-
-// IR module 1…
+// Gestion IR Module 1
 function onIrAreaMouseDown(evt: MouseEvent) {
   module1Fields.isDragging = true
   updateIrPosition(evt)
@@ -511,31 +285,195 @@ function updateIrPosition(evt: MouseEvent) {
   module1Fields.clicked = true
 }
 
+// Module4 helpers (setBackground, onDragStart, onSandboxDrop, etc.)
+function setBackground(bg: { src: string }) {
+  if (currentBackground.value) {
+    removeBackgroundsBuf.push(currentBackground.value.id)
+    const idx = newBackgroundsBuf.findIndex(b => b.id === currentBackground.value!.id)
+    if (idx >= 0) newBackgroundsBuf.splice(idx, 1)
+  }
+  const id = `background-${Date.now()}`
+  currentBackground.value = { src: bg.src, id }
+  newBackgroundsBuf.splice(0)
+  newBackgroundsBuf.push({ src: bg.src, id })
+}
+
+function onDragStart(obj: { src: string }, evt: DragEvent) {
+  draggingSrc.value = obj.src
+  const empty = document.createElement('canvas')
+  empty.width = empty.height = 0
+  evt.dataTransfer!.setDragImage(empty, 0, 0)
+  evt.dataTransfer!.setData('text/plain', obj.src)
+}
+function onDragEnd() {
+  draggingSrc.value = null
+  dragPreview.value = null
+}
+function onSandboxDragOver(evt: DragEvent) {
+  if (!draggingSrc.value) return
+  const rect = (evt.currentTarget as HTMLElement).getBoundingClientRect()
+  const rawX = evt.clientX - rect.left
+  const rawY = evt.clientY - rect.top
+  const { width, height } = getScaledSize(draggingSrc.value)
+  dragPreview.value = {
+    src: draggingSrc.value,
+    x: Math.round(rawX - width / 2),
+    y: Math.round(rawY - height / 2)
+  }
+}
+function onSandboxDragLeave() {
+  dragPreview.value = null
+}
+function onSandboxDrop(evt: DragEvent) {
+  if (!draggingSrc.value) return
+  const rect = (evt.currentTarget as HTMLElement).getBoundingClientRect()
+  const rawX = evt.clientX - rect.left
+  const rawY = evt.clientY - rect.top
+  const { width, height } = getScaledSize(draggingSrc.value)
+  const shape = draggingSrc.value.split('/').pop()!.replace('.png', '')
+  const id = `${shape}-${placedObjects.length}-${Date.now()}`
+  placedObjects.push({
+    src: draggingSrc.value,
+    x: Math.round(rawX - width / 2),
+    y: Math.round(rawY - height / 2),
+    id
+  })
+  draggingSrc.value = null
+  dragPreview.value = null
+}
+
+function removeBackground() {
+  if (!currentBackground.value) return
+  removeBackgroundsBuf.push(currentBackground.value.id)
+  currentBackground.value = null
+  const idx = newBackgroundsBuf.findIndex(b => b.id === currentBackground.value?.id)
+  if (idx >= 0) newBackgroundsBuf.splice(idx, 1)
+}
+function removeObjects() {
+  placedObjects.forEach(o => removeObjectsBuf.push(o.id))
+  placedObjects.splice(0)
+  removeObjectsBuf.splice(0)
+}
+function removeAll() {
+  removeBackground()
+  removeObjects()
+}
+
+function getScaledSize(src: string) {
+  const size = imageSizes[src] || { width: 50, height: 50 }
+  return { width: size.width / scale, height: size.height / scale }
+}
+
+// Envoi payloads
+function sendById(id: number) {
+  if (id === 1) return sendModule1()
+  if (id === 2) return sendModule2()
+  if (id === 3) return sendModule3()
+  if (id === 4) return sendModule4()
+}
+
+function sendModule1() {
+  clients[1].setBuffer({
+    x: module1Fields.x,
+    y: module1Fields.y,
+    diameter: module1Fields.diameter
+  })
+}
+function sendModule2() {
+  clients[2].setBuffer({
+    rotX: module2Fields.rotX,
+    rotY: module2Fields.rotY,
+    rotZ: module2Fields.rotZ
+  })
+}
+function sendModule3() {
+  clients[3].setBuffer({
+    uid1: module3Fields.uid1,
+    uid2: module3Fields.uid2,
+    uid3: module3Fields.uid3,
+    current_set: module3Fields.current_set,
+    button_pressed: module3Fields.button_pressed,
+    timer: formattedTimer.value
+  })
+}
+function sendModule4() {
+  const newBgs = newBackgroundsBuf.map(b => ({
+    id: b.id,
+    type: 'background',
+    shape: b.src.split('/').pop()!.replace('.png', ''),
+    cx: 160, cy: 120,
+    w: 305 / scale, h: 200 / scale,
+    angle: 0.0, scale: 1.0
+  }))
+  const newObjs = placedObjects.map(o => {
+    const size = imageSizes[o.src] || { width: 50, height: 50 }
+    return {
+      id: o.id,
+      type: 'object',
+      shape: o.src.split('/').pop()!.replace('.png', ''),
+      cx: o.x + (size.width / scale) / 2,
+      cy: o.y + (size.height / scale) / 2,
+      w: size.width / scale,
+      h: size.height / scale,
+      angle: 0.0, scale: 1.0
+    }
+  })
+  const payload = {
+    newStrokes: [],
+    removeStrokes: [],
+    newObjects: newObjs,
+    removeObjects: [...removeObjectsBuf],
+    newBackgrounds: newBgs,
+    removeBackgrounds: [...removeBackgroundsBuf],
+    button: currentButton.value
+  }
+  clients[4]
+    .setBuffer(payload)
+    .then(() => {
+      newBackgroundsBuf.splice(0)
+      removeBackgroundsBuf.splice(0)
+      newObjectsBuf.splice(0)
+      removeObjectsBuf.splice(0)
+    })
+    .catch(err => console.error('Module4 send error:', err))
+}
+
+async function retrieveBuffer(mod: number) {
+  try {
+    const buf = await clients[mod].getBuffer()
+    buffers[mod] = JSON.stringify(buf, null, 2)
+  } catch (err) {
+    buffers[mod] = `Erreur : ${err}`
+  }
+}
+
+// Contrôle du timer global
+function controlTimer(id: number, action: 'reset' | 'pause' | 'resume') {
+  clients[id]
+    .setBuffer({ timerControl: action })
+    .catch(err => console.error(`Module${id} timerControl send error:`, err))
+}
+
+// Init des clients et listeners
 onMounted(async () => {
   allItems.forEach(item => {
     const img = new Image()
     img.src = item.src
     img.onload = () => {
-      imageSizes[item.src] = {
-        width: img.naturalWidth,
-        height: img.naturalHeight
-      }
+      imageSizes[item.src] = { width: img.naturalWidth, height: img.naturalHeight }
     }
   })
 
-  // initialisation des clients Artineo
   moduleIds.forEach(id => {
     const client = useArtineo(id)
     clients[id] = client
-    payloads[id] = id === 2 || id === 4 ? '{}' : ''
     buffers[id] = ''
 
     client.onMessage(msg => {
       if (msg.action === 'get_buffer') {
         const b = msg.buffer as any
         buffers[id] = JSON.stringify(b, null, 2)
-
-        // mise à jour des UI simulées
+        // update local simulation fields
         if (id === 1) {
           module1Fields.x = b.x ?? module1Fields.x
           module1Fields.y = b.y ?? module1Fields.y
@@ -560,11 +498,15 @@ onMounted(async () => {
             }
           }
         }
+        // handle timerControl commands per module
+        if (b.timerControl && typeof b.timerControl === 'string') {
+          // each module’s composable must handle this via its own onMessage
+        }
       }
     })
   })
 
-  // fetch config module 3
+  // fetch config module3
   try {
     const cfg = await clients[3].fetchConfig()
     module3Config.answers = cfg.answers || []
@@ -575,7 +517,7 @@ onMounted(async () => {
     console.error('fetchConfig module 3 :', e)
   }
 
-  // watchers pour le streaming
+  // streaming watchers
   moduleIds.forEach(id => {
     watch(() => streaming[id], enabled => {
       if (enabled) {
@@ -590,25 +532,13 @@ onMounted(async () => {
   })
 })
 
-onUnmounted(() => {
-  moduleIds.forEach(id => {
-    if (intervals[id] !== null) {
-      clearInterval(intervals[id]!)
-      intervals[id] = null
-    }
-  })
+onBeforeUnmount(() => {
+  Object.values(intervals).forEach(iv => iv !== null && clearInterval(iv))
 })
 
-function sendModule3() {
-  clients[3].setBuffer({
-    uid1: module3Fields.uid1,
-    uid2: module3Fields.uid2,
-    uid3: module3Fields.uid3,
-    current_set: module3Fields.current_set,
-    button_pressed: module3Fields.button_pressed,
-    timer: formattedTimer.value
-  })
-}
+onUnmounted(() => {
+  Object.values(intervals).forEach(iv => iv !== null && clearInterval(iv))
+})
 </script>
 
 <style scoped>
@@ -685,21 +615,11 @@ function sendModule3() {
   font-family: monospace;
 }
 
-/* MODULE 3, 4 Général */
+/* MODULE 3, 4 General */
 .controls {
   display: flex;
   flex-direction: column;
   margin-bottom: 1rem;
-}
-
-.controls textarea {
-  margin: 0.5rem 0;
-  font-family: monospace;
-}
-
-.controls select,
-.controls input[type='checkbox'] {
-  margin-left: 0.5rem;
 }
 
 .button-row {
@@ -722,7 +642,16 @@ function sendModule3() {
   margin: 0;
 }
 
-/* MODULE 4 : Sandbox & Palette */
+/* Timer controls */
+.timer-controls {
+  margin: 0.5rem 0;
+}
+
+.timer-controls button {
+  margin-right: 0.5rem;
+}
+
+/* MODULE 4 */
 .background-image {
   position: absolute;
   top: 0;
@@ -737,10 +666,6 @@ function sendModule3() {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
-}
-
-.palette button.selected {
-  outline: 2px solid #42b983;
 }
 
 .remove-buttons {
