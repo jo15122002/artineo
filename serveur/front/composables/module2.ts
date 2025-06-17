@@ -7,24 +7,26 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useArtineo } from './useArtineo'
 
 export default function useModule2(canvasRef: Ref<HTMLCanvasElement | null>) {
+  // SSR stub
   if (!process.client) {
-    // mode SSR / build
     const zero = ref(0)
     const timerColor = ref('#2626FF')
     const timerText = ref('1:00')
-    // on renvoie aussi des bornes neutres
     return {
       rotX: zero, rotY: zero, rotZ: zero,
       rotXMin: zero, rotXMax: zero,
       rotYMin: zero, rotYMax: zero,
       rotZMin: zero, rotZMax: zero,
       timerColor, timerText,
+      isXChecked: zero as Ref<boolean>,
+      isYChecked: zero as Ref<boolean>,
+      isZChecked: zero as Ref<boolean>,
     }
   }
 
   const artClient = useArtineo(2)
 
-  // rotations et bornes
+  // rotations and bounds
   const rotX = ref(0)
   const rotY = ref(0)
   const rotZ = ref(0)
@@ -35,60 +37,63 @@ export default function useModule2(canvasRef: Ref<HTMLCanvasElement | null>) {
   const rotZMin = ref(-Infinity)
   const rotZMax = ref(+Infinity)
 
-  const isXChecked: Ref<boolean> = ref(false)
-  const isYChecked: Ref<boolean> = ref(false)
-  const isZChecked: Ref<boolean> = ref(false)
+  // check states
+  const isXChecked = computed(() => Math.abs(rotX.value - objectiveRotX) < tolerance)
+  const isYChecked = computed(() => Math.abs(rotY.value - objectiveRotY) < tolerance)
+  const isZChecked = computed(() => Math.abs(rotZ.value - objectiveRotZ) < tolerance)
 
-  // clamp
+  // clamp helper
   const clamp = (v: number, min: number, max: number) => Math.min(Math.max(v, min), max)
 
-  // charge la config axes.rot? {min,max}
-  async function loadConfig() {
-    try {
-      const cfg = await artClient.fetchConfig()
-      // ex. { axes: { rotX: { min:…, max:… }, … } }
-      rotXMin.value = cfg.axes.rotX.min  ?? rotXMin.value
-      rotXMax.value = cfg.axes.rotX.max  ?? rotXMax.value
-      rotYMin.value = cfg.axes.rotY.min  ?? rotYMin.value
-      rotYMax.value = cfg.axes.rotY.max  ?? rotYMax.value
-      rotZMin.value = cfg.axes.rotZ.min  ?? rotZMin.value
-      rotZMax.value = cfg.axes.rotZ.max  ?? rotZMax.value
-    } catch (e) {
-      console.warn('Impossible de charger la config rotation', e)
-    }
-  }
-
-  // applique et clamp
+  // apply buffer for rotations
   function applyBuffer(buf: any) {
-    if (!buf || typeof buf !== 'object' || buf.rotX === undefined) return
-    if (typeof buf.rotX === 'number')
-      rotX.value = clamp(buf.rotX, rotXMin.value, rotXMax.value)
-      isXChecked.value = buf.isXChecked
-
-    if (typeof buf.rotY === 'number')
-      rotY.value = clamp(buf.rotY, rotYMin.value, rotYMax.value)
-      isYChecked.value = buf.isYChecked
-
-    if (typeof buf.rotZ === 'number')
-      rotZ.value = clamp(buf.rotZ, rotZMin.value, rotZMax.value)
-      isZChecked.value = buf.isZChecked
+    if (!buf || typeof buf !== 'object') return
+    if (typeof buf.rotX === 'number') rotX.value = clamp(buf.rotX, rotXMin.value, rotXMax.value)
+    if (typeof buf.rotY === 'number') rotY.value = clamp(buf.rotY, rotYMin.value, rotYMax.value)
+    if (typeof buf.rotZ === 'number') rotZ.value = clamp(buf.rotZ, rotZMin.value, rotZMax.value)
   }
 
+  // polling fallback
   let pollingInterval: ReturnType<typeof setInterval> | null = null
 
-  // timer (inchangé)…
+  // ────────────────────────────────────────────────────────────────────────────
+  // TIMER logic
+  // ────────────────────────────────────────────────────────────────────────────
   const TIMER_DURATION = 60
   const timerSeconds = ref(TIMER_DURATION)
-  let timerInterval: number
+  let timerInterval: number | undefined
+
   function startTimer() {
-    clearInterval(timerInterval)
+    if (timerInterval) clearInterval(timerInterval)
     timerSeconds.value = TIMER_DURATION
     timerInterval = window.setInterval(() => {
       timerSeconds.value = Math.max(timerSeconds.value - 1, 0)
-      if (timerSeconds.value === 0) clearInterval(timerInterval)
+      if (timerSeconds.value === 0 && timerInterval) clearInterval(timerInterval)
     }, 1000)
   }
-  // fonctions couleur…
+
+  function pauseTimer() {
+    if (timerInterval) {
+      clearInterval(timerInterval)
+      timerInterval = undefined
+    }
+  }
+
+  function resumeTimer() {
+    if (!timerInterval && timerSeconds.value > 0) {
+      timerInterval = window.setInterval(() => {
+        timerSeconds.value = Math.max(timerSeconds.value - 1, 0)
+        if (timerSeconds.value === 0 && timerInterval) clearInterval(timerInterval)
+      }, 1000)
+    }
+  }
+
+  function resetTimer() {
+    pauseTimer()
+    timerSeconds.value = TIMER_DURATION
+  }
+
+  // timer color transition
   function hexToRgb(hex: string) {
     const h = hex.replace('#', '')
     const bi = parseInt(h, 16)
@@ -110,7 +115,7 @@ export default function useModule2(canvasRef: Ref<HTMLCanvasElement | null>) {
     const pct = timerSeconds.value / TIMER_DURATION
     for (let i = 0; i < colorStops.length - 1; i++) {
       const { p: p0, color: c0 } = colorStops[i]
-      const { p: p1, color: c1 } = colorStops[i + 1]
+      const { p: p1, color: c1 } = colorStops[i+1]
       if (pct <= p0 && pct >= p1) {
         const t = (p0 - pct) / (p0 - p1)
         const a = hexToRgb(c0), b = hexToRgb(c1)
@@ -130,22 +135,59 @@ export default function useModule2(canvasRef: Ref<HTMLCanvasElement | null>) {
     return `${m}:${String(s).padStart(2, '0')}`
   })
 
+  // tolerances & objectives for checks
+  const tolerance = 0.2
+  const objectiveRotX = 2
+  const objectiveRotY = 1
+  const objectiveRotZ = 0.5
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // LIFECYCLE
+  // ────────────────────────────────────────────────────────────────────────────
   onMounted(async () => {
-    // 1) charge bornes
-    await loadConfig()
-    // 2) démarre timer
+    // 1) load config for rotation bounds
+    try {
+      const cfg = await artClient.fetchConfig()
+      rotXMin.value = cfg.axes.rotX.min  ?? rotXMin.value
+      rotXMax.value = cfg.axes.rotX.max  ?? rotXMax.value
+      rotYMin.value = cfg.axes.rotY.min  ?? rotYMin.value
+      rotYMax.value = cfg.axes.rotY.max  ?? rotYMax.value
+      rotZMin.value = cfg.axes.rotZ.min  ?? rotZMin.value
+      rotZMax.value = cfg.axes.rotZ.max  ?? rotZMax.value
+    } catch (e) {
+      console.warn('Impossible de charger la config rotation', e)
+    }
+
+    // 2) start the timer
     startTimer()
-    // 3) WS push
+
+    // 3) subscribe to WebSocket for buffer & timerControl
     artClient.onMessage((msg: any) => {
-      if (msg.action === 'get_buffer' && msg.buffer) applyBuffer(msg.buffer)
+      if (msg.action === 'get_buffer' && msg.buffer) {
+        applyBuffer(msg.buffer)
+        const ctl = (msg.buffer as any).timerControl
+        if (ctl === 'pause')   pauseTimer()
+        if (ctl === 'resume')  resumeTimer()
+        if (ctl === 'reset')   resetTimer()
+      }
     })
-    // 4) initial + polling HTTP
-    try { applyBuffer(await artClient.getBuffer()) } catch {}
+
+    // 4) initial + polling HTTP fallback
+    try {
+      applyBuffer(await artClient.getBuffer())
+    } catch {}
     pollingInterval = setInterval(async () => {
-      try { applyBuffer(await artClient.getBuffer()) } catch {}
+      try {
+        const buf = await artClient.getBuffer()
+        applyBuffer(buf)
+        const ctl = (buf as any).timerControl
+        if (ctl === 'pause')   pauseTimer()
+        if (ctl === 'resume')  resumeTimer()
+        if (ctl === 'reset')   resetTimer()
+      } catch {}
     }, 50)
 
-    // 5) Three.js (inchangé)
+    // 5) Three.js setup (unchanged)
     const canvas = canvasRef.value
     if (canvas) {
       const scene = new THREE.Scene()
