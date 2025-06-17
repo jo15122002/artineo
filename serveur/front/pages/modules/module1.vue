@@ -50,7 +50,10 @@ const {
   x, y,
   diamPx,
   timerColor,
-  timerText
+  timerText,
+  responseAlreadyValidated,
+  resetTimer,
+  resumeTimer
 } = useModule1()
 
 // → 1) Indice courant (mis à jour par la logique de jeu)
@@ -67,11 +70,14 @@ const fullScreenPlayer = ref<InstanceType<typeof ArtyPlayer> | null>(null)
 const canPoll = ref(false)
 
 function onFullScreenPlayerReady() {
-  fullScreenPlayer.value?.playByTitle('intro.mp4', undefined, () => {
-    console.log('Full screen player ended')
-    console.log("canpoll", canPoll.value)
-    canPoll.value = true
-  })
+  fullScreenPlayer.value?.playByTitle('intro.mp4',
+    () => resetTimer(),
+    () => {
+      resumeTimer()
+      console.log('Full screen player ended')
+      console.log("canpoll", canPoll.value)
+      canPoll.value = true
+    })
 }
 
 // → 4) Délai avant affichage des hints (en ms)
@@ -129,8 +135,8 @@ const diamRuleToShowTip = 20
 
 // → 7) On observe les capteurs et on annule les hints dès réussite
 watch([x, y, diamPx], ([nx, ny, nd]) => {
-  console.log("canPoll", canPoll.value, "x", nx, "y", ny, "diamPx", nd)
-  if (!canPoll.value) return
+  // console.log("canPoll", canPoll.value, "x", nx, "y", ny, "diamPx", nd)
+  if (!canPoll.value || responseAlreadyValidated) return
   const cur = { x: nx, y: ny, d: nd }
   if (isMovingCorrectly(cur)) {
     clearHintTimers()
@@ -180,7 +186,7 @@ watch([x, y, diamPx], ([nx, ny, nd]) => {
 
 watch([showTipX, showTipY, showTipZone], () => {
   console.log("canPoll", canPoll.value, "showTipX", showTipX.value, "showTipY", showTipY.value, "showTipZone", showTipZone.value)
-  if (!canPoll.value) return
+  if (!canPoll.value || responseAlreadyValidated) return
   if (showTipX.value) {
     console.log('showTipX', x.value, goodResponsePosition.x)
     playerFrame.value?.playByTitle(x.value > goodResponsePosition.x ? 'Gauche.webm' : 'Droite.webm', undefined, () => {
@@ -203,6 +209,12 @@ watch([showTipX, showTipY, showTipZone], () => {
     })
     playerArty.value?.playByTitle(diamPx.value > goodResponseZoneSize ? 'Recule_Arty.webm' : 'Avance_Arty.webm')
     showTipX.value = showTipY.value = false
+  }
+})
+
+watch(() => responseAlreadyValidated, (val) => {
+  if (val) {
+    fullScreenPlayer.value?.playByTitle('fin.mp4')
   }
 })
 
