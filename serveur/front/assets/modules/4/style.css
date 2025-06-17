@@ -63,6 +63,11 @@ canvas {
 }
 
 .arty-img {
+  position: absolute;
+  top: -5%;
+  left: -20%;
+  scale: 1.2;
+  rotate: 30deg;
   height: auto;
   max-width: 100%;
   max-height: 100%;

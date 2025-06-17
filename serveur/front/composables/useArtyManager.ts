@@ -1,4 +1,3 @@
-// front/composables/useArtyManager.ts
 import { useRuntimeConfig } from '#app'
 import { ref, watch, type Ref } from 'vue'
 
@@ -19,7 +18,7 @@ export interface UseArtyManagerReturn {
     title: string,
     onStart?: () => void,
     onComplete?: () => void,
-    autoplay?: boolean
+    idVideo?: string
   ) => void
 }
 
@@ -30,8 +29,6 @@ export function useArtyManager(
   const mediaList    = ref<MediaItem[]>([])
   const currentIndex = ref<number>(0)
   const playerEl     = ref<HTMLMediaElement | null>(null)
-
-  // Référence pour le <video> plein écran
   const fullScreenVideoEl = ref<HTMLVideoElement | null>(null)
 
   const { public: { apiUrl } } = useRuntimeConfig()
@@ -78,7 +75,8 @@ export function useArtyManager(
     index: number,
     onStartCallback?: () => void,
     onCompleteCallback?: () => void,
-    autoplay = false
+    autoplay = false,
+    idVideo?: string
   ) {
     const container = containerRef.value
 
@@ -89,8 +87,6 @@ export function useArtyManager(
       container?.removeChild(playerEl.value)
       playerEl.value = null
     }
-
-    // Retirer la vidéo plein écran précédent
     if (fullScreenVideoEl.value) {
       fullScreenVideoEl.value.removeEventListener('play',  handlePlay)
       fullScreenVideoEl.value.removeEventListener('ended', handleEnded)
@@ -111,8 +107,6 @@ export function useArtyManager(
     function handleEnded() {
       console.log(`[ArtyManager][Module ${moduleId}] onComplete() pour "${info.title}"`)
       onCompleteCallback && onCompleteCallback()
-
-      // Si c’était une vidéo plein écran, on la retire
       if (fullScreenVideoEl.value) {
         fullScreenVideoEl.value.pause()
         document.body.removeChild(fullScreenVideoEl.value)
@@ -127,33 +121,33 @@ export function useArtyManager(
       vid.preload     = 'auto'
       vid.muted       = false
       vid.autoplay    = autoplay
-      vid.playsInline = true     // Au besoin sur mobile/embedded
-      // ON NE MET PLUS `controls`
-      vid.style.position = 'fixed'
-      vid.style.top      = '0'
-      vid.style.left     = '0'
-      vid.style.width    = '100vw'
-      vid.style.height   = '100vh'
-      vid.style.zIndex   = '10000'
-      vid.style.backgroundColor = 'transparent'
+      vid.playsInline = true
+
+      // On applique la classe CSS au lieu des styles inline
+      vid.classList.add('arty-fullscreen-video')
 
       vid.addEventListener('play',  handlePlay)
       vid.addEventListener('ended', handleEnded)
 
       document.body.appendChild(vid)
+      if(idVideo) {
+        vid.setAttribute('id', idVideo)
+      }
       fullScreenVideoEl.value = vid
     }
     else {
-      // AUDIO (inchangé) – invisible dans le containerRef
+      // AUDIO – invisible dans le containerRef
       if (!container) {
         console.warn('[ArtyManager] initPlayer: containerRef non défini, skip')
         return
       }
       const audio = document.createElement('audio')
-      audio.src         = info.url
-      audio.preload     = 'auto'
-      audio.muted       = false
-      audio.style.display = 'none'
+      audio.src     = info.url
+      audio.preload = 'auto'
+      audio.muted   = false
+
+      // Classe CSS pour cacher l’élément
+      audio.classList.add('arty-audio-hidden')
 
       audio.addEventListener('play',  handlePlay)
       audio.addEventListener('ended', handleEnded)
@@ -197,7 +191,8 @@ export function useArtyManager(
   function playByTitle(
     title: string,
     onStart?: () => void,
-    onComplete?: () => void
+    onComplete?: () => void,
+    idVideo?: string
   ) {
     const idx = mediaList.value.findIndex(m => m.title === title)
     if (idx < 0) {
@@ -205,16 +200,14 @@ export function useArtyManager(
       return
     }
     currentIndex.value = idx
-    initPlayer(idx, onStart, onComplete, true)
+    initPlayer(idx, onStart, onComplete, true, idVideo)
     play()
   }
 
   watch(
     () => containerRef.value,
     async (el) => {
-      if (el) {
-        await load()
-      }
+      if (el) await load()
     },
     { immediate: true }
   )
