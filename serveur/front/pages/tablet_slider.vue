@@ -1,29 +1,26 @@
 <template>
   <div class="module2-page">
-    <h1>Module 2 – Simulation</h1>
-
     <div class="controls module2-controls">
-      <div v-show="!isXChecked">
+      <div v-show="currentAxis === 'x'">
         <div class="button rectX-button" ref="rectXBtn">
           <img src="~/assets/modules/2/rectX.svg" alt="Slider X" />
           <div class="rect-selector" ref="rectXSel" :style="{ '--t-x': translateX + 'px' }" />
         </div>
-        <img v-if="isXChecked" src="~/assets/modules/2/splash-check.png" alt="splash check" class="splash-check" />
       </div>
       <div>
-        <div v-show="isXChecked && !isYChecked" class="button rectY-button" ref="rectYBtn">
+        <div v-show="currentAxis === 'y'" class="button rectY-button" ref="rectYBtn">
           <img src="~/assets/modules/2/rectY.svg" alt="Slider Y" />
           <div class="rect-selector" ref="rectYSel" :style="{ '--t-y': translateY + 'px' }" />
         </div>
-        <img v-if="isYChecked" src="~/assets/modules/2/splash-check.png" alt="splash check" class="splash-check" />
       </div>
-      <div v-show="isYChecked && !isZChecked">
+      <div v-show="currentAxis === 'z'">
         <div class="button circle-button" :class="{ gray: !isXChecked || !isYChecked }">
           <img src="~/assets/modules/2/circle.svg" alt="Knob Z" />
           <div class="rect-selector" :style="{ transform: `rotate(${rotZDeg}deg) translateY(-115px)` }" />
         </div>
-        <img v-if="isYChecked" src="~/assets/modules/2/splash-check.png" alt="splash check" class="splash-check" />
       </div>
+
+      <img src="~/assets/modules/2/splash-check.png" alt="splash check" class="splash-check" :style="{ opacity: opacityCheckMark }" />
     </div>
   </div>
 </template>
@@ -83,12 +80,15 @@ const rotZDeg = computed(() => pctZ.value * 360)
 
 // --- check states ---
 const tolerance = 0.2
+const startToAppearCheckMarkTolerance = 1.5
 const objectiveRotX = 2
 const objectiveRotY = 1
 const objectiveRotZ = 0.5
 const isXChecked = computed(() => Math.abs(rotX.value - objectiveRotX) < tolerance)
 const isYChecked = computed(() => Math.abs(rotY.value - objectiveRotY) < tolerance)
 const isZChecked = computed(() => Math.abs(rotZ.value - objectiveRotZ) < tolerance)
+
+const currentAxis = ref<'x' | 'y' | 'z'>('x')
 
 // --- DOM refs ---
 const rectXBtn = ref<HTMLElement>()
@@ -183,18 +183,23 @@ function setupDragZ() {
   const parent = document.querySelector('.circle-button') as HTMLElement
   setupDrag(el, e => {
     const rect = parent.getBoundingClientRect()
-    const cx = rect.left + rect.width / 2
-    const cy = rect.top + rect.height / 2
-    const dx = e.clientX - cx
-    const dy = e.clientY - cy
-    const angleDeg = ((Math.atan2(dy, dx) * 180) / Math.PI + 360) % 360
-    const pct = angleDeg / 360
+    const centerX = rect.left + rect.width / 2
+    const centerY = rect.top + rect.height / 2
+    console.log('center', centerX, centerY)
+    console.log('client', e.clientX, e.clientY)
+    const angle = Math.atan2(e.clientY - centerY, e.clientX - centerX)
+    console.log('angle', angle)
+    const pct = (angle + Math.PI / 2) / (2 * Math.PI) // Normalize to [0, 1]
+    console.log('pct', pct)
     rotZ.value = rotZMin.value + pct * (rotZMax.value - rotZMin.value)
+    console.log('rotZ', rotZ.value)
   })
 }
 
 let roX: ReturnType<typeof useResizeObserver>
 let roY: ReturnType<typeof useResizeObserver>
+
+const opacityCheckMark = ref(0)
 
 onMounted(() => {
   intervalId = window.setInterval(sendModule2, 100)
@@ -209,6 +214,26 @@ onMounted(() => {
   measure()
   if (rectXBtn.value) roX = useResizeObserver(rectXBtn, measure)
   if (rectYBtn.value) roY = useResizeObserver(rectYBtn, measure)
+
+  setInterval(() => {
+    let opacity = opacityCheckMark.value
+    if ((currentAxis.value === 'x' && isXChecked.value) || (currentAxis.value === 'y' && isYChecked.value) || (currentAxis.value === 'z' && isZChecked.value)) {
+      opacity += 0.02 * (Math.pow(opacityCheckMark.value, 2) + 1)
+    } else {
+      opacity -= 0.02 * (Math.pow(opacityCheckMark.value, 2) + 1)
+    }
+    opacityCheckMark.value = Math.max(0, Math.min(1, opacity))
+    if (opacityCheckMark.value === 1) {
+      setTimeout(() => {
+        if (currentAxis.value === 'x' && isXChecked.value) {
+          currentAxis.value = 'y'
+        } else if (currentAxis.value === 'y' && isYChecked.value) {
+          currentAxis.value = 'z'
+        }
+        opacityCheckMark.value = 0
+      },500)
+    }
+  }, 50)
 
   setupDragX()
   setupDragY()
@@ -225,6 +250,19 @@ onUnmounted(() => {
 })
 </script>
 
+<style>
+body, html {
+  height: 100%;
+  width: 100%;
+  margin: auto;
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+</style>
+
 <style scoped>
 @font-face {
   font-family: "CheeseSauce";
@@ -236,6 +274,16 @@ onUnmounted(() => {
   font-family: "CheeseSauce", sans-serif;
   max-width: 400px;
   margin: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.module2-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
 }
 
 .rect-selector {
