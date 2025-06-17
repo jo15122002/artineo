@@ -7,35 +7,39 @@
         </div>
       </div>
 
-      <ArtyPlayer ref="player2" :module="2" @ready="onPlayerReady" class="arty-player arty-angle" style="display: none" />
-      <ArtyPlayer ref="player2Music" :module="2" @ready="onMusicPlayerReady" class="arty-player" style="display: none" />
+      <ArtyPlayer ref="player2" :module="2" @ready="onPlayerReady" class="arty-player arty-angle"
+        style="display: none" />
+      <ArtyPlayer ref="player2Music" :module="2" @ready="onMusicPlayerReady" class="arty-player"
+        style="display: none" />
 
       <div class="buttons-wrapper" ref="buttonsWrapper">
 
         <!-- Slider X -->
-         <div>
+        <div>
           <div class="button rectX-button" ref="rectXBtn">
-          <img src="~/assets/modules/2/rectX.svg" alt="Slider X" />
-          <div class="rect-selector" ref="rectXSel" :style="{ '--t-x': translateY + 'px' }" />
+            <img src="~/assets/modules/2/rectX.svg" alt="Slider X" />
+            <div class="rect-selector" ref="rectXSel" :style="{ '--t-x': translateY + 'px' }" />
+          </div>
+          <img v-if="isXChecked" src="~/assets/modules/2/splash-check.png" alt="splash check" class="splash-check" />
         </div>
-           <img v-if="isXChecked" src="~/assets/modules/2/splash-check.png" alt="splash check" class="splash-check" />
-         </div>
-        
 
-        <!-- Slider Y --><div>
-        <div class="button rectY-button" ref="rectYBtn" :class="{'gray': !isXChecked}">
-          <img src="~/assets/modules/2/rectY.svg" alt="Slider Y" />
-          <div class="rect-selector" ref="rectYSel" :style="{ '--t-y': translateX + 'px' }" />
-        </div>
-        <img v-if="isYChecked" src="~/assets/modules/2/splash-check.png" alt="splash check" class="splash-check" />
-         </div>
 
-        <!-- Knob Z --><div>
-        <div class="button circle-button" :class="{'gray': !isXChecked || !isYChecked}">
-          <img src="~/assets/modules/2/circle.svg" alt="Knob Z" />
-          <div class="rect-selector" :style="{ transform: `rotate(${rotZDeg}deg) translateY(-115px)` }" />
+        <!-- Slider Y -->
+        <div>
+          <div class="button rectY-button" ref="rectYBtn" :class="{ 'gray': !isXChecked }">
+            <img src="~/assets/modules/2/rectY.svg" alt="Slider Y" />
+            <div class="rect-selector" ref="rectYSel" :style="{ '--t-y': translateX + 'px' }" />
+          </div>
+          <img v-if="isYChecked" src="~/assets/modules/2/splash-check.png" alt="splash check" class="splash-check" />
         </div>
-        <img v-if="isYChecked" src="~/assets/modules/2/splash-check.png" alt="splash check" class="splash-check" />
+
+        <!-- Knob Z -->
+        <div>
+          <div class="button circle-button" :class="{ 'gray': !isXChecked || !isYChecked }">
+            <img src="~/assets/modules/2/circle.svg" alt="Knob Z" />
+            <div class="rect-selector" :style="{ transform: `rotate(${rotZDeg}deg) translateY(-115px)` }" />
+          </div>
+          <img v-if="isYChecked" src="~/assets/modules/2/splash-check.png" alt="splash check" class="splash-check" />
         </div>
 
       </div>
@@ -59,8 +63,8 @@
 <script setup lang="ts">
 import { useResizeObserver } from '@vueuse/core'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import useModule2 from '~/composables/module2'
 import ArtyPlayer from '~/components/ArtyPlayer.vue'
+import useModule2 from '~/composables/module2'
 
 // 🟢 Étape courante
 const step = ref(1)
@@ -141,11 +145,14 @@ function onMusicPlayerReady() {
   player2Music.value?.playByTitle("song.wav")
 }
 
+let isAlreadyPlayed = false
+
 watch(
   [isXChecked, isYChecked, isZChecked, timerText],
   ([xChecked, yChecked, zChecked, t]) => {
-    if ((xChecked && yChecked && zChecked) || t === '0:00') {
+    if (((xChecked && yChecked && zChecked) || t === '0:00') && !isAlreadyPlayed) {
       // Lance la vidéo principale (mettre ici le titre de la vidéo désirée)
+      isAlreadyPlayed = true
       setTimeout(() => {
         player2.value?.playByTitle(
           'Jeu2Fin.webm',
