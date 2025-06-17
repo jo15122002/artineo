@@ -125,30 +125,25 @@
             <!-- Palette Objets -->
             <div class="palette objects-palette">
               <h3>Objets</h3>
-              <button v-for="obj in objectItems" :key="obj.src" class="draggable-item" draggable="true"
-                @dragstart="onDragStart(obj, $event)" @dragend="onDragEnd">
-                <img :src="obj.src" class="palette-icon" draggable="false" alt="" />
+              <button v-for="obj in objectItems" :key="obj.src" class="draggable-item"
+                @pointerdown.prevent="startDrag(obj, $event)">
+                <img :src="obj.src" class="palette-icon" draggable="false" />
                 {{ obj.name }}
               </button>
             </div>
           </div>
 
           <!-- Sandbox -->
-          <div class="sandbox" @dragover.prevent="onSandboxDragOver" @dragleave="onSandboxDragLeave"
-            @drop.prevent="onSandboxDrop">
-            <!-- Background permanent -->
+          <div class="sandbox" :ref="setSandbox" >
             <img v-if="currentBackground" :src="currentBackground.src" class="background-image" />
-
-            <img v-for="obj in placedObjects" :key="obj.id" :src="obj.src" class="placed-object" :style="{
-              left: obj.x + 'px',
-              top: obj.y + 'px',
-              width: (imageSizes[obj.src]?.width || 50) / scale + 'px',
-              height: (imageSizes[obj.src]?.height || 50) / scale + 'px'
+            <img v-for="o in placedObjects" :key="o.id" class="placed-object" :src="o.src" :style="{
+              left: o.x + 'px',
+              top: o.y + 'px',
+              width: getScaledSize(o.src).width + 'px',
+              height: getScaledSize(o.src).height + 'px'
             }" />
-
-            <div class="sandbox-overlay" :style="{ backgroundColor: buttonColors[currentButton] }"></div>
-
-
+            <div class="sandbox-overlay" :style="{ backgroundColor: buttonColors[currentButton] }" />
+            <!-- aperçu pendant drag -->
             <img v-if="dragPreview" :src="dragPreview.src" class="drag-preview" :style="{
               left: dragPreview.x + 'px',
               top: dragPreview.y + 'px',
@@ -275,12 +270,77 @@ const buttonColors: Record<number, string> = {
 }
 const currentButton = ref<number>(1)
 
+// ─── MODULE 4 drag’n’drop ─────────────────────────────────────────────
+
+const sandbox = ref<HTMLElement|null>(null)
+
+function setSandbox(el: Element | ComponentPublicInstance | null) {
+  sandbox.value = el as HTMLElement | null
+}
+
+function lockScroll() {
+  const dash = document.querySelector<HTMLElement>('.simulation-dashboard')
+  if (dash) dash.style.overflowY = 'hidden'
+}
+
+function unlockScroll() {
+  const dash = document.querySelector<HTMLElement>('.simulation-dashboard')
+  if (dash) dash.style.overflowY = ''
+}
+
 function getScaledSize(src: string) {
   const size = imageSizes[src] || { width: 50, height: 50 }
-  return {
-    width: size.width / scale,
-    height: size.height / scale
+  return { width: size.width / scale, height: size.height / scale }
+}
+
+// Ce handler est appelé à chaque move, pour repositionner l’aperçu
+function onPointerMove(evt: PointerEvent) {
+  if (!draggingSrc.value || !sandbox.value) return
+  const rect = sandbox.value.getBoundingClientRect()
+  const { width, height } = getScaledSize(draggingSrc.value)
+  dragPreview.value = {
+    src: draggingSrc.value,
+    x: Math.round(evt.clientX - rect.left - width / 2),
+    y: Math.round(evt.clientY - rect.top - height / 2)
   }
+}
+
+// Quand on relâche, on crée l’objet dans le sandbox et on nettoie
+function endDrag(evt: PointerEvent) {
+  console.log('contenu de sandbox.value →', sandbox.value)
+  if (draggingSrc.value && sandbox.value) {
+    const rect = sandbox.value.getBoundingClientRect()
+    const size = getScaledSize(draggingSrc.value)
+    placedObjects.push({
+      src: draggingSrc.value,
+      x: Math.round(evt.clientX - rect.left - size.width / 2),
+      y: Math.round(evt.clientY - rect.top - size.height / 2),
+      id: `obj-${Date.now()}`
+    })
+  }
+  // cleanup
+  dragPreview.value = null
+  draggingSrc.value = null
+  unlockScroll()
+}
+
+// Démarre le drag : on bloque le scroll et on bind window‐events
+function startDrag(obj: { src: string }, evt: PointerEvent) {
+  draggingSrc.value = obj.src
+  lockScroll()
+
+  // tant que l’on n’a pas relâché, on suit le pointeur partout
+  const move = (e: PointerEvent) => onPointerMove(e)
+  const up = (e: PointerEvent) => {
+    endDrag(e)
+    window.removeEventListener('pointermove', move)
+    window.removeEventListener('pointerup', up)
+    window.removeEventListener('pointercancel', up)
+  }
+
+  window.addEventListener('pointermove', move)
+  window.addEventListener('pointerup', up)
+  window.addEventListener('pointercancel', up)
 }
 
 // --- Fonctions de sélection / placement ---
@@ -297,61 +357,6 @@ function setBackground(bg: { src: string }) {
   currentBackground.value = { src: bg.src, id }
   newBackgroundsBuf.splice(0) // on ne veut qu’un seul fond pending à la fois
   newBackgroundsBuf.push({ src: bg.src, id })
-}
-
-function onDragStart(obj: { src: string }, evt: DragEvent) {
-  draggingSrc.value = obj.src
-
-  // 1) créer un canvas vide pour masquer le ghost-browser
-  const empty = document.createElement('canvas')
-  empty.width = empty.height = 0
-  evt.dataTransfer!.setDragImage(empty, 0, 0)
-
-  // (optionnel) définir un mime-type pour compatibilité
-  evt.dataTransfer!.setData('text/plain', obj.src)
-}
-
-function onDragEnd() {
-  draggingSrc.value = null
-  dragPreview.value = null
-}
-
-function onSandboxDragOver(evt: DragEvent) {
-  if (!draggingSrc.value) return
-  const rect = (evt.currentTarget as HTMLElement).getBoundingClientRect()
-  const rawX = evt.clientX - rect.left
-  const rawY = evt.clientY - rect.top
-  const { width, height } = getScaledSize(draggingSrc.value)
-  dragPreview.value = {
-    src: draggingSrc.value,
-    x: Math.round(rawX - width / 2),
-    y: Math.round(rawY - height / 2)
-  }
-}
-
-
-function onSandboxDragLeave() {
-  dragPreview.value = null
-}
-
-function onSandboxDrop(evt: DragEvent) {
-  if (!draggingSrc.value) return
-  const rect = (evt.currentTarget as HTMLElement).getBoundingClientRect()
-  const rawX = evt.clientX - rect.left
-  const rawY = evt.clientY - rect.top
-  const { width, height } = getScaledSize(draggingSrc.value)
-
-  const shape = draggingSrc.value.split('/').pop()!.replace('.png', '')
-  const id = `${shape}-${placedObjects.length}-${Date.now()}`
-  placedObjects.push({
-    src: draggingSrc.value,
-    x: Math.round(rawX - width / 2),
-    y: Math.round(rawY - height / 2),
-    id
-  })
-
-  draggingSrc.value = null
-  dragPreview.value = null
 }
 
 function removeBackground() {
@@ -801,6 +806,14 @@ function sendModule3() {
   pointer-events: none;
   z-index: 1;
 }
+
+.module4-container,
+.sandbox,
+.draggable-item {
+  touch-action: none;
+  overscroll-behavior: contain;
+}
+
 
 /* SWITCH TOGGLE */
 .switch {

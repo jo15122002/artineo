@@ -271,7 +271,26 @@ async def websocket_endpoint(ws: WebSocket):
                 if action == "set" and "data" in msg:
                     # Met à jour le buffer global et la queue de diffs
                     buffer[module_id] = msg["data"]
-                    diff_queues[module_id].append(msg["data"])
+                    if (module_id != 4):
+                        diff_queues[module_id].append(msg["data"])
+                    else:
+                        # module 4 : on agrège dans l'entrée existante, ou on crée la première
+                        dq = diff_queues[module_id]
+                        if dq:
+                            # il y a déjà un diff en attente → on étend chaque liste
+                            existing = dq[0]
+                            for key in [
+                                "newStrokes", "removeStrokes",
+                                "newObjects", "removeObjects",
+                                "newBackgrounds", "removeBackgrounds"
+                            ]:
+                                existing[key].extend(msg["data"].get(key, []))
+                            # on met à jour le bouton (on écrase l'ancienne valeur)
+                            existing["button"] = msg["data"]["button"]
+                        else:
+                            # premier diff → on l'ajoute
+                            dq.append(msg["data"])
+                        
                     debug_print(f"[WS] buffer[{module_id}] ← {msg['data']!r}")
 
                     resp = {
