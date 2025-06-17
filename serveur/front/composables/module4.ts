@@ -389,7 +389,7 @@ export default function use4kinect(canvasRef: Ref<HTMLCanvasElement | null>, ste
 
   onMounted(async () => {
     console.log('Module 4: Kinect + Button')
-    startTimer()
+    // startTimer()
     // subscribe to Kinect updates
     if (!isKinectSubscribed) {
       isKinectSubscribed = true

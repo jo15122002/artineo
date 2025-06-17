@@ -67,6 +67,16 @@ watch(
      <video> a controls et valeur fixe, mais le parent gère l’affichage si besoin. */
 }
 
+.arty-player.arty-angle {
+  position: absolute;
+  top: -1%;
+  left: 0%;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 30%;
+}
+
 .arty-player video {
     background: transparent;
 }
