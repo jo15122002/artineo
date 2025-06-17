@@ -14,7 +14,7 @@
           <img src="~/assets/modules/2/rectX.svg" alt="Slider X" />
           <div class="rect-selector" ref="rectXSel" :style="{ '--t-x': translateX + 'px' }" />
         </div>
-        <span v-if="isXChecked">V</span>
+           <img v-if="isXChecked" src="~/assets/modules/2/splash-check.png" alt="splash check" class="splash-check" />
          </div>
         
 
@@ -23,7 +23,7 @@
           <img src="~/assets/modules/2/rectY.svg" alt="Slider Y" />
           <div class="rect-selector" ref="rectYSel" :style="{ '--t-y': translateY + 'px' }" />
         </div>
-        <span v-if="isYChecked">V</span>
+        <img v-if="isYChecked" src="~/assets/modules/2/splash-check.png" alt="splash check" class="splash-check" />
          </div>
 
         <!-- Knob Z --><div>
@@ -31,7 +31,7 @@
           <img src="~/assets/modules/2/circle.svg" alt="Knob Z" />
           <div class="rect-selector" :style="{ transform: `rotate(${rotZDeg}deg) translateY(-115px)` }" />
         </div>
-        <span v-if="isZChecked">V</span>
+        <img v-if="isYChecked" src="~/assets/modules/2/splash-check.png" alt="splash check" class="splash-check" />
         </div>
 
       </div>
