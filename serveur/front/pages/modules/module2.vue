@@ -8,6 +8,7 @@
       </div>
 
       <ArtyPlayer ref="player2" :module="2" @ready="onPlayerReady" class="arty-player arty-angle" style="display: none" />
+      <ArtyPlayer ref="player2Music" :module="2" @ready="onMusicPlayerReady" class="arty-player" style="display: none" />
 
       <div class="buttons-wrapper" ref="buttonsWrapper">
 
@@ -126,6 +127,7 @@ let roX: ReturnType<typeof useResizeObserver>
 let roY: ReturnType<typeof useResizeObserver>
 
 const player2 = ref<InstanceType<typeof ArtyPlayer> | null>(null)
+const player2Music = ref<InstanceType<typeof ArtyPlayer> | null>(null)
 
 function onPlayerReady() {
   player2.value?.playByTitle(
@@ -133,6 +135,10 @@ function onPlayerReady() {
     () => console.log('→ début de Jeu2.webm'),
     () => startTimer?.()
   )
+}
+
+function onMusicPlayerReady() {
+  player2Music.value?.playByTitle("song.wav")
 }
 
 watch(
@@ -143,7 +149,8 @@ watch(
       setTimeout(() => {
         player2.value?.playByTitle(
           'Jeu2Fin.webm',
-          () => console.log('→ lancement de la vidéo de fin')
+          () => console.log('→ lancement de la vidéo de fin'),
+          () => player2Music.value?.stop()
         )
       }, 2000)
     }
