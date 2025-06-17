@@ -141,6 +141,10 @@ canvas {
 }
 
 .arty-img {
+  position: absolute;
+  top: 0%;
+  left: -2%;
+  scale: 1.1;
   height: auto;
   max-width: 100%;
   max-height: 100%;
