@@ -18,7 +18,7 @@ export interface UseArtyManagerReturn {
     title: string,
     onStart?: () => void,
     onComplete?: () => void,
-    autoplay?: boolean
+    idVideo?: string
   ) => void
 }
 
@@ -191,7 +191,8 @@ export function useArtyManager(
   function playByTitle(
     title: string,
     onStart?: () => void,
-    onComplete?: () => void
+    onComplete?: () => void,
+    idVideo?: string
   ) {
     const idx = mediaList.value.findIndex(m => m.title === title)
     if (idx < 0) {
@@ -199,7 +200,7 @@ export function useArtyManager(
       return
     }
     currentIndex.value = idx
-    initPlayer(idx, onStart, onComplete, true)
+    initPlayer(idx, onStart, onComplete, true, idVideo)
     play()
   }
 

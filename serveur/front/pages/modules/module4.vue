@@ -20,7 +20,7 @@
 
     <div class="arty">
       <!-- image fixe -->
-      <img src="~/assets/modules/4/images/arty.png" alt="Arty" class="arty-img" />
+      <img src="~/assets/modules/4/images/arty.png" alt="Arty" class="arty-img" ref="artyImage" />
 
       <!-- image dynamique -->
       <img :src="stepSrc" alt="Indication step" class="indication-step" />
@@ -66,15 +66,19 @@ const {
 
 // --- 3. ArtyPlayer ref + helpers ---
 const player4 = ref<InstanceType<typeof ArtyPlayer> | null>(null)
+const artyImage = ref<HTMLImageElement | null>(null)
 
 function playStepVideo(n: number) {
+  artyImage.value!.style.display = 'none' // cache l’image fixe
   player4.value?.playByTitle(
     `step${n}.webm`,
     /* onStart? */ undefined,
     /* onEnd */ () => {
       // une fois la vidéo finie, on démarre le timer
       startTimer?.()
-    }
+      artyImage.value!.style.display = 'block' // affiche l’image fixe
+    },
+    "arty-left"
   )
 }
 

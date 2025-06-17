@@ -58,7 +58,7 @@ watch(
 )
 </script>
 
-<style scoped>
+<style>
 /* Styles pour la vidéo plein écran */
 .arty-fullscreen-video {
     position: fixed;
@@ -68,6 +68,14 @@ watch(
     height: 100vh;
     z-index: 10000;
     background-color: transparent;
+}
+
+#arty-left {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 50%;
+    height: auto;
 }
 
 /* Styles pour cacher l’audio */
