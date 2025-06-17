@@ -34,7 +34,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch, computed } from 'vue'
 import ArtyPlayer from '~/components/ArtyPlayer.vue'
 import useModule3 from '~/composables/module3.ts'
 
@@ -46,7 +46,7 @@ const images = import.meta.glob(
   { eager: true, as: 'url' }
 ) as Record<string, string>
 
-// 🔄 Computed pour retourner l'URL correspondant à la step courante
+// URL de la step courante
 const stepSrc = computed(() => {
   const entry = Object.entries(images)
     .find(([path]) => path.endsWith(`step${step.value}.png`))
@@ -61,24 +61,41 @@ const {
   stateClasses,
   pressedStates,
   backgroundUrl,
-  timerText,
-  timerColor
+  timerText,       // Ref<string>
+  timerColor,
+  startTimer
 } = useModule3(player3)
 
+// Quand le player est prêt, on lance l’intro
 function onPlayerReady() {
   console.log('[Module3] ArtyPlayer prêt → lecture de l’intro…')
   player3.value?.playByTitle(
-    'imagination.mp4',
-    () => console.log('→ onStart video imagination.mp4'),
-    () => console.log('→ onComplete video imagination.mp4')
-  )
-
-  player3.value?.playByTitle(
-    'Introduction.mp3',
-    () => console.log('→ onStart audio Introduction.mp3'),
-    () => console.log('→ onComplete audio Introduction.mp3')
+    'Jeu3.webm',
+    () => console.log('→ début de Jeu3.webm'),
+    startTimer
   )
 }
+
+// ✅ Condition prête : timer à "0:00" ET toutes les classes contiennent "correct"
+const readyForNext = computed(() => {
+  return timerText?.value === '0:00'
+    && stateClasses.value.every(cls => cls.includes('correct'))
+})
+
+// 🔔 Watch sur readyForNext pour lancer la vidéo de fin une fois
+watch(
+  [() => timerText?.value, () => stateClasses.value],
+  ([newTimer, newStates], [oldTimer, oldStates]) => {
+    console.log('[Module3] timer:', newTimer, ' states:', newStates)
+    if (
+      newTimer === '0:00' ||
+      newStates.every(s => s.includes('correct'))
+    ) {
+      console.log('[Module3] conditions OK → lecture de fin')
+      player3.value?.playByTitle('Jeu3Fin.webm')
+    }
+  }
+)
 </script>
 
 <style scoped src="~/assets/modules/3/style.css"></style>
