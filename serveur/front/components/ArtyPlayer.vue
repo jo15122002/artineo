@@ -72,10 +72,12 @@ watch(
 
 #arty-left {
     position: absolute;
-    left: 0;
-    top: 0;
+    left: -18.33%;
+    top: -9.5%;
     width: 50%;
     height: auto;
+    rotate: 30deg;
+    scale: 1.5;
 }
 
 /* Styles pour cacher l’audio */

@@ -69,7 +69,13 @@ const player4 = ref<InstanceType<typeof ArtyPlayer> | null>(null)
 const artyImage = ref<HTMLImageElement | null>(null)
 
 function playStepVideo(n: number) {
-  artyImage.value!.style.display = 'none' // cache l’image fixe
+  // wait 500ms before hiding the image
+  setTimeout(() => {
+    if (artyImage.value) {
+      artyImage.value.style.display = 'none'
+    }
+  }, 500)
+  // artyImage.value!.style.display = 'none' // cache l’image fixe
   player4.value?.playByTitle(
     `step${n}.webm`,
     /* onStart? */ undefined,
@@ -104,7 +110,7 @@ if (timerSeconds) {
         step.value++
       } else {
         // dernier step terminé → outroteur
-        player4.value?.playByTitle('outro.webm')
+        player4.value?.playByTitle('outro.webm', undefined, undefined, "arty-left")
       }
     }
   })
