@@ -98,7 +98,10 @@ onBeforeUnmount(() => {
   </div>
 </template>
 
-<style scoped>
+<style>
+html, body, #__nuxt, .module-container {
+  overflow: visible !important;
+}
 .dashboard {
   padding: 1rem;
   font-family: Arial, sans-serif;

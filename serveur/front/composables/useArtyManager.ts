@@ -3,32 +3,33 @@ import { ref, watch, type Ref } from 'vue'
 
 export interface MediaItem {
   title: string
-  type:  string
-  url:   string
+  type: string
+  url: string
 }
 
 export interface UseArtyManagerReturn {
-  mediaList:     Ref<MediaItem[]>
-  currentIndex:  Ref<number>
-  load:          () => Promise<void>
-  play:          () => void
-  next:          () => void
-  prev:          () => void
-  playByTitle:   (
+  mediaList: Ref<MediaItem[]>
+  currentIndex: Ref<number>
+  load: () => Promise<void>
+  play: () => void
+  next: () => void
+  prev: () => void
+  playByTitle: (
     title: string,
     onStart?: () => void,
     onComplete?: () => void,
     idVideo?: string
   ) => void
+  stop: () => void
 }
 
 export function useArtyManager(
   moduleId: number,
   containerRef: Ref<HTMLElement | null>
 ): UseArtyManagerReturn {
-  const mediaList    = ref<MediaItem[]>([])
+  const mediaList = ref<MediaItem[]>([])
   const currentIndex = ref<number>(0)
-  const playerEl     = ref<HTMLMediaElement | null>(null)
+  const playerEl = ref<HTMLMediaElement | null>(null)
   const fullScreenVideoEl = ref<HTMLVideoElement | null>(null)
 
   const { public: { apiUrl } } = useRuntimeConfig()
@@ -50,8 +51,8 @@ export function useArtyManager(
         }
         return {
           title: m.title,
-          type:  m.type,
-          url:   fullUrl
+          type: m.type,
+          url: fullUrl
         }
       })
 
@@ -82,13 +83,13 @@ export function useArtyManager(
 
     // Retirer l’audio/vidéo précédent
     if (playerEl.value) {
-      playerEl.value.removeEventListener('play',  handlePlay)
+      playerEl.value.removeEventListener('play', handlePlay)
       playerEl.value.removeEventListener('ended', handleEnded)
       container?.removeChild(playerEl.value)
       playerEl.value = null
     }
     if (fullScreenVideoEl.value) {
-      fullScreenVideoEl.value.removeEventListener('play',  handlePlay)
+      fullScreenVideoEl.value.removeEventListener('play', handlePlay)
       fullScreenVideoEl.value.removeEventListener('ended', handleEnded)
       document.body.removeChild(fullScreenVideoEl.value)
       fullScreenVideoEl.value = null
@@ -117,20 +118,20 @@ export function useArtyManager(
     if (info.type.startsWith('video/')) {
       // VIDÉO PLEIN ÉCRAN SANS CONTROLES, EN AUTOPLAY
       const vid = document.createElement('video')
-      vid.src         = info.url
-      vid.preload     = 'auto'
-      vid.muted       = false
-      vid.autoplay    = autoplay
+      vid.src = info.url
+      vid.preload = 'auto'
+      vid.muted = false
+      vid.autoplay = autoplay
       vid.playsInline = true
 
       // On applique la classe CSS au lieu des styles inline
       vid.classList.add('arty-fullscreen-video')
 
-      vid.addEventListener('play',  handlePlay)
+      vid.addEventListener('play', handlePlay)
       vid.addEventListener('ended', handleEnded)
 
       document.body.appendChild(vid)
-      if(idVideo) {
+      if (idVideo) {
         vid.setAttribute('id', idVideo)
       }
       fullScreenVideoEl.value = vid
@@ -142,14 +143,16 @@ export function useArtyManager(
         return
       }
       const audio = document.createElement('audio')
-      audio.src     = info.url
+      audio.src = info.url
       audio.preload = 'auto'
-      audio.muted   = false
+      audio.muted = false
+      audio.volume = 0.25
+      audio.loop = true
 
       // Classe CSS pour cacher l’élément
       audio.classList.add('arty-audio-hidden')
 
-      audio.addEventListener('play',  handlePlay)
+      audio.addEventListener('play', handlePlay)
       audio.addEventListener('ended', handleEnded)
 
       container.appendChild(audio)
@@ -188,6 +191,27 @@ export function useArtyManager(
     play()
   }
 
+  /** Met en pause et retire du DOM le media en cours (audio ou vidéo full-screen) */
+  function stop() {
+    // audio
+    if (playerEl.value) {
+      playerEl.value.pause()
+      const container = containerRef.value
+      if (container && playerEl.value.parentNode === container) {
+        container.removeChild(playerEl.value)
+      }
+      playerEl.value = null
+    }
+    // vidéo plein écran
+    if (fullScreenVideoEl.value) {
+      fullScreenVideoEl.value.pause()
+      if (fullScreenVideoEl.value.parentNode === document.body) {
+        document.body.removeChild(fullScreenVideoEl.value)
+      }
+      fullScreenVideoEl.value = null
+    }
+  }
+
   function playByTitle(
     title: string,
     onStart?: () => void,
@@ -219,6 +243,7 @@ export function useArtyManager(
     play,
     next,
     prev,
-    playByTitle
+    playByTitle,
+    stop
   }
 }

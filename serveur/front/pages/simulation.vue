@@ -614,6 +614,10 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+html, body, #__nuxt, .module-container {
+  overflow: visible !important;
+}
+
 .simulation-dashboard {
   padding: 2rem;
   font-family: sans-serif;

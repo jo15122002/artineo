@@ -21,6 +21,7 @@
       <ArtyPlayer ref="fullScreenPlayer" :module="1" @ready="onFullScreenPlayerReady" class="arty-player" />
       <ArtyPlayer ref="playerFrame" :module="1" @ready="console.log('playerFrame prêt')" class="arty-player" />
       <ArtyPlayer ref="playerArty" :module="1" @ready="console.log('playerArty prêt')" class="arty-player" />
+      <ArtyPlayer ref="playerArtyMusic" :module="1" @ready="console.log('playerMusic prêt')" class="arty-player" />
     </div>
 
     <!-- Optionnel : affichage textuel de l'indice courant -->
@@ -66,12 +67,16 @@ const initialPos = reactive({ x: 0, y: 0, d: 0 })
 const playerFrame = ref<InstanceType<typeof ArtyPlayer> | null>(null)
 const playerArty = ref<InstanceType<typeof ArtyPlayer> | null>(null)
 const fullScreenPlayer = ref<InstanceType<typeof ArtyPlayer> | null>(null)
+const playerArtyMusic = ref<InstanceType<typeof ArtyPlayer> | null>(null)
 
 const canPoll = ref(false)
 
 function onFullScreenPlayerReady() {
   fullScreenPlayer.value?.playByTitle('intro.mp4',
-    () => resetTimer(),
+    () => {
+      resetTimer();
+      playerArtyMusic.value?.playByTitle('song.mp4')
+    },
     () => {
       resumeTimer()
       console.log('Full screen player ended')
