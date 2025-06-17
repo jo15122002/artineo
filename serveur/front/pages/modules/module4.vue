@@ -1,5 +1,10 @@
 <template>
   <div class="module4-container">
+
+    <div class="arty">
+      <ArtyPlayer ref="player4" :module="4" @ready="onPlayerReady" class="arty-player arty-angle" style="display: none" />
+    </div>
+
     <div class="painting-frame-with-shadow">
       <div class="painting-frame">
         <div class="painting-container">
@@ -24,50 +29,84 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
+import ArtyPlayer from '~/components/ArtyPlayer.vue'
 import use4kinect from '~/composables/module4.ts'
 
 definePageMeta({ layout: 'module' })
 
-// 🟢 Étape courante
+// --- 1. état et imports d’images ---
 const step = ref(1)
-
-// 📦 Import de toutes les étapes en “eager” (chargées au build) et renvoi d'URL
 const images = import.meta.glob(
   '~/assets/modules/4/images/steps/*.png',
   { eager: true, as: 'url' }
 ) as Record<string, string>
-
-// 🔄 Computed pour retourner l'URL correspondant à la step courante
 const stepSrc = computed(() => {
   const entry = Object.entries(images)
     .find(([path]) => path.endsWith(`step${step.value}.png`))
   return entry ? entry[1] : ''
 })
-
-// Réf du canvas pour le composable
-const canvas = ref<HTMLCanvasElement | null>(null)
-
-// Appel au composable Kinect
-const { strokes, objects, timerColor, timerText, timerSeconds, startTimer } = use4kinect(canvas, step)
-
-// Calcul dynamique du nombre total d’étapes  
 const maxStep = Object.keys(images)
   .map(path => {
     const m = path.match(/step(\d+)\.png$/)
-    return m ? parseInt(m[1], 10) : 0
+    return m ? +m[1] : 0
   })
   .reduce((a, b) => Math.max(a, b), 0)
 
-// Watcher : quand timer arrive à 0 et qu’il reste une étape, on incrémente et on relance
-watch(timerSeconds!, newVal => {
-  if (newVal === 0 && step.value < maxStep) {
-    step.value++
-    startTimer?.()
+// --- 2. canvas & composable Kinect ---
+const canvas = ref<HTMLCanvasElement | null>(null)
+const {
+  strokes,
+  objects,
+  timerColor,
+  timerText,
+  timerSeconds,
+  startTimer
+} = use4kinect(canvas, step)
+
+// --- 3. ArtyPlayer ref + helpers ---
+const player4 = ref<InstanceType<typeof ArtyPlayer> | null>(null)
+
+function playStepVideo(n: number) {
+  player4.value?.playByTitle(
+    `step${n}.webm`,
+    /* onStart? */ undefined,
+    /* onEnd */ () => {
+      // une fois la vidéo finie, on démarre le timer
+      startTimer?.()
+    }
+  )
+}
+
+function onPlayerReady() {
+  // lancement de la vidéo du premier step
+  playStepVideo(step.value)
+}
+
+// --- 4. à chaque changement de step, jouer la vidéo ---
+watch(step, (newStep, oldStep) => {
+  // évite de relancer celle du premier step deux fois si déjà lancée
+  if (newStep !== oldStep) {
+    playStepVideo(newStep)
   }
 })
 
-// Initialisation de la taille du canvas au montage
+// --- 5. fin du timer : changer de step ou lancer l’outro ---
+if (timerSeconds) {
+  watch(timerSeconds, newVal => {
+    if (newVal === 0) {
+      if (step.value < maxStep) {
+        // on passe au step suivant (watch(step) gérera la vidéo + timer)
+        step.value++
+      } else {
+        // dernier step terminé → outroteur
+        player4.value?.playByTitle('outro.webm')
+      }
+    }
+  })
+}
+
+// --- 6. onMounted pour la taille du canvas ---
 onMounted(() => {
   const ROISz = { w: 305, h: 200, scale: 3 }
   const c = canvas.value!

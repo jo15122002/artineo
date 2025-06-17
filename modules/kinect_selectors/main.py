@@ -7,7 +7,7 @@ from utime import sleep_ms
 # CONFIGURATION réseau & module
 # ————————————————————————————————————————————————————————————————
 MODULE_ID = 41
-HOST      = "artineo.local"
+HOST      = "192.168.2.1"
 PORT      = 8000
 
 # ————————————————————————————————————————————————————————————————
@@ -80,6 +80,12 @@ async def async_main():
     except Exception as e:
         print("❌ Impossible de se connecter au Wi-Fi :", e)
         return
+    
+    asyncio.create_task(client._ws_loop())
+    asyncio.create_task(client._ws_receiver())
+
+    # On laisse un petit laps de temps pour établir la WS
+    await asyncio.sleep(1)
 
     # # 3) Connexion WebSocket avec retry
     # ok = await ws_connect_with_retry(client, retries=4, base_delay=1)
@@ -119,7 +125,7 @@ async def async_main():
                 print("🔘 Bouton 2 appuyé → envoi WS")
                 payload = {"button": 2}
             elif button3_pressed:
-                print("🔘 Bouton 3 → envoi WS")
+                print("🔘 Bouton 3 appuyé → envoi WS")
                 payload = {"button": 3}
                 
             # remise à zéro des drapeaux

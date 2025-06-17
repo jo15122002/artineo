@@ -17,7 +17,8 @@ export interface UseArtyManagerReturn {
   playByTitle:   (
     title: string,
     onStart?: () => void,
-    onComplete?: () => void
+    onComplete?: () => void,
+    autoplay?: boolean
   ) => void
 }
 
@@ -61,10 +62,10 @@ export function useArtyManager(
       })
 
       mediaList.value = list
-      if (list.length > 0) {
-        currentIndex.value = 0
-        initPlayer(currentIndex.value)
-      }
+      // if (list.length > 0) {
+      //   currentIndex.value = 0
+      //   initPlayer(currentIndex.value)
+      // }
     } catch (e) {
       console.error(`[ArtyManager][Module ${moduleId}] Erreur pendant load():`, e)
     }
@@ -74,6 +75,7 @@ export function useArtyManager(
     index: number,
     onStartCallback?: () => void,
     onCompleteCallback?: () => void,
+    autoplay = false,
     idVideo?: string
   ) {
     const container = containerRef.value
@@ -118,7 +120,7 @@ export function useArtyManager(
       vid.src         = info.url
       vid.preload     = 'auto'
       vid.muted       = false
-      vid.autoplay    = true
+      vid.autoplay    = autoplay
       vid.playsInline = true
 
       // On applique la classe CSS au lieu des styles inline
@@ -197,7 +199,7 @@ export function useArtyManager(
       return
     }
     currentIndex.value = idx
-    initPlayer(idx, onStart, onComplete)
+    initPlayer(idx, onStart, onComplete, true)
     play()
   }
 

@@ -238,6 +238,11 @@ async def async_main():
     reset_timer()
 
     log("[main] entering loop")
+    
+    while _client.varStart is False:
+        log("[main] waiting for varStart to be True")
+        await asyncio.sleep(1)
+    
     while True:
         u1 = await read_uid(rdrs[0])
         u2 = await read_uid(rdrs[1])

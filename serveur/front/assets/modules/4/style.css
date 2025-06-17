@@ -92,7 +92,7 @@ canvas {
 .timer-text {
   position: absolute;
   top: 51.5%;
-  right: -20%;
+  right: -2%;
   transform: translate(-50%, -50%);
   color: #FFF;
   z-index: 1;

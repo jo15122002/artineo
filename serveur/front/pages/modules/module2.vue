@@ -12,7 +12,7 @@
          <div>
           <div class="button rectX-button" ref="rectXBtn">
           <img src="~/assets/modules/2/rectX.svg" alt="Slider X" />
-          <div class="rect-selector" ref="rectXSel" :style="{ '--t-x': translateX + 'px' }" />
+          <div class="rect-selector" ref="rectXSel" :style="{ '--t-x': translateY + 'px' }" />
         </div>
            <img v-if="isXChecked" src="~/assets/modules/2/splash-check.png" alt="splash check" class="splash-check" />
          </div>
@@ -21,7 +21,7 @@
         <!-- Slider Y --><div>
         <div class="button rectY-button" ref="rectYBtn" :class="{'gray': !isXChecked}">
           <img src="~/assets/modules/2/rectY.svg" alt="Slider Y" />
-          <div class="rect-selector" ref="rectYSel" :style="{ '--t-y': translateY + 'px' }" />
+          <div class="rect-selector" ref="rectYSel" :style="{ '--t-y': translateX + 'px' }" />
         </div>
         <img v-if="isYChecked" src="~/assets/modules/2/splash-check.png" alt="splash check" class="splash-check" />
          </div>

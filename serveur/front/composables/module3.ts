@@ -50,8 +50,8 @@ export default function useModule3(
   let prevPressed     = false
 
   const TIMER_DURATION = 60; // duree en secondes
-
-  const timerText = ref<string>('1:00')
+  const timerSeconds = ref<number>(TIMER_DURATION)
+  let timerInterval: number | undefined = undefined
 
   const pluralMap: Record<string,string> = {
     lieu:    'lieux',
@@ -59,10 +59,35 @@ export default function useModule3(
     emotion: 'emotions'
   }
 
-  // calcule les secondes restantes
-  const timerSeconds = computed(() => {
-    const [m, s] = timerText.value.split(':').map(v => parseInt(v, 10));
-    return m * 60 + s;
+  function startTimer() {
+    // réinitialise la valeur et stoppe un éventuel timer en cours
+    if (timerInterval) {
+      clearInterval(timerInterval)
+    }
+    timerSeconds.value = TIMER_DURATION
+    // décrémente chaque seconde
+    timerInterval = window.setInterval(() => {
+      // on décompte et on s'assure de ne pas passer sous 0
+      timerSeconds.value = Math.max(timerSeconds.value - 1, 0)
+      if (timerSeconds.value === 0 && timerInterval) {
+        clearInterval(timerInterval)
+      }
+    }, 1000)
+  }
+
+  function stopTimer() {
+    if (timerInterval) {
+      clearInterval(timerInterval)
+      timerInterval = undefined
+    }
+    timerSeconds.value = TIMER_DURATION // réinitialise la valeur
+  }
+
+  // computed pour formater en M:SS
+  const timerText = computed(() => {
+    const m = Math.floor(timerSeconds.value / 60);
+    const s = timerSeconds.value % 60;
+    return `${m}:${String(s).padStart(2, '0')}`;
   });
 
   const colorStops = [
@@ -210,6 +235,8 @@ export default function useModule3(
     pressedStates,
     backgroundUrl,
     timerText,
-    timerColor
+    timerColor,
+    startTimer,
+    stopTimer
   }
 }
