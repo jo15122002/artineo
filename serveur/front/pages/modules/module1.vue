@@ -99,7 +99,7 @@ function startHintTimer() {
     if (!currentDirection.value) return
     // Lancer les deux vidéos en simultané
     playerFrame.value?.playByTitle(`${currentDirection.value}.webm`)
-    playerArty.value?.playByTitle(`${currentDirection.value}_Arty.webm`)
+    playerArty.value?.playByTitle(`${currentDirection.value}_Arty.webm`, undefined, undefined, "arty-left")
   }, hintDelay)
 }
 
