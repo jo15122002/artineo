@@ -63,7 +63,8 @@ const {
   backgroundUrl,
   timerText,       // Ref<string>
   timerColor,
-  startTimer
+  startTimer,
+  stopTimer
 } = useModule3(player3)
 
 // Quand le player est prêt, on lance l’intro
@@ -92,6 +93,7 @@ watch(
       newStates.every(s => s.includes('correct'))
     ) {
       console.log('[Module3] conditions OK → lecture de fin')
+      stopTimer?.() // On arrête le timer
       player3.value?.playByTitle('Jeu3Fin.webm')
     }
   }

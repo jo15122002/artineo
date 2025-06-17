@@ -75,6 +75,14 @@ export default function useModule3(
     }, 1000)
   }
 
+  function stopTimer() {
+    if (timerInterval) {
+      clearInterval(timerInterval)
+      timerInterval = undefined
+    }
+    timerSeconds.value = TIMER_DURATION // réinitialise la valeur
+  }
+
   // computed pour formater en M:SS
   const timerText = computed(() => {
     const m = Math.floor(timerSeconds.value / 60);
@@ -228,6 +236,7 @@ export default function useModule3(
     backgroundUrl,
     timerText,
     timerColor,
-    startTimer
+    startTimer,
+    stopTimer
   }
 }
