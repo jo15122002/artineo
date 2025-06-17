@@ -35,7 +35,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import ArtyPlayer from '~/components/ArtyPlayer.vue'
 import useModule3 from '~/composables/module3.ts'
 
@@ -90,16 +90,19 @@ const readyForNext = computed(() => {
 })
 
 // 🔔 Watch sur readyForNext pour lancer la vidéo de fin une fois
+let isPlaying = false
 watch(
   [() => timerText?.value, () => stateClasses.value],
   ([newTimer, newStates], [oldTimer, oldStates]) => {
     console.log('[Module3] timer:', newTimer, ' states:', newStates)
     if (
-      newTimer === '0:00' ||
-      newStates.every(s => s.includes('correct'))
+      (newTimer === '0:00' ||
+        newStates.every(s => s.includes('correct'))) &&
+      !isPlaying
     ) {
       console.log('[Module3] conditions OK → lecture de fin')
       stopTimer?.() // On arrête le timer
+      isPlaying = true
       player3.value?.playByTitle('Jeu3Fin.webm', undefined,
         () => player3Music.value?.stop()
       )
