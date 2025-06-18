@@ -109,6 +109,20 @@ canvas {
   height: 70px;
 }
 
+.slider-wrapper {
+  position: relative;
+  display: block;
+}
+
+.splash-check {
+  position: absolute;
+  bottom: 50%;
+  left: 50%;
+  transform: translateX(-50%) translateY(50%);
+  margin-bottom: 8px;
+  transition: transform 0.2s ease-out;
+}
+
 /* Slider horizontal (X) */
 .rectX-button .rect-selector {
   /* on part de l’extrême gauche du parent */

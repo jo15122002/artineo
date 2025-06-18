@@ -15,7 +15,7 @@
       <div class="buttons-wrapper" ref="buttonsWrapper">
 
         <!-- Slider X -->
-        <div>
+        <div class="slider-wrapper">
           <div class="button rectX-button" ref="rectXBtn">
             <img src="~/assets/modules/2/rectX.svg" alt="Slider X" />
             <div class="rect-selector" ref="rectXSel" :style="{ '--t-x': translateY + 'px' }" />
@@ -25,7 +25,7 @@
 
 
         <!-- Slider Y -->
-        <div>
+        <div class="slider-wrapper">
           <div class="button rectY-button" ref="rectYBtn" :class="{ 'gray': !isXChecked }">
             <img src="~/assets/modules/2/rectY.svg" alt="Slider Y" />
             <div class="rect-selector" ref="rectYSel" :style="{ '--t-y': translateX + 'px' }" />
@@ -34,7 +34,7 @@
         </div>
 
         <!-- Knob Z -->
-        <div>
+        <div class="slider-wrapper">
           <div class="button circle-button" :class="{ 'gray': !isXChecked || !isYChecked }">
             <img src="~/assets/modules/2/circle.svg" alt="Knob Z" />
             <div class="rect-selector" :style="{ transform: `rotate(${rotZDeg}deg) translateY(-115px)` }" />
