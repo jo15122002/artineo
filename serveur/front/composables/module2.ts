@@ -20,7 +20,7 @@ export default function useModule2(canvasRef: Ref<HTMLCanvasElement | null>) {
       timerColor, timerText,
       isXChecked: zero as Ref<boolean>,
       isYChecked: zero as Ref<boolean>,
-      isZChecked: zero as Ref<boolean>,
+      isZChecked: zero as Ref<boolean>
     }
   }
 
@@ -42,6 +42,10 @@ export default function useModule2(canvasRef: Ref<HTMLCanvasElement | null>) {
   const isYChecked = computed(() => Math.abs(rotY.value - objectiveRotY) < tolerance)
   const isZChecked = computed(() => Math.abs(rotZ.value - objectiveRotZ) < tolerance)
 
+  const showXCheck = ref(false)
+  const showYCheck = ref(false)
+  const showZCheck = ref(false)
+
   // clamp helper
   const clamp = (v: number, min: number, max: number) => Math.min(Math.max(v, min), max)
 
@@ -51,6 +55,9 @@ export default function useModule2(canvasRef: Ref<HTMLCanvasElement | null>) {
     if (typeof buf.rotX === 'number') rotX.value = clamp(buf.rotX, rotXMin.value, rotXMax.value)
     if (typeof buf.rotY === 'number') rotY.value = clamp(buf.rotY, rotYMin.value, rotYMax.value)
     if (typeof buf.rotZ === 'number') rotZ.value = clamp(buf.rotZ, rotZMin.value, rotZMax.value)
+    if (typeof buf.showCheckmarkX === 'boolean') showXCheck.value = buf.showCheckmarkX
+    if (typeof buf.showCheckmarkY === 'boolean') showYCheck.value = buf.showCheckmarkY
+    if (typeof buf.showCheckmarkZ === 'boolean') showZCheck.value = buf.showCheckmarkZ
   }
 
   // polling fallback
@@ -232,6 +239,7 @@ export default function useModule2(canvasRef: Ref<HTMLCanvasElement | null>) {
     rotZMin, rotZMax,
     timerColor, timerText,
     isXChecked, isYChecked, isZChecked,
+    showXCheck, showYCheck, showZCheck,
     startTimer
   }
 }

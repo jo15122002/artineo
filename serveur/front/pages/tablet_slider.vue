@@ -44,6 +44,10 @@ const rotYMax = ref(+Infinity)
 const rotZMin = ref(-Infinity)
 const rotZMax = ref(+Infinity)
 
+const showCheckmarkX = ref(false)
+const showCheckmarkY = ref(false)
+const showCheckmarkZ = ref(false)
+
 // --- compute percentage along each axis ---
 const pctX = computed(() =>
   rotXMin.value < rotXMax.value
@@ -101,15 +105,6 @@ const rectYSel = ref<HTMLElement>()
 const client = useArtineo(2)
 let intervalId: number | null = null
 function sendModule2() {
-  console.log("send", {
-    rotX: rotX.value,
-    rotY: rotY.value,
-    rotZ: rotZ.value,
-    isXChecked: isXChecked.value,
-    isYChecked: isYChecked.value,
-    isZChecked: isZChecked.value,
-  });
-
   client.setBuffer({
     rotX: rotX.value,
     rotY: rotY.value,
@@ -117,6 +112,9 @@ function sendModule2() {
     isXChecked: isXChecked.value,
     isYChecked: isYChecked.value,
     isZChecked: isZChecked.value,
+    showCheckmarkX: showCheckmarkX.value,
+    showCheckmarkY: showCheckmarkY.value,
+    showCheckmarkZ: showCheckmarkZ.value,
   })
 }
 
@@ -218,6 +216,7 @@ onMounted(() => {
 
   setInterval(() => {
     let opacity = opacityCheckMark.value
+    const axis = currentAxis.value
     if ((currentAxis.value === 'x' && isXChecked.value) || (currentAxis.value === 'y' && isYChecked.value) || (currentAxis.value === 'z' && isZChecked.value)) {
       opacity += 0.02 * (Math.pow(opacityCheckMark.value, 2) + 1)
     } else {
@@ -225,6 +224,13 @@ onMounted(() => {
     }
     opacityCheckMark.value = Math.max(0, Math.min(1, opacity))
     if (opacityCheckMark.value === 1) {
+      if (axis === 'x' && isXChecked.value) {
+        showCheckmarkX.value = true
+      } else if (axis === 'y' && isYChecked.value) {
+        showCheckmarkY.value = true
+      } else if (axis === 'z' && isZChecked.value) {
+        showCheckmarkZ.value = true
+      }
       setTimeout(() => {
         if (currentAxis.value === 'x' && isXChecked.value) {
           currentAxis.value = 'y'
