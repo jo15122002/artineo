@@ -41,7 +41,7 @@ class StrokeConfirmTracker:
                 }
             else:
                 # nouveau candidat
-                cid = str(uuid.uuid4())
+                cid = str(x) + '_' + str(y)
                 new_cands[cid] = {
                     'centroid': (x, y),
                     'count': 1,

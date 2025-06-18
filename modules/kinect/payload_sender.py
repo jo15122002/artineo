@@ -88,6 +88,6 @@ class PayloadSender:
         async with self._lock:
             try:
                 self.client.send_ws(msg)
-                self.logger.debug("Enqueued WS message: %s", payload)
+                # self.logger.debug("Enqueued WS message: %s", payload)
             except Exception as e:
                 self.logger.error("Failed to enqueue WS message: %s", e)

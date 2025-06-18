@@ -274,22 +274,36 @@ async def websocket_endpoint(ws: WebSocket):
                     if (module_id != 4):
                         diff_queues[module_id].append(msg["data"])
                     else:
-                        # module 4 : on agrège dans l'entrée existante, ou on crée la première
-                        dq = diff_queues[module_id]
-                        if dq:
-                            # il y a déjà un diff en attente → on étend chaque liste
-                            existing = dq[0]
+                        if len(diff_queues[module_id]) > 1:
                             for key in [
                                 "newStrokes", "removeStrokes",
                                 "newObjects", "removeObjects",
                                 "newBackgrounds", "removeBackgrounds"
                             ]:
-                                existing[key].extend(msg["data"].get(key, []))
-                            # on met à jour le bouton (on écrase l'ancienne valeur)
-                            existing["button"] = msg["data"]["button"]
+                                for item in msg["data"].get(key, []):
+                                    diff_queues[module_id][1][key].append(item)
+                            # diff_queues[module_id][0]["button"] = msg["data"]["button"]
+                            print(diff_queues[module_id])
                         else:
-                            # premier diff → on l'ajoute
-                            dq.append(msg["data"])
+                            diff_queues[module_id].append(msg["data"])
+                        
+                    # else:
+                    #     # module 4 : on agrège dans l'entrée existante, ou on crée la première
+                    #     dq = diff_queues[module_id]
+                    #     if dq:
+                    #         # il y a déjà un diff en attente → on étend chaque liste
+                    #         existing = dq[0]
+                    #         for key in [
+                    #             "newStrokes", "removeStrokes",
+                    #             "newObjects", "removeObjects",
+                    #             "newBackgrounds", "removeBackgrounds"
+                    #         ]:
+                    #             existing[key].extend(msg["data"].get(key, []))
+                    #         # on met à jour le bouton (on écrase l'ancienne valeur)
+                    #         existing["button"] = msg["data"]["button"]
+                    #     else:
+                    #         # premier diff → on l'ajoute
+                    #         dq.append(msg["data"])
                         
                     debug_print(f"[WS] buffer[{module_id}] ← {msg['data']!r}")
 

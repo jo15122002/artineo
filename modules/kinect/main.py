@@ -320,33 +320,36 @@ class MainController:
                     unique = self.stroke_tracker.update(raw, existing)
                     confirmed = self.stroke_confirm.update(unique)
 
-                    slots = self.strokes_by_tool[self.current_tool]
-                    for ev in confirmed:
-                        if ev['size'] > self.config.stroke_size_max:
-                            continue
-                        ev['persistent'] = False
-                        sid = str(uuid.uuid4())
-                        ev['id'] = sid
-                        slots[sid] = ev
-                        new_strokes.append(ev)
-
-                    dynamic_slots = {
-                        sid: ev
-                        for sid, ev in slots.items()
-                        if not ev.get('persistent', False)
-                    }
+                    # slots = self.strokes_by_tool[self.current_tool]
                     active_ids = []
-                    for sid, ev in dynamic_slots.items():
-                        for r in raw:
-                            if abs(r['x'] - ev['x']) <= self.stroke_tracker.proximity_threshold \
-                            and abs(r['y'] - ev['y']) <= self.stroke_tracker.proximity_threshold:
-                                active_ids.append(sid)
-                                break
+                    for ev in confirmed:
+                        ev['persistent'] = False
+                        sid = str(ev["x"]) + "_" + str(ev["y"])
+                        ev['id'] = sid
+                        # slots[sid] = ev
+                        self.strokes_by_tool[self.current_tool][sid] = ev
+                        new_strokes.append(ev)
+                        active_ids.append(sid)
+
+                    # dynamic_slots = {
+                    #     sid: ev
+                    #     for sid, ev in slots.items()
+                    #     # if not ev.get('persistent', False)
+                    # }
+                    
+                    for ev in raw:
+                        for ex in existing:
+                            if ex['tool_id'] == ev['tool_id'] and abs(ex['x'] - ev['x']) <= self.stroke_tracker.proximity_threshold and abs(ex['y'] - ev['y']) <= self.stroke_tracker.proximity_threshold:
+                                active_ids.append(ex['id'])
+                    if active_ids:
+                        logger.debug(f"Active strokes : {active_ids}")
                     lifetimer = self.stroke_lifetimers[self.current_tool]
                     stale = lifetimer.update(active_ids)
                     for sid in stale:
-                        del slots[sid]
+                        del self.strokes_by_tool[self.current_tool][sid]
                         removed_strokes.append(sid)
+                    if len(removed_strokes) > 0:
+                        logger.info(str(len(removed_strokes)) + " strokes removed.")
 
                 # --- 7) OUTIL 4 (canal fond + objets) ---
                 else:
@@ -393,6 +396,7 @@ class MainController:
                     new_backgrounds or removed_backgrounds or
                     new_objects or removed_objects
                 ):
+                    logger.debug("Send removeStrokes: %s", removed_strokes)
                     await self.payload_sender.send_update(
                         new_strokes=new_strokes,
                         remove_strokes=removed_strokes,
@@ -434,6 +438,8 @@ class MainController:
                 all_stroke_ids = []
                 for slots in self.strokes_by_tool.values():
                     all_stroke_ids.extend(slots.keys())
+                    
+                logger.info(f"Removing {len(all_stroke_ids)} strokes on shutdown.")
 
                 remaining_bg_ids = []
                 remaining_obj_ids = []
@@ -947,7 +953,7 @@ if __name__ == '__main__':
     logger.info("Starting Artineo Kinect module...")
 
     # Fetch config from remote
-    client = ArtineoClient(module_id=4, host="artineo.local", port=8000)
+    client = ArtineoClient(module_id=4, host="localhost", port=8000)
     raw_conf = client.fetch_config()
 
     controller = MainController(

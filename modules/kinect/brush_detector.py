@@ -68,7 +68,7 @@ class BrushStrokeDetector:
         ys, xs = np.where(skel > 0)
         for y, x in zip(ys, xs):
             # ignore les très petits traits
-            if raw_dist[y, x] < self.config.stroke_radius_min:
+            if raw_dist[y, x] < self.config.stroke_radius_min or raw_dist[y, x] > self.config.stroke_size_max:
                 continue
             radius   = raw_dist[y, x]        # vrai rayon en pixels
             diameter = float(radius * 2.0)   # diamètre local
