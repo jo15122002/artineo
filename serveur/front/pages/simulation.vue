@@ -106,7 +106,7 @@
             <div class="button-selector">
               <span>Overlay Button :</span>
               <button v-for="id in Object.keys(buttonColors)" :key="id" :class="{ active: currentButton === +id }"
-                @click="currentButton = +id">
+                @click="sendModule41(+id)">
                 Button {{ id }}
               </button>
             </div>
@@ -186,7 +186,7 @@
 import { computed, onBeforeUnmount, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useArtineo } from '~/composables/useArtineo'
 
-const moduleIds = [1, 2, 3, 4]
+const moduleIds = [1, 2, 3, 4, 41]
 const clients = reactive<Record<number, ReturnType<typeof useArtineo>>>({})
 const buffers = reactive<Record<number, string>>({})
 
@@ -497,7 +497,6 @@ function sendModule4() {
     removeObjects: [...removeObjectsBuf],
     newBackgrounds: newBgs,
     removeBackgrounds: [...removeBackgroundsBuf],
-    button: currentButton.value
   }
   clients[4]
     .setBuffer(payload)
@@ -508,6 +507,14 @@ function sendModule4() {
       removeObjectsBuf.splice(0)
     })
     .catch(err => console.error('Module4 send error:', err))
+}
+function sendModule41(buttonValue: number = currentButton.value) {
+  const payload = {
+    button: buttonValue,
+  }
+  clients[41]
+    .setBuffer(payload)
+    .catch(err => console.error('Module41 send error:', err))
 }
 
 async function retrieveBuffer(mod: number) {
