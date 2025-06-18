@@ -137,9 +137,9 @@ export default function useModule2(canvasRef: Ref<HTMLCanvasElement | null>) {
 
   // tolerances & objectives for checks
   const tolerance = 0.2
-  const objectiveRotX = 2
-  const objectiveRotY = 1
-  const objectiveRotZ = 0.5
+  const objectiveRotX = 0.10
+  const objectiveRotY = 0.20
+  const objectiveRotZ = 0.05
 
   // ────────────────────────────────────────────────────────────────────────────
   // LIFECYCLE
