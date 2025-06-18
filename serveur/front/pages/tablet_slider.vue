@@ -82,9 +82,9 @@ const rotZDeg = computed(() => pctZ.value * 360)
 // --- check states ---
 const tolerance = 0.2
 const startToAppearCheckMarkTolerance = 1.5
-const objectiveRotX = 2
-const objectiveRotY = 1
-const objectiveRotZ = 0.5
+const objectiveRotX = 0.10
+const objectiveRotY = 0.20
+const objectiveRotZ = 0.05
 const isXChecked = computed(() => Math.abs(rotX.value - objectiveRotX) < tolerance)
 const isYChecked = computed(() => Math.abs(rotY.value - objectiveRotY) < tolerance)
 const isZChecked = computed(() => Math.abs(rotZ.value - objectiveRotZ) < tolerance)
