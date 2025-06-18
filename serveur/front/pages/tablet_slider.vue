@@ -20,16 +20,17 @@
         </div>
       </div>
 
-      <img src="~/assets/modules/2/splash-check.png" alt="splash check" class="splash-check" :style="{ opacity: opacityCheckMark }" />
+      <img src="~/assets/modules/2/splash-check.png" alt="splash check" class="splash-check"
+        :style="{ opacity: opacityCheckMark }" />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount, onUnmounted } from 'vue'
-import { useArtineo } from '~/composables/useArtineo'
-import { useResizeObserver } from '@vueuse/core'
 import { clamp } from '@antfu/utils'
+import { useResizeObserver } from '@vueuse/core'
+import { computed, onBeforeUnmount, onMounted, onUnmounted, ref } from 'vue'
+import { useArtineo } from '~/composables/useArtineo'
 
 // --- rotations and bounds ---
 const rotX = ref(0)
@@ -163,7 +164,7 @@ function setupDragX() {
     const rect = parent.getBoundingClientRect()
     const rawPct = (e.clientX - rect.left) / rect.width
     const pct = clamp(rawPct, 0, 1)
-    rotX.value = rotXMin.value + pct * (rotXMax.value - rotXMin.value)
+    rotY.value = rotYMin.value + pct * (rotYMin.value - rotYMin.value)
   })
 }
 
@@ -174,7 +175,7 @@ function setupDragY() {
     const rect = parent.getBoundingClientRect()
     const rawPct = (e.clientY - rect.top) / rect.height
     const pct = clamp(rawPct, 0, 1)
-    rotY.value = rotYMin.value + pct * (rotYMax.value - rotYMin.value)
+    rotX.value = rotXMin.value + pct * (rotXMax.value - rotXMin.value)
   })
 }
 
@@ -231,7 +232,7 @@ onMounted(() => {
           currentAxis.value = 'z'
         }
         opacityCheckMark.value = 0
-      },500)
+      }, 500)
     }
   }, 50)
 
@@ -251,7 +252,8 @@ onUnmounted(() => {
 </script>
 
 <style>
-body, html {
+body,
+html {
   height: 100%;
   width: 100%;
   margin: auto;
