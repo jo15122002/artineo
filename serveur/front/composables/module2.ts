@@ -211,8 +211,8 @@ export default function useModule2(canvasRef: Ref<HTMLCanvasElement | null>) {
       ;(function animate() {
         requestAnimationFrame(animate)
         if (obj) {
-          obj.rotation.x = rotX.value
-          obj.rotation.y = rotY.value
+          obj.rotation.x = rotY.value
+          obj.rotation.y = rotX.value
           obj.rotation.z = rotZ.value
         }
         renderer.render(scene, camera)
