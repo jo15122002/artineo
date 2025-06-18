@@ -164,7 +164,7 @@ function setupDragX() {
     const rect = parent.getBoundingClientRect()
     const rawPct = (e.clientX - rect.left) / rect.width
     const pct = clamp(rawPct, 0, 1)
-    rotY.value = rotYMin.value + pct * (rotYMin.value - rotYMin.value)
+    rotY.value = rotYMin.value + pct * (rotYMax.value - rotYMin.value)
   })
 }
 
