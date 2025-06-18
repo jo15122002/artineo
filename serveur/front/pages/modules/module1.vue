@@ -76,9 +76,9 @@ function onFullScreenPlayerReady() {
   fullScreenPlayer.value?.playByTitle('intro.mp4',
     () => {
       resetTimer();
-      playerArtyMusic.value?.playByTitle('song.wav')
     },
     () => {
+      playerArtyMusic.value?.playByTitle('song.wav')
       resumeTimer()
       console.log('Full screen player ended')
       console.log("canpoll", canPoll.value)
