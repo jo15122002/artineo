@@ -76,7 +76,7 @@ function onFullScreenPlayerReady() {
   fullScreenPlayer.value?.playByTitle('intro.mp4',
     () => {
       resetTimer();
-      playerArtyMusic.value?.playByTitle('song.mp4')
+      playerArtyMusic.value?.playByTitle('song.wav')
     },
     () => {
       resumeTimer()
