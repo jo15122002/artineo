@@ -4,15 +4,13 @@
       <div v-show="currentAxis === 'x'">
         <div class="button rectX-button" ref="rectXBtn">
           <img src="~/assets/modules/2/rectX.svg" alt="Slider X" />
-          <!-- On pilote désormais l’axe X en déplacement vertical -->
-          <div class="rect-selector" ref="rectXSel" :style="{ '--t-y': translateX + 'px' }" />
+          <div class="rect-selector" ref="rectXSel" :style="{ '--t-x': translateX + 'px' }" />
         </div>
       </div>
       <div>
         <div v-show="currentAxis === 'y'" class="button rectY-button" ref="rectYBtn">
           <img src="~/assets/modules/2/rectY.svg" alt="Slider Y" />
-          <!-- On pilote désormais l’axe Y en déplacement horizontal -->
-          <div class="rect-selector" ref="rectYSel" :style="{ '--t-x': translateY + 'px' }" />
+          <div class="rect-selector" ref="rectYSel" :style="{ '--t-y': translateY + 'px' }" />
         </div>
       </div>
       <div v-show="currentAxis === 'z'">
@@ -164,8 +162,7 @@ function setupDragX() {
   const parent = rectXBtn.value!
   setupDrag(el, e => {
     const rect = parent.getBoundingClientRect()
-    // on utilise maintenant l'axe Y pour X
-    const rawPct = (e.clientY - rect.top) / rect.height
+    const rawPct = (e.clientX - rect.left) / rect.width
     const pct = clamp(rawPct, 0, 1)
     rotX.value = rotXMin.value + pct * (rotXMax.value - rotXMin.value)
   })
@@ -176,8 +173,7 @@ function setupDragY() {
   const parent = rectYBtn.value!
   setupDrag(el, e => {
     const rect = parent.getBoundingClientRect()
-    // on utilise maintenant l'axe X pour Y
-    const rawPct = (e.clientX - rect.left) / rect.width
+    const rawPct = (e.clientY - rect.top) / rect.height
     const pct = clamp(rawPct, 0, 1)
     rotY.value = rotYMin.value + pct * (rotYMax.value - rotYMin.value)
   })
@@ -190,9 +186,14 @@ function setupDragZ() {
     const rect = parent.getBoundingClientRect()
     const centerX = rect.left + rect.width / 2
     const centerY = rect.top + rect.height / 2
+    console.log('center', centerX, centerY)
+    console.log('client', e.clientX, e.clientY)
     const angle = Math.atan2(e.clientY - centerY, e.clientX - centerX)
+    console.log('angle', angle)
     const pct = (angle + Math.PI / 2) / (2 * Math.PI) // Normalize to [0, 1]
+    console.log('pct', pct)
     rotZ.value = rotZMin.value + pct * (rotZMax.value - rotZMin.value)
+    console.log('rotZ', rotZ.value)
   })
 }
 

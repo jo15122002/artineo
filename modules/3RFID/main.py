@@ -209,8 +209,8 @@ async def async_main():
         module_id=3,
         host="artineo.local",
         port=8000,
-        ssid="Bob_bricolo",
-        password="bobbricolo"
+        ssid="Centre-Ressources",
+        password="animation"
     )
     # on lance les boucles WS
     await asyncio.sleep(0)

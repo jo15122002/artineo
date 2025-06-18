@@ -7,7 +7,7 @@ from utime import sleep_ms
 # CONFIGURATION réseau & module
 # ————————————————————————————————————————————————————————————————
 MODULE_ID = 41
-HOST      = "192.168.2.1"
+HOST      = "artineo.local"
 PORT      = 8000
 
 # ————————————————————————————————————————————————————————————————
@@ -69,8 +69,8 @@ async def async_main():
         module_id = MODULE_ID,
         host      = HOST,
         port      = PORT,
-        ssid      = "Bob_bricolo",
-        password  = "bobbricolo",
+        ssid      = "Centre-Ressources",
+        password  = "animation",
     )
 
     # 2) Connexion Wi-Fi (blocante)
@@ -94,11 +94,11 @@ async def async_main():
     #     return
 
     # 4) (Optionnel) récupération de la config distante
-    try:
-        cfg = await client.fetch_config()
-        print("✅ Config reçue :", cfg)
-    except Exception as e:
-        print("⚠️ fetch_config a échoué :", e)
+    # try:
+    #     cfg = await client.fetch_config()
+    #     print("✅ Config reçue :", cfg)
+    # except Exception as e:
+    #     print("⚠️ fetch_config a échoué :", e)
 
     # 5) Envoi d'un buffer initial pour « annoncer » l'état au serveur
     await client.send_buffer({"button1": False, "button2": False, "button3": False})
@@ -106,7 +106,7 @@ async def async_main():
     # 6) Setup des GPIO
     button1 = Pin(25, Pin.IN, Pin.PULL_UP)
     button2 = Pin(26, Pin.IN, Pin.PULL_UP)
-    button3 = Pin(32, Pin.IN, Pin.PULL_UP)
+    button3 = Pin(35, Pin.IN, Pin.PULL_UP)
     
     # IRQ front descendant = appui
     button1.irq(trigger=Pin.IRQ_RISING, handler=button_irq)
