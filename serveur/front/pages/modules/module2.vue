@@ -39,7 +39,7 @@
             <img src="~/assets/modules/2/circle.svg" alt="Knob Z" />
             <div class="rect-selector" :style="{ transform: `rotate(${rotZDeg}deg) translateY(-115px)` }" />
           </div>
-          <img v-if="isYChecked" src="~/assets/modules/2/splash-check.png" alt="splash check" class="splash-check" />
+          <img v-if="isZChecked" src="~/assets/modules/2/splash-check.png" alt="splash check" class="splash-check" />
         </div>
 
       </div>
